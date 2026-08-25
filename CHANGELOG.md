@@ -16,588 +16,189 @@ support.
 
 ### Security
 
-- **Bumped `cryptography` to 50.0.0** (from 48.0.1), fixing GHSA-g6cj-pr64-35w5
-  (CVE-2026-69247, high severity): a Bleichenbacher-style padding oracle in
-  PKCS#7 `EnvelopedData` decryption via distinguishable errors/timing.
-  Transitive dependency; this project never calls the affected
-  `pkcs7_decrypt_*` functions directly. `astral-sh/setup-uv` also bumped
-  v7 → v9.0.0 (SHA-pinned) in the same pass. *(This is a different
-  `cryptography` CVE than the one fixed on `0.3.7` — see that entry below.)*
+- Bumped `cryptography` to 50.0.0, fixing a high-severity padding-oracle
+  vulnerability (GHSA-g6cj-pr64-35w5) in a transitive dependency this
+  project never calls directly.
 
 ### Added
 
-- **`list_work_packages`/`search_work_packages` gain an `include_sums`
-  parameter** to return server-computed `groups`/`total_sums` aggregates
-  (estimated time, story points, costs, etc.) alongside a `group_by` query,
-  instead of requiring client-side pagination and summation.
-- **`list_work_packages`/`search_work_packages` gain `overdue_only` and
-  `due_within_days` parameters** to filter by due-date status server-side,
-  instead of requiring the caller to fetch every result and filter locally.
-- **`list_documents`, `list_views`, and `list_sprints` gain a `search`
-  parameter.**
-- **`bulk_update_work_packages` now supports `sprint`.**
-- **`bulk_create_work_packages`/`bulk_update_work_packages` item fields now
-  accept `parent`** as well as `parent_work_package_id`.
-- **`bulk_create_work_packages`/`bulk_update_work_packages` gain a `select`
-  parameter** to shrink an unconfirmed preview's echoed payload.
-- **`get_work_package`, `list_actions`, and `list_capabilities` gain a
-  `select` parameter** to restrict the response to specific fields.
-- **`get_project` now returns the project's ancestor chain (`ancestors`).**
-- **`get_work_package_relations` results now carry `queried_perspective`**,
-  a caller-relative reading of the relation from the queried work package's
-  own side (`direction`, `effective_type`, and — only for the precedes/follows
-  pair — `predecessor_id`/`successor_id`), alongside the unchanged raw
-  `type`/`from_id`/`to_id`. `list_relations` (instance-wide, no single
-  anchor work package) always returns `queried_perspective: null`.
-- **`list_time_entries`, `list_notifications`, and `list_work_package_attachments`
-  gain a `select` parameter**, and `list_work_package_attachments` also gains
-  `offset`/`limit` pagination (previously always returned the full,
-  unbounded collection).
-- **`get_document`, `get_news`, and `get_wiki_page` gain a `text_limit`
-  parameter** to cap their long-form text at a given number of characters,
-  matching `get_work_package`'s existing parameter. `list_documents`,
-  `list_news`, `get_work_package_relations`/`list_relations`, and
-  `get_wiki_page` now report `description_truncated`/`description_length`
-  (or `content_truncated`/`content_length` for wiki pages) whenever that
-  field is cut, matching the existing pattern already used elsewhere (e.g.
-  work packages, time entries). `get_document`/`get_news` return their full
-  description by default now (previously silently capped at 1,200
-  characters with no way to request more).
-- **New tools: `list_work_package_wiki_links`, `create_work_package_wiki_link`,
-  `delete_work_package_wiki_link`** — full CRUD (no update) for links between
-  a work package and a wiki page, pulled forward from the 0.5.0 backlog.
-  Requires OpenProject **17.6+**; the underlying `wiki_page_links` API has no
-  reachable route on earlier versions.
-- **New tool: `execute_query`** — runs a saved OpenProject query
-  (`query_id`, from `get_view`/`list_views`'s `query_id` field, or a board's
-  own `id` since boards are queries) and returns its resolved work packages,
-  paginated and filtered against `OPENPROJECT_READ_PROJECTS` like every other
-  work-package listing tool. Pulled forward from the 0.5.0 backlog.
-- **`list_work_packages`/`search_work_packages`/`get_work_package`/
+- `list_work_packages`/`search_work_packages` gain `include_sums` (server-
+  computed group aggregates), `overdue_only`/`due_within_days` (due-date
+  filtering), and `custom_field_filters` (filter by custom field value).
+- `list_documents`, `list_views`, and `list_sprints` gain a `search`
+  parameter.
+- `bulk_update_work_packages` now supports `sprint`.
+- `bulk_create_work_packages`/`bulk_update_work_packages` item fields now
+  accept `parent` as well as `parent_work_package_id`, and both gain a
+  `select` parameter to shrink an unconfirmed preview's echoed payload.
+- `get_work_package`, `list_actions`, `list_capabilities`, `list_time_entries`,
+  `list_notifications`, and `list_work_package_attachments` gain a `select`
+  parameter; `list_work_package_attachments` also gains pagination.
+- `get_project` now returns the project's ancestor chain (`ancestors`).
+- `get_work_package_relations` results now carry `queried_perspective`, a
+  caller-relative reading of the relation (direction, effective type).
+- `get_document`, `get_news`, and `get_wiki_page` gain a `text_limit`
+  parameter, matching `get_work_package`'s existing one; `get_document`/
+  `get_news` return their full description by default now (previously
+  silently capped).
+- `list_work_packages`/`search_work_packages`/`get_work_package`/
   `get_work_packages`/`list_my_open_work_packages` now expose custom field
-  values** via new `custom_fields`/`custom_fields_truncated`/
-  `custom_comments`/`custom_comments_truncated` fields. Keyed by
-  the raw `customField<N>` key (never a friendly name); values are
-  normalized by shape (link-typed formats become title-only, matching every
-  other link field; the multi-paragraph "text" format is capped like
-  `description`; a scalar string/link/date value is independently capped at
-  ~255 characters), with the response bounded to at most 50 entries and a
-  concrete worst-case size regardless of how many custom fields exist.
-  `OPENPROJECT_HIDE_CUSTOM_FIELDS` now also applies on reads, matching ONLY
-  the raw key/wildcard — a read/write asymmetry from the write path, which
-  also accepts the friendly name; see
-  [Field hiding](docs/field-hiding.md#custom-fields-a-readwrite-asymmetry).
-  Enterprise-gated custom-field formats (`hierarchy`, `weighted_item_list`,
-  `calculated_value`) and selecting individual custom-field keys via
-  `select` remain out of scope.
-- **`list_work_packages`/`search_work_packages` gain a `custom_field_filters`
-  parameter** to filter by custom field value — deliberately kept as its own
-  addition, separate from reading custom field values (above). A dict keyed
-  by `cf_<N>` or `customField<N>` (both accepted
-  transparently, normalized to `cf_<N>` — the actual OpenProject filter key,
-  distinct from `customField<N>`'s JSON/PATCH-key role on the read/write
-  paths); each entry is `{"operator": "<symbol>", "values": [...]}`. Covers
-  all ten CE-realistic custom-field formats (string, text, link, int, float,
-  date, bool, list, user, version) with their real, format-specific
-  operator sets — see [Custom-Field
-  Filters](docs/filters.md#custom-field-filters) for the full matrix and
-  source verification. `OPENPROJECT_HIDE_CUSTOM_FIELDS` now also blocks
-  filtering (rejected with a clear error, not silently dropped — a
-  deliberately different UX than the read-side masking above). Friendly-name
-  resolution and per-field live schema/operator validation are out of scope
-  for this pass (documented, not silently omitted) — only raw
-  `cf_<N>`/`customField<N>` keys are accepted, and an operator that is
-  syntactically valid but illegal for a specific field's format surfaces as
-  OpenProject's own clean error rather than a pre-validated one, to avoid an
-  added network round trip on every filtered list/search call.
-- **New tools: `list_storages`, `get_storage`, `create_storage`,
-  `update_storage`, `delete_storage`** — manage OpenProject external file
-  storage connections (Nextcloud/OneDrive/Sharepoint), admin-gated
-  (`OPENPROJECT_ENABLE_ADMIN_READ`/`_WRITE`, same as Users/Groups).
-  `create_storage` targeting OneDrive/Sharepoint on a Community Edition
-  instance is rejected by OpenProject itself with a clear validation error
-  (Enterprise-only providers, no Enterprise token available); Nextcloud is
-  unrestricted, though a live host-reachability/setup-completeness check
-  still applies. Pulled forward from the 0.5.0 backlog.
-- **New tools: `list_project_storages`, `get_project_storage`** — read a
-  project's links to configured external storages, project-scoped
-  (`OPENPROJECT_ENABLE_PROJECT_READ` plus `OPENPROJECT_READ_PROJECTS`, same
-  as Documents). Read-only in OpenProject's own API — no create/update/delete
-  endpoint exists for this resource. Pulled forward from the 0.5.0 backlog.
-- **New Meetings domain**: `list_meetings`/`get_meeting`/`create_meeting`/
-  `update_meeting`/`delete_meeting`, plus Agenda Items, Sections, Outcomes,
-  and Recurring Meetings (with virtual-occurrence materialization via
-  `init_recurring_meeting_occurrence`). Its own dedicated
-  `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope, on by default. Requires
-  OpenProject 17.4+ at minimum; several sub-resources need 17.6+ or 17.7+ —
-  see [Meetings](docs/tools.md#meetings) for the exact floor per tool.
-  Pulled forward from the 0.5.0 backlog.
-- **New tools: `get_cost_entry`, `list_work_package_cost_entries`,
-  `get_work_package_costs_by_type`, `get_cost_type`** — read the Costs
-  module's cost entries and cost types. Read-only in OpenProject's own API.
-  Pulled forward from the 0.5.0 backlog.
-- **New tools: `get_github_pull_request`, `list_work_package_github_pull_requests`,
-  `list_work_package_gitlab_issues`, `list_work_package_gitlab_merge_requests`**
-  — read GitHub pull requests and GitLab issues/merge requests linked to a
-  work package by OpenProject's own GitHub App / GitLab webhook integration.
-  Read-only mirror rows; never creatable via this API. Pulled forward from
-  the 0.5.0 backlog.
-- **New tool: `get_post`** — fetch a single forum post by id. OpenProject's
-  API exposes no collection endpoint for posts, so a post's id must come
-  from elsewhere (e.g. a work package's activity/journal). Pulled forward
-  from the 0.5.0 backlog.
-- **New tools: `list_backlog_buckets`, `get_backlog_bucket`** — list/fetch
-  Backlogs backlog buckets, alongside the existing Backlogs sprint tools.
-  Requires Backlogs/OpenProject 17.6+.
-- **New per-user schedule override tools**: `list_user_non_working_times`/
-  `create_user_non_working_time`/`update_user_non_working_time`/
-  `delete_user_non_working_time` and `list_user_working_hours`/
-  `get_user_working_hours`/`create_user_working_hours`/
-  `update_user_working_hours`/`delete_user_working_hours` — manage a user's
-  vacation date ranges and recurring weekly working-hours schedules. Its own
-  dedicated `OPENPROJECT_ENABLE_USER_SCHEDULE_READ`/`_WRITE` scope (both
-  default `false`); every tool accepts `user_ref="me"` for self-service
-  regardless of role, or another user's id/login for a caller holding
-  OpenProject's `manage_working_times` permission. Requires OpenProject
-  17.3+, feature-flag-gated off by default through 17.6 and generally
-  available from 17.7 — see [User schedule
-  overrides](docs/tools.md#user-schedule-overrides) for detail. Pulled
-  forward from the 0.5.0 backlog.
-- **`search_work_packages` now also resolves its `query` directly as a
-  numeric id or display id (e.g. `PROJ-42`), returned separately as
-  `exact_match` when it satisfies every other active filter** — previously,
-  a display id never matched, since the underlying `subject_or_id` filter
-  only matches subject text or a numeric id. `exact_match` is kept separate
-  from `results`/`total`/pagination, and `select` applies to it the same
-  way it applies to a results row.
+  values.
+- New tools: wiki-link CRUD (`list_work_package_wiki_links`,
+  `create_work_package_wiki_link`, `delete_work_package_wiki_link`,
+  OpenProject 17.6+); `execute_query`; external storage management
+  (`list_storages`, `get_storage`, `create_storage`, `update_storage`,
+  `delete_storage`, `list_project_storages`, `get_project_storage`);
+  a full Meetings domain (meetings, agenda items, sections, outcomes,
+  recurring meetings); Costs read tools (`get_cost_entry`,
+  `list_work_package_cost_entries`, `get_work_package_costs_by_type`,
+  `get_cost_type`); GitHub/GitLab integration read tools; `get_post`;
+  Backlogs bucket tools; and per-user schedule override tools (non-working
+  times, working hours).
+- Tool descriptions are substantially shorter across the whole catalog,
+  reducing the fixed per-session token cost of the tool catalog itself.
+- A project-scoped read tool is no longer registered when
+  `OPENPROJECT_READ_PROJECTS` is empty, matching how write tools already
+  behaved.
+- Breaking: `add_project_favorite`/`remove_project_favorite` merged into
+  `set_project_favorite(favorite: bool)`; `lock_user`/`unlock_user` into
+  `set_user_locked(locked: bool)`; `add_work_package_watcher`/
+  `remove_work_package_watcher` into
+  `set_work_package_watcher(watching: bool)`;
+  `mark_notification_read`/`mark_all_notifications_read` into
+  `mark_notifications_read(notification_id=None)`; `list_project_sprints`
+  into `list_sprints(project=None, ...)`.
+- Breaking: `maximum_attachment_file_size`/`file_size` output fields
+  renamed to `maximum_attachment_file_size_bytes`/`file_size_bytes`.
+- Migrated the `mcp` SDK dependency from 1.x to 2.0.0; no MCP tool's public
+  interface changes.
 
 ### Removed
 
-- **`get.ps1`/`get.sh` (the source-install one-liners) and `uninstall.ps1`/
-  `uninstall.sh` are gone**, along with their CI job and executable tests.
-  Live-testing them on a fresh Windows VM (OPM-444) surfaced 3 real bugs in a
-  small amount of maintained surface (a missing dependency-install step, a
-  PowerShell `exit`-inside-`iex` bug, a Microsoft-Store-Python-stub crash) —
-  on reflection, these two platform-specific launcher scripts serve neither
-  the normal end user (who gets the same published package more simply via
-  `pipx`) nor a contributor (who already has `git clone` + `uv sync --dev`
-  documented in `CONTRIBUTING.md`). `docs/installation.md`'s
-  "Development / from source" section now points there directly instead of
-  offering a scripted one-liner. `docs/installation.md`'s install-method
-  order and phrasing were also reworked to recommend `pipx` unambiguously as
-  the primary path (`uv tool install` as a secondary option for existing `uv`
-  users, plain `pip install` qualified to already-managed environments only,
-  `uvx` reframed as a run-on-demand client-config detail rather than a
-  peer "install method").
-
-- **Breaking: removed client-constructed `url` fields (and a few
-  sub-collection hrefs like `activities_url`/`relations_url`) from MCP
-  output models across most domains, including work packages, projects,
-  and users.** These were built from `base_url` + id, with no matching link
-  from the server, and some never resolved to a real page. `download_url`,
-  `avatar_url`, and `identity_url` are unaffected, as are the handful of
-  `url` fields that resolve a link OpenProject actually sends.
-- **Breaking: every non-bulk write/delete result based on
-  `ConfirmationHeader`'s `confirmed`/`requires_confirmation` boolean pair is
-  replaced by a single `state` field**
-  (`"rejected"` | `"invalid"` | `"preview"` | `"confirmed"`). `ready` is
-  unchanged. `BulkWorkPackageWriteResult` (the two bulk work-package tools)
-  is unaffected and still returns `confirmed`/`requires_confirmation`.
-- **Breaking: `search_work_packages`'s `query` parameter is renamed to
-  `search`**, matching every other search-capable tool.
-- **Breaking: `list_roles` now returns a paginated result** instead of the
+- `get.ps1`/`get.sh` and `uninstall.ps1`/`uninstall.sh` are gone. Live-
+  testing them surfaced 3 real bugs in maintained surface that serves
+  neither a normal end user (`pipx` is simpler) nor a contributor (`git
+  clone` + `uv sync --dev` is already documented). `docs/installation.md`
+  now recommends `pipx` as the primary install path.
+- Breaking: removed client-constructed `url` fields (and a few sub-
+  collection hrefs) from MCP output models across most domains — these
+  never resolved to a real page.
+- Breaking: every non-bulk write/delete result's `confirmed`/
+  `requires_confirmation` boolean pair is replaced by a single `state`
+  field. Bulk work-package writes are unaffected.
+- Breaking: `search_work_packages`'s `query` parameter is renamed to
+  `search`, matching every other search-capable tool.
+- Breaking: `list_roles` now returns a paginated result instead of the
   complete role collection in one call.
-- **Bulk work-package writes reuse resolved project/type/version/sprint
-  lookups across items targeting the same project**, reducing redundant API
-  calls for large batches.
-- **Server startup no longer enriches the initial instructions with the
-  instance's live feature flags.** This data remains available via
-  `get_instance_configuration`.
-- CI now runs **Semgrep** as a second SAST pass, and a complete
-  shell-script gate across the repo's shell scripts. No end-user-visible
-  behavior change.
-- **`tools.py`'s tool registry now builds via explicit `@register_tool`
-  decorators on each tool function**, instead of resolving classified names
-  through the module's `globals()` at import time — groundwork for
-  eventually splitting `tools.py` into per-domain files (OPM-395), since
-  each function now carries its own registration wherever it's defined. No
-  end-user-visible behavior change.
-- **22 generic field-validation helpers moved from `tools.py` into the
-  existing `tools_validation.py` sibling module** — further groundwork for
-  splitting `tools.py` into per-domain files (OPM-395); these validators
-  have no OpenProject-domain-specific logic, so they're shared, presentation-
-  layer utilities rather than something any one future domain module would
-  own. No end-user-visible behavior change.
-- **A tool's return-type resolution (`_return_model`, used to decide whether
-  a response gets trimmed) now resolves against the tool function's own
-  defining module (`fn.__globals__`) instead of `tools.py`'s module
-  namespace** — the previous approach happened to work only because every
-  tool currently lives in `tools.py`; this stays correct once tools.py is
-  eventually split into per-domain files (OPM-395). No end-user-visible
-  behavior change.
-- **7 more validators moved from `tools.py` into `tools_validation.py`**
-  (project/work-package reference and relation-type validation, each with
-  its own regex constant used exclusively by that validator) — further
-  groundwork for splitting `tools.py` into per-domain files (OPM-395). No
-  end-user-visible behavior change.
-- **4 more validators (date-time and duration format validation) moved from
-  `tools.py` into `tools_validation.py`**, along with their regex constants —
-  further groundwork for splitting `tools.py` into per-domain files
-  (OPM-395). No end-user-visible behavior change.
-- **The tool-registration/dispatch/error-translation/trimming mechanics moved
-  from `tools.py` into a new sibling module, `tools_runtime.py`** (the
-  `@register_tool` decorator and registry, `_client_from_context`, error
-  categorization, and the return-model/`select`-trimming machinery) — the
-  first real step of splitting `tools.py` into per-domain files (OPM-395):
-  `tools.py` keeps the tool functions and the scope-classification/policy
-  tables (`enabled_tool_names` and friends), while `tools_runtime.py` is a
-  pure, domain-agnostic mechanism module that never imports back from
-  `tools.py`. `_validate_select` moved to `tools_validation.py` alongside the
-  project's other presentation-layer input validators, since it validates
-  user-supplied field names rather than being registration mechanics. No
-  end-user-visible behavior change.
-- **The Reminders domain's 4 tool functions (`list_reminders`,
-  `create_work_package_reminder`, `update_reminder`, `delete_reminder`) moved
-  from `tools.py` into a new `tools_reminders.py`** — OPM-395's first actual
-  pilot domain split, following the groundwork laid by the previous two
-  entries. `tools.py` imports the new module for its `@register_tool`
-  registration side effect and, for now, re-exports the four functions so
-  existing test imports keep working unchanged (this re-export is a
-  deliberate transition step, not the long-term shape). A characterization
-  test (`tests/test_reminder_tools_schema_characterization.py`) locks in the
-  4 tools' exact MCP schema (parameter names/types/order, descriptions,
-  required fields, absent output_schema) from before the move, proving the
-  file relocation had zero effect on what an MCP client sees. No
-  end-user-visible behavior change.
-- **The Versions domain's 5 tool functions (`list_versions`, `get_version`,
-  `create_version`, `update_version`, `delete_version`), plus their
-  domain-local `_validate_version_schedule_fields` helper, moved from
-  `tools.py` into a new `tools_versions.py`** — the second domain split under
-  OPM-395, following the same pattern as the Reminders split. As part of this
-  move, `_validate_optional_text_limit` (a general-purpose validator used by
-  12 other, still-unmigrated tools) relocated from `tools.py` into
-  `tools_validation.py` alongside the other shared input validators, since it
-  is not Versions-domain-local and a Versions-owned copy would have created a
-  reverse import from `tools_versions.py` back into `tools.py`; all of its
-  call sites, in and outside the Versions domain, keep working unchanged via
-  `tools.py`'s existing `tools_validation` import block. `tools.py` imports
-  `tools_versions` for its `@register_tool` registration side effect and, for
-  now, re-exports the five functions so existing test imports keep working
-  unchanged (a deliberate transition step, not the long-term shape). A
-  characterization test (`tests/test_version_tools_schema_characterization.py`)
-  locks in the 5 tools' exact MCP schema (parameter names/types/order,
-  descriptions, required fields, output_schema presence) from before the
-  move, proving the file relocation had zero effect on what an MCP client
-  sees. No end-user-visible behavior change.
-- **The Boards domain's 5 tool functions (`list_boards`, `get_board`,
-  `create_board`, `update_board`, `delete_board`), plus their domain-local
-  `_validate_board_query_fields` helper, moved from `tools.py` into a new
-  `tools_boards.py`** — the third domain split under OPM-395, following the
-  same pattern as the Reminders and Versions splits. `tools.py` imports
-  `tools_boards` for its `@register_tool` registration side effect and, for
-  now, re-exports the five functions so existing test imports keep working
-  unchanged (a deliberate transition step, not the long-term shape). A
-  characterization test (`tests/test_board_tools_schema_characterization.py`)
-  locks in the 5 tools' exact MCP schema (parameter names/types/order,
-  descriptions, required fields, output_schema presence) from before the
-  move, proving the file relocation had zero effect on what an MCP client
-  sees. No end-user-visible behavior change.
-- **The User Schedule domain's 9 tool functions (`list_user_non_working_times`,
-  `create_user_non_working_time`, `update_user_non_working_time`,
-  `delete_user_non_working_time`, `list_user_working_hours`,
-  `get_user_working_hours`, `create_user_working_hours`,
-  `update_user_working_hours`, `delete_user_working_hours`) moved from
-  `tools.py` into a new `tools_user_schedule.py`** — the fourth domain split
-  under OPM-395, following the same pattern as the Reminders, Versions, and
-  Boards splits. Unlike those three, `tools.py` does **not** re-export these
-  names — no existing test imports any of them directly from
-  `openproject_ce_mcp.tools` (the integration tests that reference names like
-  `create_user_working_hours` call the `OpenProjectClient` method of that
-  name, not this MCP-wrapper function), so the re-export step that the prior
-  three splits needed as a transition aid is unnecessary here. `tools.py`
-  imports `tools_user_schedule` only for its `@register_tool` registration
-  side effect. A characterization test
-  (`tests/test_user_schedule_tools_schema_characterization.py`) locks in the
-  9 tools' exact MCP schema (parameter names/types/order, descriptions,
-  required fields, output_schema presence) from before the move, proving the
-  file relocation had zero effect on what an MCP client sees. No
-  end-user-visible behavior change.
-- **The Misc Extended domain's 6 tool functions (`render_text`,
-  `list_help_texts`, `get_help_text`, `list_working_days`,
-  `list_non_working_days`, `get_custom_option`) moved from `tools.py` into a
-  new `tools_misc.py`** — the fifth domain split under OPM-395, following the
-  same pattern as the User Schedule split. `tools.py` does **not** re-export
-  these names — no existing test imports any of them directly from
-  `openproject_ce_mcp.tools`, so the re-export step that the Reminders,
-  Versions, and Boards splits needed as a transition aid is unnecessary here.
-  `tools.py` imports `tools_misc` only for its `@register_tool` registration
-  side effect. A characterization test
-  (`tests/test_misc_extended_tools_schema_characterization.py`) locks in the
-  6 tools' exact MCP schema (parameter names/types/order, descriptions,
-  required fields, output_schema presence) from before the move, proving the
-  file relocation had zero effect on what an MCP client sees. No
-  end-user-visible behavior change.
-- **The Membership domain's 9 tool functions (`list_roles`, `list_actions`,
-  `list_capabilities`, `list_project_memberships`, `get_membership`,
-  `create_membership`, `update_membership`, `delete_membership`,
-  `get_current_user`) moved from `tools.py` into a new
-  `tools_memberships.py`** — the sixth domain split under OPM-395. Unlike the
-  User Schedule and Misc Extended splits, `tools.py` **does** re-export all
-  nine names: four of them (`list_actions`, `list_capabilities`, `list_roles`,
-  `list_project_memberships`) are imported directly from
-  `openproject_ce_mcp.tools` by existing tests (`test_trimming.py`,
-  `tests/unit/test_project_and_domain_tools.py`), so this split follows the
-  same re-export transition step as the Reminders, Versions, and Boards
-  splits. `tools.py` imports `tools_memberships` for its `@register_tool`
-  registration side effect and the re-export. A characterization test
-  (`tests/test_membership_tools_schema_characterization.py`) locks in the 9
-  tools' exact MCP schema (parameter names/types/order, descriptions,
-  required fields, output_schema presence) from before the move, proving the
-  file relocation had zero effect on what an MCP client sees. No
-  end-user-visible behavior change.
-- **The Personal domain's 4 tool functions (`list_notifications`,
-  `mark_notifications_read`, `get_my_preferences`, `update_my_preferences`)
-  moved from `tools.py` into a new `tools_personal.py`** — the seventh domain
-  split under OPM-395. Like the Membership split, `tools.py` **does**
-  re-export all four names: two of them (`list_notifications`,
-  `mark_notifications_read`) are imported directly from
-  `openproject_ce_mcp.tools` by an existing test
-  (`tests/unit/test_project_and_domain_tools.py`), so this split follows the
-  same re-export transition step as the Reminders, Versions, Boards, and
-  Membership splits. `tools.py` imports `tools_personal` for its
-  `@register_tool` registration side effect and the re-export; the
-  `PERSONAL_MUTATION_TOOLS`/`READ_TOOLS_BY_SCOPE["personal"]`
-  scope-classification tables stay in `tools.py`, unaffected by this move. A
-  characterization test
-  (`tests/test_personal_tools_schema_characterization.py`) locks in the 4
-  tools' exact MCP schema (parameter names/types/order, descriptions,
-  required fields, output_schema presence) from before the move, proving the
-  file relocation had zero effect on what an MCP client sees. No
-  end-user-visible behavior change.
-- **The Admin domain's 17 tool functions (`list_principals`, `list_users`,
-  `get_user`, `list_groups`, `get_group`, `list_storages`, `get_storage`,
-  `create_user`, `update_user`, `delete_user`, `set_user_locked`,
-  `create_group`, `update_group`, `delete_group`, `create_storage`,
-  `update_storage`, `delete_storage`) moved from `tools.py` into a new
-  `tools_admin.py`** — the eighth domain split under OPM-395. Like the
-  Membership and Personal splits, `tools.py` **does** re-export all
-  seventeen names: seven of them (`create_user`, `update_user`,
-  `delete_user`, `set_user_locked`, `create_group`, `update_group`,
-  `delete_group`) are imported directly from `openproject_ce_mcp.tools` by
-  an existing test (`tests/unit/test_project_and_domain_tools.py`), so this
-  split follows the same re-export transition step as the Reminders,
-  Versions, Boards, Membership, and Personal splits. `tools.py` imports
-  `tools_admin` for its `@register_tool` registration side effect and the
-  re-export; the `READ_TOOLS_BY_SCOPE["admin"]`/`ADMIN_WRITE_TOOLS`/
-  `WRITE_TOOLS_BY_SCOPE["admin"]` scope-classification tables stay in
-  `tools.py`, unaffected by this move. A characterization test
-  (`tests/test_admin_tools_schema_characterization.py`) locks in the 17
-  tools' exact MCP schema (parameter names/types/order, descriptions,
-  required fields, output_schema presence) from before the move, proving the
-  file relocation had zero effect on what an MCP client sees. No
-  end-user-visible behavior change.
-- **The Query Schema Extended domain's 6 tool functions (`get_query_filter`,
-  `get_query_column`, `get_query_operator`, `get_query_sort_by`,
-  `list_query_filter_instance_schemas`, `get_query_filter_instance_schema`)
-  moved from `tools.py` into a new `tools_query_schema.py`** — the ninth
-  domain split under OPM-395. `tools.py` does **not** re-export these
-  names — no existing test imports any of them directly from
-  `openproject_ce_mcp.tools`, so the re-export step that the Reminders,
-  Versions, Boards, Membership, Personal, and Admin splits needed as a
-  transition aid is unnecessary here, following the same no-re-export
-  pattern as the Misc Extended and User Schedule splits. `tools.py` imports
-  `tools_query_schema` only for its `@register_tool` registration side
-  effect; the `READ_TOOLS_BY_SCOPE["extended"]`/`ADDITIONAL_READ_SCOPES_BY_TOOL`
-  scope-classification tables stay in `tools.py`, unaffected by this move. A
-  characterization test
-  (`tests/test_query_schema_extended_tools_schema_characterization.py`)
-  locks in the 6 tools' exact MCP schema (parameter names/types/order,
-  descriptions, required fields, output_schema presence) from before the
-  move, proving the file relocation had zero effect on what an MCP client
-  sees. No end-user-visible behavior change.
-- **The Meeting domain's 29 tool functions (`list_meetings`, `get_meeting`,
-  `create_meeting`, `update_meeting`, `delete_meeting`,
-  `list_meeting_agenda_items`, `list_work_package_meeting_agenda_items`,
-  `get_meeting_agenda_item`, `create_meeting_agenda_item`,
-  `update_meeting_agenda_item`, `delete_meeting_agenda_item`,
-  `list_meeting_outcomes`, `get_meeting_outcome`, `create_meeting_outcome`,
-  `update_meeting_outcome`, `delete_meeting_outcome`, `list_meeting_sections`,
-  `get_meeting_section`, `create_meeting_section`, `update_meeting_section`,
-  `delete_meeting_section`, `list_recurring_meetings`,
-  `get_recurring_meeting`, `create_recurring_meeting`,
-  `update_recurring_meeting`, `delete_recurring_meeting`,
-  `list_recurring_meeting_occurrences`, `init_recurring_meeting_occurrence`,
-  `cancel_recurring_meeting_occurrence`) moved from `tools.py` into a new
-  `tools_meetings.py`** — the tenth and largest domain split under OPM-395.
-  `tools.py` re-exports only three of the twenty-nine names
-  (`list_meeting_agenda_items`, `list_meeting_outcomes`,
-  `list_work_package_meeting_agenda_items`), the ones an existing test
-  (`tests/test_trimming.py`) imports directly from
-  `openproject_ce_mcp.tools`; the other twenty-six follow the no-re-export
-  pattern established by the Misc Extended, User Schedule, and Query Schema
-  Extended splits. `tools.py` imports `tools_meetings` for its
-  `@register_tool` registration side effect and the partial re-export; the
-  `READ_TOOLS_BY_SCOPE["meeting"]`/`WRITE_TOOLS_BY_SCOPE["meeting"]`/
-  `_PROJECT_SCOPED_WRITE_SCOPES` scope-classification tables stay in
-  `tools.py`, unaffected by this move. A characterization test
-  (`tests/test_meeting_tools_schema_characterization.py`) locks in the 29
-  tools' exact MCP schema (parameter names/types/order, descriptions,
-  required fields, output_schema presence) from before the move, proving the
-  file relocation had zero effect on what an MCP client sees. No
-  end-user-visible behavior change.
-- **Tool descriptions are substantially shorter across the whole catalog**:
-  duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
-  `select`, pagination, `include_sums`) between `search_work_packages` and
-  `list_work_packages`, and between the single-item and bulk work-package
-  write tools, now live in one place and are referenced by name instead of
-  restated; the repeated `select` boilerplate sentence across ~30 other tools
-  is now a short field list pointing at one shared explanation in the server's
-  own instructions. No behavior change — this only reduces the fixed
-  per-session token cost of the tool catalog itself.
-- A new architecture-boundary test now permanently locks in that
-  `OpenProjectClient`'s public methods stay pure one-line delegations to a
-  single Service, except the two explicitly named cross-service coordinators
-  — a regression (a new method silently growing multi-service orchestration
-  logic inline) now fails CI immediately. No end-user-visible behavior
-  change.
-- **A project-scoped read tool (e.g. `list_work_packages`, `get_project`)
-  is no longer registered when `OPENPROJECT_READ_PROJECTS` is empty.**
-  Previously it stayed in the tool catalog even though it could only ever
-  return an empty result or a permission error with no project allowlist
-  granted; write tools already worked this way.
-- **Breaking: `add_project_favorite`/`remove_project_favorite` merged into
-  `set_project_favorite(favorite: bool)`.**
-- **Breaking: `lock_user`/`unlock_user` merged into
-  `set_user_locked(locked: bool)`.**
-- **Breaking: `add_work_package_watcher`/`remove_work_package_watcher`
-  merged into `set_work_package_watcher(watching: bool)`.**
-- **Breaking: `mark_notification_read`/`mark_all_notifications_read` merged
-  into `mark_notifications_read(notification_id=None)`** — pass an id to
-  mark one notification, omit it to mark every unread notification.
-- **Breaking: `list_project_sprints` merged into `list_sprints(project=None,
-  ...)`** — pass `project` to list only that project's sprints.
-- **Breaking: `maximum_attachment_file_size`/`file_size` output fields
-  renamed to `maximum_attachment_file_size_bytes`/`file_size_bytes`**
-  (`InstanceConfiguration`, `ProjectConfiguration`, `AttachmentSummary`),
-  to make the byte unit explicit.
-- **Migrated the `mcp` SDK dependency from 1.x (`FastMCP`) to 2.0.0
-  (`MCPServer`)** — `mcp` jumped from 1.29.0 straight to 2.0.0, a breaking
-  release that removed `mcp.server.fastmcp` entirely. The internal
-  `StrictFastMCP` argument-validation subclass (see the `0.3.6` entry below)
-  is renamed `StrictMCPServer` and ported to the new base class, base
-  constructor, and dispatch internals; the argument-rejection behavior
-  itself is unchanged. `mcp` is now pinned to `>=2,<3`. No MCP tool's
-  public interface changes.
 
 ### Fixed
 
-- **`tools/api-check/check_coverage.py` missed almost all client resource
-  usage**, since it only scanned `client.py` for HTTP call sites; the real
-  calls live in `app/adapters/httpx_*.py`. `COVERAGE.md` regenerated to
-  reflect actual coverage.
-- **`list_work_package_wiki_links` failed whenever at least one link
-  existed on a work package**, an OpenProject server bug this MCP cannot
-  work around client-side; a fix has been submitted upstream
+- `tools/api-check/check_coverage.py` missed almost all client resource
+  usage; `COVERAGE.md` regenerated to reflect actual coverage.
+- `list_work_package_wiki_links` failed whenever at least one link existed
+  on a work package — an upstream OpenProject bug, fix submitted
   ([opf/openproject#24770](https://github.com/opf/openproject/pull/24770)).
-  A separate pagination bug on the same endpoint (results never advancing
-  past the first page) is also upstream-only
-  ([#24774](https://github.com/opf/openproject/pull/24774)).
-- **Some write rejections showed a generic message instead of the actual
-  reason** (e.g. a rejected storage connection on Community Edition showed
-  "Multiple field constraints have been violated" instead of the real
-  "requires an Enterprise token"). The specific reason is now surfaced.
-- **A permission-denied response could be misreported as an authentication
-  failure** if OpenProject's rejection bundled an unrelated detail message
-  mentioning "token" or "authenticate" (e.g. an Enterprise-gate rejection
-  alongside a genuine permission denial) — a side effect of the surfaced-
-  detail fix directly above. The actual error type is now classified
-  correctly again.
-- **`create_meeting_outcome`/`update_meeting_outcome` rejected the correct
-  `kind` values (`"info"`/`"action"` were accepted instead of the real
-  `information`/`decision`/`work_package`)**, and could fail with "This
-  outcome is not editable anymore" against a freshly created meeting.
-- **`init_recurring_meeting_occurrence` failed on every call.** A fix for
-  the underlying server bug has been merged upstream
-  ([#24772](https://github.com/opf/openproject/pull/24772)), pending a
-  release that ships it.
-- **`update_user_non_working_time`/`delete_user_non_working_time` could
-  falsely report "not found" for a record that genuinely exists**, if that
-  record's date range fell outside the current calendar year.
-- **`create_user_working_hours` failed with an opaque server error whenever
-  any weekday was left unspecified**, instead of treating it as "not a
-  working day". A fix for the underlying server bug has been submitted
-  upstream ([#24773](https://github.com/opf/openproject/pull/24773)).
-- **`list_projects` no longer reports a false `truncated: true` when the
-  requested `limit` is reached exactly on the server's last page.**
-  `fetch_project_page` decided `truncated` as soon as `limit` allowed
-  results were collected, without checking whether a further match actually
-  exists beyond that page — a follow-up call using the reported
-  `next_offset` could silently return an empty page. Same class of bug as
-  the one fixed release-wide on `release/0.3.6` (see the `0.3.6` entry
-  below), caught separately here because this tree's Projects pagination
-  was rewritten into its own resolver (`fetch_project_page`) rather than
-  reusing the shared `_scan_and_paginate` helper that release ported.
-- **`list_work_packages`/`search_work_packages` no longer report a false
-  `truncated: true` under a restricted `OPENPROJECT_READ_PROJECTS` scope
-  when exactly `limit` allowed work packages exist and nothing else does.**
-  Same bug class as the `list_projects` fix above, but as a single-page
-  variant: `_list_collection` decided "more exists" from the raw page
-  coming back exactly `limit` elements long, instead of proving it by
-  requesting one extra (`limit + 1`) element from OpenProject and checking
-  how many actually survived allowlist filtering.
-- **User-typed fields can now be set on work package writes.** `responsible`,
-  and every user/version reference custom field (e.g. a required "Business
-  Owner" or "Tech Owner" on an Epic), previously failed with `OpenProject
-  value 'X' is not allowed for field 'Y'` for *every* input — display name,
-  numeric id, or href alike — making those work packages impossible to
-  create through the server whenever such a field is required. Option
-  resolution only ever read `schema[field]._embedded.allowedValues`, but
-  fields whose candidate set is unbounded (any `User` field) never embed
-  that list; OpenProject links a pre-filtered collection under
-  `schema[field]._links.allowedValues.href` instead. The adapter now
-  dereferences that link before the schema reaches `WorkPackageService`, so
-  its option-matching logic keeps resolving locally with no extra request
-  for already-embedded sets (status, priority, type), and always sees an
-  embedded list either way — mirroring `list_available_parent_projects`'s
-  existing link-dereference shape for the `parent` field.
-- **Time entry `activity` resolution now also handles a linked (rather than
-  embedded) allowed-values list**, the same underlying OpenProject response
-  shape as the fix directly above. A project that restricts its available
-  activities could make the server link a filtered collection instead of
-  embedding it, which previously left every activity name/id rejected as
-  "not allowed" for `create_time_entry`/`update_time_entry` and
-  `list_time_entry_activities` on that project.
+- Some write rejections showed a generic message instead of the actual
+  reason (e.g. a rejected storage connection on Community Edition). The
+  specific reason is now surfaced.
+- A permission-denied response could be misreported as an authentication
+  failure if OpenProject's rejection bundled an unrelated detail message
+  mentioning "token" or "authenticate".
+- `create_meeting_outcome`/`update_meeting_outcome` rejected the correct
+  `kind` values, and could fail against a freshly created meeting.
+- `init_recurring_meeting_occurrence` failed on every call — an upstream
+  OpenProject bug, fix merged
+  ([#24772](https://github.com/opf/openproject/pull/24772)), pending
+  release.
+- `update_user_non_working_time`/`delete_user_non_working_time` could
+  falsely report "not found" for a record whose date range fell outside
+  the current calendar year.
+- `create_user_working_hours` failed with an opaque server error whenever
+  any weekday was left unspecified, instead of treating it as "not a
+  working day" — an upstream OpenProject bug, fix submitted
+  ([#24773](https://github.com/opf/openproject/pull/24773)).
+- `list_projects` and `list_work_packages`/`search_work_packages` no
+  longer report a false `truncated: true` when exactly the requested
+  `limit` of allowed results exists and nothing else does.
+- User-typed fields (`responsible`, and user/version reference custom
+  fields) can now be set on work package writes — previously rejected for
+  every input, since OpenProject links an unbounded field's allowed
+  values instead of embedding them, and only the embedded shape was
+  resolved.
+- Time entry `activity` resolution now also handles the same linked
+  (rather than embedded) allowed-values shape as the fix above.
 
 ### Docs
 
 - Added the missing "Notes" section to the Cursor client guide.
 - Documented that `configure` must be run from the same directory your AI
-  client opens as its workspace, so a project-scoped config actually lands
-  where the client looks for it.
-- Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
-  not a standalone "GitHub MCP server".
-- **`get_work_package`'s docstring now states that `work_package_id` is the
-  same value `list_work_packages`/`search_work_packages` return as each
-  row's `id` field** — a caller could otherwise guess `id` (matching the
-  list output) and hit a validation error before retrying with the correct
-  name.
-- **`bulk_create_work_packages`/`bulk_update_work_packages`'s docstrings now
-  give an explicit example of each item's identifier field** —
-  `bulk_update_work_packages` items use `work_package_id`, not `id`; new
-  items in `bulk_create_work_packages` have no identifier field at all and
-  are matched back to their input purely by `index`.
-- **Corrected the documented OpenProject version floors for several Meetings
-  and wiki-link tools.** `get_meeting_section`/`create_meeting_section`/
-  `update_meeting_section`/`delete_meeting_section` and
-  `get_meeting_agenda_item`/`create_meeting_agenda_item`/
-  `update_meeting_agenda_item`/`delete_meeting_agenda_item` need 17.6+, not
-  17.4+ — only their meeting-nested list tools work from 17.4+.
-  `list_work_package_meeting_agenda_items` needs 17.7+.
-  `create_work_package_wiki_link`/`delete_work_package_wiki_link` need
-  17.7+, not 17.6+.
-- **Corrected `list_work_packages`' `project` parameter docstring** — it
-  wrongly stated only an identifier/slug was accepted; a numeric project ID
-  works too.
+  client opens as its workspace.
+- Clarified that the VS Code/Copilot guide is about VS Code's own MCP
+  host, not a standalone "GitHub MCP server".
+- `get_work_package`'s docstring now states that `work_package_id` matches
+  `list_work_packages`' `id` field.
+- `bulk_create_work_packages`/`bulk_update_work_packages`'s docstrings now
+  give an explicit example of each item's identifier field.
+- Corrected the documented OpenProject version floors for several
+  Meetings and wiki-link tools.
+- Corrected `list_work_packages`' `project` parameter docstring — a
+  numeric project ID is accepted too, not only an identifier/slug.
+
+## [0.3.8] - 2026-08-25
+
+### Fixed
+
+- Setting `version` on `create_work_package`/`create_subtask`/
+  `update_work_package` no longer fails with "Version and target versions
+  cannot both be changed at the same time".
+- `get.ps1`/`get.sh` now actually install dependencies before running
+  `configure_mcp.py`, instead of crashing with `ModuleNotFoundError`.
+- `get.ps1` no longer closes the user's entire PowerShell window on error
+  when run via `irm ... | iex`.
+- `get.ps1` now reports "Python 3.10 or later is required" instead of an
+  opaque crash when `python`/`py` resolve to Windows' Microsoft Store stub.
+- The Windows source-install one-liner in `docs/installation.md` no longer
+  intermittently fails on PowerShell 5.1 with a confusing TLS-negotiation
+  error.
+- On Windows, the setup wizard's API token prompt now accepts pasted input
+  correctly instead of silently corrupting it. The entry is visible while
+  typing/pasting there instead of masked.
+
+### Added
+
+- `search_work_packages` now resolves a numeric id or display id (e.g.
+  `PROJ-42`) directly, returned separately as `exact_match` — previously a
+  display id never matched at all.
+
+### Changed
+
+- The setup wizard's quick-mode write-scope question now asks per category
+  instead of offering only `none`/`work-packages`/`all`.
+- CI now also runs weekly against the newest dependency versions allowed by
+  `pyproject.toml`.
+
+### Docs
+
+- Corrected `list_work_packages`' `project` parameter docstring: a numeric
+  project ID is accepted too, not only an identifier/slug.
+- Reordered `docs/installation.md`'s install methods, with `pipx` as the
+  primary recommendation.
+- Updated the OpenProject-version-verification claim to source-audited and
+  runtime-smoke-tested through 17.7 (previously 17.5).
+- Documented how to connect a second OpenProject instance in the same
+  client.
+
+### Known Issues
+
+- Source install fails on Windows on ARM64 (`win_arm64`): `cryptography` has
+  no prebuilt wheel for this platform, and a source build additionally needs
+  the MSVC linker. Filed upstream at
+  [modelcontextprotocol/python-sdk#3373](https://github.com/modelcontextprotocol/python-sdk/issues/3373);
+  expected to resolve on its own once `cryptography` 51 ships (likely
+  Sept/Oct 2026,
+  [pyca/cryptography#15350](https://github.com/pyca/cryptography/pull/15350)).
+  Workaround: install Visual Studio Build Tools' C++ workload, or use
+  `win_amd64`/WSL instead.
 
 ## [0.3.7] - 2026-08-17
 
@@ -638,7 +239,7 @@ support.
   with every match filtered out by the allowlist) — not an inconsistency,
   keep paging.
 
-## 0.3.6 – 2026-08-10
+## [0.3.6] - 2026-08-10
 
 ### Changed
 
@@ -723,7 +324,7 @@ support.
 
 ---
 
-## 0.3.5 – 2026-08-02
+## [0.3.5] - 2026-08-02
 
 ### Added
 
@@ -774,7 +375,7 @@ support.
 
 ---
 
-## 0.3.4 – 2026-07-29
+## [0.3.4] - 2026-07-29
 
 ### Fixed
 
@@ -862,7 +463,7 @@ support.
 
 ---
 
-## 0.3.3 – 2026-07-28
+## [0.3.3] - 2026-07-28
 
 ### Fixed
 
@@ -929,7 +530,7 @@ support.
 
 ---
 
-## 0.3.2 – 2026-07-20
+## [0.3.2] - 2026-07-20
 
 ### Fixed
 
@@ -940,7 +541,7 @@ support.
 
 ---
 
-## 0.3.1 – 2026-07-18
+## [0.3.1] - 2026-07-18
 
 ### Fixed
 
@@ -954,7 +555,7 @@ support.
 
 ---
 
-## 0.3.0 – 2026-07-17
+## [0.3.0] - 2026-07-17
 
 Harden the release: redesign the authorization/config model with fail-closed
 scopes and mandatory write confirmation, and adopt mypy.
@@ -1107,7 +708,7 @@ scopes and mandatory write confirmation, and adopt mypy.
 
 ---
 
-## 0.2.3 – 2026-07-07
+## [0.2.3] - 2026-07-07
 
 ### Fixed
 
@@ -1133,7 +734,7 @@ scopes and mandatory write confirmation, and adopt mypy.
 
 ---
 
-## 0.2.2 – 2026-07-06
+## [0.2.2] - 2026-07-06
 
 ### Security
 
@@ -1161,7 +762,7 @@ scopes and mandatory write confirmation, and adopt mypy.
 
 ---
 
-## 0.2.1 – 2026-07-01
+## [0.2.1] - 2026-07-01
 
 ### Changed
 
@@ -1183,7 +784,7 @@ scopes and mandatory write confirmation, and adopt mypy.
 
 ---
 
-## 0.2.0 – 2026-07-01
+## [0.2.0] - 2026-07-01
 
 Publish the first PyPI release: rename the package, add an installable
 configure/setup CLI, and automate PyPI distribution via GitHub Actions.
@@ -1217,98 +818,9 @@ Supersedes the never-released 0.1.1.
 
 ---
 
-## 0.1.0 – 2026-07-01
+## [0.1.0] - 2026-07-01
 
-Add semantic work-package identifiers and automatic MCP-client setup, and
-harden the API surface (attachment containment, allowlisting, field-hiding)
-ahead of the first public release.
-
-### Compatibility
-
-- Reviewed for compatibility with OpenProject 17.5.1/17.5.0 — no breaking
-  API change affects this server.
-- Verified against OpenProject 16.6 (classic), 17.4 (displayId), and 17.5
-  (semantic) via the local Docker matrix, plus a source-level API audit
-  across 16.0–17.5.
-
-### Added
-
-- Single work package tools now accept a project-prefixed identifier (e.g.
-  `PROJ-123`) in addition to the numeric id; the bulk tools remain
-  numeric-only.
-- Relation and parent writes resolve a project-prefixed reference to the
-  numeric id.
-- Interactive setup can detect installed MCP clients (Claude Code, Claude
-  Desktop, Codex, Cursor, VS Code/Copilot) and register the server in a
-  client's user-wide config.
-- `uninstall.sh`/`uninstall.ps1` and a `configure_mcp.py --uninstall` mode
-  remove the `openproject` entry from client configs and clean up the local
-  environment.
-- `OPENPROJECT_ATTACHMENT_ROOT` confines attachment uploads to a directory;
-  files outside it, and credential/config files even inside it, are
-  refused.
-
-### Security
-
-- Attachment uploads can no longer read arbitrary local files, closing a
-  credential-exfiltration path.
-- `list_relations` is gated by the read scope and filtered by the project
-  read allowlist on both linked work packages; `update_relation`,
-  `update_reminder`, and `delete_reminder` apply the project write
-  allowlist; `copy_project` validates its destination; hidden work-package
-  subjects no longer leak through relation tools.
-- `OPENPROJECT_AUTO_CONFIRM_DELETE` now correctly governs the preview step
-  for all destructive deletes.
-
-### Docs
-
-- Onboarding docs reworked: install-once/register-per-client model,
-  per-client config matrix, per-OS paths, verification steps, and
-  gitignore reminders.
-
----
-
-## 0.0.1 (development baseline)
-
-Initial development baseline. The pre-release history is kept below as dated
-milestones.
-
-### 2026-05-18
-
-#### Compatibility
-
-- Verified against OpenProject 17.4. No breaking API changes in 17.4.
-- Work package responses now expose a `display_id` field, informational
-  ahead of 17.5's project-based identifiers; the numeric `id` remains the
-  canonical identifier for all tool parameters.
-
-#### Fixes
-
-- Authentication header changed from `Bearer <token>` to
-  `Basic base64(apikey:<token>)`, aligning with the OpenProject API
-  documentation.
-
-#### Bug fixes
-
-- `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and
-  `list_projects` now report `total` and `count` consistently when the
-  read allowlist filters items out of the API response.
-- `list_work_packages` without an explicit `project` argument now
-  correctly filters results to allowed projects when
-  `OPENPROJECT_ALLOWED_PROJECTS_READ` is restricted.
-- Allowlist matching now resolves project names and hyphenated display
-  names to their canonical identifiers at startup.
-
-#### Configuration
-
-- `OPENPROJECT_ALLOWED_PROJECTS_READ` now accepts glob patterns in
-  addition to exact identifiers and names.
-
----
-
-### 2026-04-08
-
-#### Tools
+### Tools
 
 - **Projects** — list, get, create, copy (with background job tracking), update, delete;
   read admin context, project configuration, and lifecycle phase definitions/instances
@@ -1346,8 +858,33 @@ milestones.
 - **Relations (global)** — list, update
 - **Actions & capabilities** — list
 - **Text rendering** — render markdown or plain text to HTML via OpenProject API
+- Single work package tools accept a project-prefixed identifier (e.g.
+  `PROJ-123`) in addition to the numeric id; the bulk tools are
+  numeric-only. Relation and parent writes resolve a project-prefixed
+  reference to the numeric id. Work package responses also expose a
+  `display_id` field, informational ahead of 17.5's project-based
+  identifiers; the numeric `id` is the canonical identifier for all tool
+  parameters.
+- Uses `Basic base64(apikey:<token>)` authentication, per the OpenProject
+  API documentation.
+- `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and
+  `list_projects` report `total` and `count` consistently when the read
+  allowlist filters items out of the API response; `list_work_packages`
+  without an explicit `project` argument filters results to allowed
+  projects when the read allowlist is restricted; allowlist matching
+  resolves project names and hyphenated display names to their canonical
+  identifiers at startup, and accepts glob patterns in addition to exact
+  identifiers and names.
+- Interactive setup can detect installed MCP clients (Claude Code, Claude
+  Desktop, Codex, Cursor, VS Code/Copilot) and register the server in a
+  client's user-wide config. `uninstall.sh`/`uninstall.ps1` and a
+  `configure_mcp.py --uninstall` mode remove the `openproject` entry from
+  client configs and clean up the local environment.
+- `OPENPROJECT_ATTACHMENT_ROOT` confines attachment uploads to a
+  directory; files outside it, and credential/config files even inside
+  it, are refused.
 
-#### Permission model
+### Permission model
 
 - Scoped read flags per chain: `OPENPROJECT_ENABLE_PROJECT_READ`,
   `OPENPROJECT_ENABLE_WORK_PACKAGE_READ`, `OPENPROJECT_ENABLE_MEMBERSHIP_READ`,
@@ -1361,7 +898,7 @@ milestones.
 - Two-layer safety model: MCP env-var gates (ceiling) + OpenProject server-side role
   permissions (final authority); a `403` from OpenProject surfaces as a tool error
 
-#### Architecture
+### Architecture
 
 - Five-module layout: `server.py`, `config.py`, `client.py`, `models.py`, `tools.py`
 - All policy logic (read gates, write gates, project scoping, field hiding) concentrated
@@ -1378,13 +915,13 @@ milestones.
   `OPENPROJECT_MAX_RESULTS`
 - Form validation against OpenProject schema endpoints before create/update writes
 
-#### Test coverage
+### Test coverage
 
 - 152 unit tests (httpx mock transport, no network)
 - Integration test suite (`tests/integration/`) against a live OpenProject instance;
   excluded from the default run, opt in with `-m integration`
 
-#### Scope
+### Scope
 
 - Community Edition only — Enterprise features (Placeholder Users, Budgets, Portfolios,
   Programs, Custom Actions, Baseline Comparisons) are not implemented
@@ -1392,7 +929,7 @@ milestones.
   not connected)
 - Project lifecycle phases included (read-only; degrades gracefully if unavailable)
 
-#### Known API notes
+### Known API notes
 
 - `GET /api/v3/projects/{id}/wiki_pages` is not implemented in OpenProject v3;
   `list_wiki_pages` is therefore not provided. Individual pages are accessible via
@@ -1404,3 +941,29 @@ milestones.
   redirecting project-scoped path.
 - Groups PATCH requires a complete `_links.members` array (full replacement); the client
   fetches the current list and applies adds/removes before sending.
+
+### Compatibility
+
+- Reviewed for compatibility with OpenProject 17.5.1/17.5.0 — no breaking
+  API change affects this server.
+- Verified against OpenProject 16.6 (classic), 17.4 (displayId), and 17.5
+  (semantic) via the local Docker matrix, plus a source-level API audit
+  across 16.0–17.5.
+
+### Security
+
+- Attachment uploads are confined to files within `OPENPROJECT_ATTACHMENT_ROOT`; a
+  path outside it, or a credential/config file even inside it, is refused.
+- `list_relations` is gated by the read scope and filtered by the project
+  read allowlist on both linked work packages; `update_relation`,
+  `update_reminder`, and `delete_reminder` apply the project write
+  allowlist; `copy_project` validates its destination; hidden work-package
+  subjects never leak through relation tools.
+- `OPENPROJECT_AUTO_CONFIRM_DELETE` governs the preview step for all
+  destructive deletes.
+
+### Docs
+
+- Onboarding docs cover the install-once/register-per-client model,
+  a per-client config matrix, per-OS paths, verification steps, and
+  gitignore reminders.
