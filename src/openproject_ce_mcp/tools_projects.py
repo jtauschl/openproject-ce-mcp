@@ -227,7 +227,7 @@ async def copy_project(
         description=description, status=status, status_explanation=status_explanation, parent=parent
     )
     return await _run_tool(
-        client.copy_project(
+        client.project.copy(
             source_project=safe_source_project,
             name=safe_name,
             identifier=safe_identifier,

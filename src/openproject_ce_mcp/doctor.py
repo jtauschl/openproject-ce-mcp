@@ -253,7 +253,7 @@ async def _check_api_connectivity(
 
     client = OpenProjectClient(diagnostic_settings, transport=transport)
     try:
-        user = await client.get_current_user()
+        user = await client.current_user.get_current_user()
         print(f"[OK] API: connected ({user.name})")
         return (True, user)
     except httpx.ConnectError:

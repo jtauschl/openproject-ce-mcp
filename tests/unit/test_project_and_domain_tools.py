@@ -324,9 +324,12 @@ async def test_instance_configuration_and_phase_tools_call_client() -> None:
 
 @pytest.mark.asyncio
 async def test_copy_project_tool_passes_expected_arguments() -> None:
-    class StubClient:
-        async def copy_project(self, **kwargs):
+    class _ProjectNamespace:
+        async def copy(self, **kwargs):
             return kwargs
+
+    class StubClient:
+        project = _ProjectNamespace()
 
     result = await copy_project(
         FakeContext(StubClient()),  # type: ignore[arg-type]

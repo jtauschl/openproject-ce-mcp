@@ -1239,7 +1239,7 @@ async def _test_connection_async(
     diagnostic_settings = dataclasses.replace(settings, timeout=5.0, max_retries=0)
     client = OpenProjectClient(diagnostic_settings, transport=transport)
     try:
-        user = await client.get_current_user()
+        user = await client.current_user.get_current_user()
         return ConnectionCheck("ok", "", user.name)
     except AuthenticationError as exc:
         return ConnectionCheck("auth_error", str(exc), None)
