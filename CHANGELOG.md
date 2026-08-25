@@ -11,95 +11,55 @@ development baseline.
 
 ### Fixed
 
-- **`create_work_package`/`create_subtask`/`update_work_package` could fail
-  with "Version and target versions cannot both be changed at the same
-  time" when setting `version`, even though the request never touched
-  target versions at all.** The server's unrequested echo of that field is
-  now stripped from the committed payload whenever the request itself sets
-  `version`; previews and rejected-write responses are unaffected.
-- **`get.ps1`/`get.sh` (the source-install launchers) never installed the
-  project's own dependencies before running `configure_mcp.py`**, which
-  crashed immediately with `ModuleNotFoundError: No module named 'httpx'` on
-  any interpreter that didn't already happen to have them — the documented
-  behavior ("installs dependencies via `uv` if available, or `venv` + `pip`
-  otherwise") was never actually implemented. Found live-testing on a fresh
-  Windows VM. Both scripts now create `.venv` via `uv sync --no-dev` when `uv`
-  is available, falling back to `venv` + `pip install -e .` otherwise —
-  matching what `uninstall.ps1`/`uninstall.sh` already expected and removed.
-- **`get.ps1` closed the user's entire PowerShell window on any error**, not
-  just the script, when run via its own documented `irm ... | iex` usage —
-  `exit` inside a script block executed through `iex` terminates the
-  enclosing host process, not just the inline script. Every error path now
-  reports failure via a variable instead of `exit`, only calling `exit` when
-  the script is run as a file (where it's actually safe).
-- **`get.ps1` crashed with an opaque `NativeCommandError` instead of its own
-  "Python 3.10 or later is required" message** on a fresh Windows install
-  where `python`/`py` resolve to the built-in Microsoft Store
-  app-execution-alias stub (present by default when no real Python is
-  installed) — the stub's non-zero exit wasn't caught by the existing
-  `2>$null` redirect. Native Python version probes are now wrapped in
-  `try`/`catch` so a stub is correctly treated as "not usable" instead of
-  aborting the whole script.
-- **`docs/installation.md`'s Windows source-install one-liner could silently
-  fail with a confusing empty-string `Invoke-Expression` error** on a fresh
-  Windows PowerShell 5.1 install, where the `SystemDefault` TLS setting does
-  not reliably negotiate TLS 1.2 with GitHub — the documented command now
-  forces TLS 1.2 explicitly before downloading the script.
+- Setting `version` on `create_work_package`/`create_subtask`/
+  `update_work_package` no longer fails with "Version and target versions
+  cannot both be changed at the same time".
+- `get.ps1`/`get.sh` now actually install dependencies before running
+  `configure_mcp.py`, instead of crashing with `ModuleNotFoundError`.
+- `get.ps1` no longer closes the user's entire PowerShell window on error
+  when run via `irm ... | iex`.
+- `get.ps1` now reports "Python 3.10 or later is required" instead of an
+  opaque crash when `python`/`py` resolve to Windows' Microsoft Store stub.
+- The Windows source-install one-liner in `docs/installation.md` no longer
+  intermittently fails on PowerShell 5.1 with a confusing TLS-negotiation
+  error.
+- On Windows, the setup wizard's API token prompt now accepts pasted input
+  correctly instead of silently corrupting it — `getpass` doesn't handle
+  clipboard paste on Windows, so the token entry is visible while
+  typing/pasting there instead of masked.
 
 ### Added
 
-- **`search_work_packages` now also resolves its `query` directly as a
-  numeric id or display id (e.g. `PROJ-42`), returned separately as
-  `exact_match` when it satisfies every other active filter** — previously,
-  a display id never matched, since the underlying `subject_or_id` filter
-  only matches subject text or a numeric id. `exact_match` is kept separate
-  from `results`/`total`/pagination, and `select` applies to it the same
-  way it applies to a results row.
+- `search_work_packages` now resolves a numeric id or display id (e.g.
+  `PROJ-42`) directly, returned separately as `exact_match` — previously a
+  display id never matched at all.
 
 ### Changed
 
-- **CI gains a weekly job that tests against the newest dependency versions
-  allowed by `pyproject.toml`'s declared ranges** (`uv sync --upgrade`,
-  ignoring `uv.lock`'s pinned versions), catching drift a real
-  `pip`/`pipx`/`uv tool install` could pick up but the normal, lockfile-pinned
-  test run never exercises. No end-user-visible behavior change.
+- CI now also runs weekly against the newest dependency versions allowed by
+  `pyproject.toml`, not just the versions pinned in `uv.lock`. No
+  end-user-visible behavior change.
 
 ### Docs
 
-- **Corrected `list_work_packages`' `project` parameter docstring** — it
-  wrongly stated only an identifier/slug was accepted; a numeric project ID
-  works too.
-- **`docs/installation.md`'s install-method guidance reordered and
-  reworded**, following an independent review prompted by the launcher
-  bugfixes above: `pipx` is now the unambiguous primary recommendation
-  (matching the Python Packaging User Guide's own guidance for standalone
-  CLI tools), `uv tool install` is a secondary option for users who already
-  have `uv`, plain `pip install` is explicitly qualified to already-managed
-  environments only rather than presented as a peer alternative, and `uvx`
-  is reframed as a run-on-demand client-config detail rather than a fourth
-  "install method" alongside the other three. `README.md`'s Install section
-  updated to match.
-- **Updated the OpenProject-version-verification claim from "runtime-smoke-
-  tested through 17.5" to "source-audited through 17.7, runtime-smoke-
-  tested through 17.7"** — re-ran `tools/api-check/check_api.py` (default,
-  `--all`, and `--constants` modes) against the full 16.0–17.7 source range
-  with no drift found, and live-verified against a real 17.7.2 instance.
+- Corrected `list_work_packages`' `project` parameter docstring: a numeric
+  project ID is accepted too, not only an identifier/slug.
+- Reordered `docs/installation.md`'s install methods, with `pipx` as the
+  primary recommendation.
+- Updated the OpenProject-version-verification claim to source-audited and
+  runtime-smoke-tested through 17.7 (previously 17.5).
 
 ### Known Issues
 
-- **Source install fails on Windows on ARM64 (`win_arm64`)** — `cryptography`
-  has no prebuilt PyPI wheel for this platform, and building it from source
-  additionally requires the MSVC linker (Visual Studio Build Tools with the
-  C++ workload), which a normal end-user install won't have. The dependency
-  comes from the `mcp` package itself (`pyjwt[crypto]`, used only by an OAuth
-  flow this server never exercises) — filed upstream at
-  [modelcontextprotocol/python-sdk#3373](https://github.com/modelcontextprotocol/python-sdk/issues/3373).
-  `cryptography` itself is expected to ship `win_arm64` wheels again around
-  its 51 release (likely September/October 2026), which would resolve this
-  regardless of the linked issue's own outcome —
-  [pyca/cryptography#15350](https://github.com/pyca/cryptography/pull/15350).
-  Workaround until then: install Visual Studio Build Tools' C++ workload
-  first, or use a `win_amd64` Windows environment/WSL instead.
+- Source install fails on Windows on ARM64 (`win_arm64`): `cryptography` has
+  no prebuilt wheel for this platform, and a source build additionally needs
+  the MSVC linker. Filed upstream at
+  [modelcontextprotocol/python-sdk#3373](https://github.com/modelcontextprotocol/python-sdk/issues/3373);
+  expected to resolve on its own once `cryptography` 51 ships (likely
+  Sept/Oct 2026,
+  [pyca/cryptography#15350](https://github.com/pyca/cryptography/pull/15350)).
+  Workaround: install Visual Studio Build Tools' C++ workload, or use
+  `win_amd64`/WSL instead.
 
 ## 0.3.7 – 2026-08-17
 
