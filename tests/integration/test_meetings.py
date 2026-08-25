@@ -2,16 +2,24 @@
 Meetings, Meeting Agenda Items, Meeting Sections, Meeting Outcomes,
 Recurring Meetings + virtual Occurrences.
 
-Requires OpenProject 17.4+ for Meetings/Agenda Items/Sections/Recurring
-Meetings -- the meetings module's agenda/section/participant shape does not
-exist on 16.6 (verified against op-sources: 16.6/17.3 carry only `meetings`+
-`attachments`, no `meeting_agenda_items`/`meeting_sections`/
-`recurring_meetings` directories at all). Meeting Outcomes additionally
-require 17.6+ (verified: the `meeting_outcomes` directory does not exist in
-op-sources/17.4 or 17.5, only 17.6+). Tests for domain pieces unavailable on
-the target instance skip via NotFoundError, matching this project's
-established pattern (see test_backlog_buckets.py) -- there is no
-version-detection API to gate on directly, so the runtime 404 IS the gate.
+Requires OpenProject 17.4+ for Meetings/Recurring Meetings -- the meetings
+module does not exist on 16.6 (verified against op-sources: 16.6/17.3 carry
+only `meetings`+`attachments`, no `meeting_agenda_items`/`meeting_sections`/
+`recurring_meetings` directories at all). Meeting Agenda Items, Sections,
+and Outcomes additionally require 17.6+: the top-level collection route each
+one's create call POSTs to (`meeting_agenda_items_api.rb`,
+`meeting_sections_api.rb`, `meeting_outcomes` directory) does not exist on
+17.4/17.5 -- only a *nested* `sections_by_meeting_api.rb`
+(`meetings/{id}/sections`) exists there, a different route this client does
+not use. list_work_package_meeting_agenda_items needs a further, separate
+17.7+: `meeting_agenda_items_by_work_package_api.rb` (the
+`work_packages/{id}/meeting_agenda_items` route it GETs) does not exist on
+17.6 -- confirmed absent there even though plain agenda item creation
+already works on 17.6. Tests for domain pieces unavailable on the target
+instance skip via NotFoundError, matching this project's established
+pattern (see test_backlog_buckets.py) -- there is no version-detection API
+to gate on
+directly, so the runtime 404 IS the gate.
 
 Live-verify items flagged in the implementation plan, documented with their
 actual outcome once observed against a real instance:
@@ -141,7 +149,10 @@ async def test_create_get_update_delete_meeting_section(
     meeting_ids.append(meeting_id)
 
     title = f"[integration-test] section {uuid.uuid4().hex[:8]}"
-    create_result = await client.create_meeting_section(meeting_id=meeting_id, title=title, confirm=True)
+    try:
+        create_result = await client.create_meeting_section(meeting_id=meeting_id, title=title, confirm=True)
+    except NotFoundError:
+        pytest.skip("meeting_sections endpoint not available (requires OpenProject 17.6+)")
     assert create_result.ready, create_result.validation_errors
     section_id = create_result.section_id
     assert section_id is not None
@@ -166,6 +177,14 @@ async def test_create_get_update_delete_meeting_section(
 async def test_create_update_delete_meeting_section_denied_outside_write_allowlist(
     denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
+    """MeetingSectionService.create's allowlist check
+    (_ensure_meeting_allowed) runs BEFORE the sections-specific 17.6+
+    endpoint is ever touched, so a denied_client call always raises
+    PermissionDeniedError regardless of instance version -- it can never
+    raise NotFoundError. The 17.6+-availability skip therefore only needs to
+    wrap the unrestricted client's own create_meeting_section call below,
+    not the denied_client attempt above it (same reasoning as
+    test_create_update_delete_meeting_outcome_denied_outside_write_allowlist)."""
     try:
         meeting_result = await client.create_meeting(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
@@ -181,9 +200,12 @@ async def test_create_update_delete_meeting_section_denied_outside_write_allowli
             meeting_id=meeting_id, title="[integration-test] denied", confirm=True
         )
 
-    existing = await client.create_meeting_section(
-        meeting_id=meeting_id, title="[integration-test] section", confirm=True
-    )
+    try:
+        existing = await client.create_meeting_section(
+            meeting_id=meeting_id, title="[integration-test] section", confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("meeting_sections endpoint not available (requires OpenProject 17.6+)")
     assert existing.ready
     section_id = existing.section_id
 
@@ -208,7 +230,10 @@ async def test_create_get_update_delete_meeting_agenda_item(
     meeting_ids.append(meeting_id)
 
     title = f"[integration-test] agenda item {uuid.uuid4().hex[:8]}"
-    create_result = await client.create_meeting_agenda_item(meeting_id=meeting_id, title=title, confirm=True)
+    try:
+        create_result = await client.create_meeting_agenda_item(meeting_id=meeting_id, title=title, confirm=True)
+    except NotFoundError:
+        pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert create_result.ready, create_result.validation_errors
     agenda_item_id = create_result.agenda_item_id
     assert agenda_item_id is not None
@@ -248,9 +273,12 @@ async def test_list_meeting_agenda_items_text_limit_overrides_the_server_default
     meeting_ids.append(meeting_id)
 
     long_notes = "x" * 500
-    create_result = await client.create_meeting_agenda_item(
-        meeting_id=meeting_id, title=f"[integration-test] {uuid.uuid4().hex[:8]}", notes=long_notes, confirm=True
-    )
+    try:
+        create_result = await client.create_meeting_agenda_item(
+            meeting_id=meeting_id, title=f"[integration-test] {uuid.uuid4().hex[:8]}", notes=long_notes, confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert create_result.ready, create_result.validation_errors
     agenda_item_id = create_result.agenda_item_id
     assert agenda_item_id is not None
@@ -290,25 +318,39 @@ async def test_meeting_agenda_item_links_to_work_package(
     work_package_id = wp_result.work_package_id
     wp_ids.append(work_package_id)
 
-    create_result = await client.create_meeting_agenda_item(
-        meeting_id=meeting_id,
-        title="[integration-test] linked agenda item",
-        work_package_id=work_package_id,
-        confirm=True,
-    )
+    try:
+        create_result = await client.create_meeting_agenda_item(
+            meeting_id=meeting_id,
+            title="[integration-test] linked agenda item",
+            work_package_id=work_package_id,
+            confirm=True,
+        )
+    except NotFoundError:
+        pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert create_result.ready, create_result.validation_errors
     agenda_item_id = create_result.agenda_item_id
 
     item = await client.get_meeting_agenda_item(agenda_item_id)
     assert item.work_package_id == work_package_id
 
-    listed = await client.list_work_package_meeting_agenda_items(work_package_id)
+    try:
+        listed = await client.list_work_package_meeting_agenda_items(work_package_id)
+    except NotFoundError:
+        pytest.skip("work_packages/{id}/meeting_agenda_items endpoint not available (requires OpenProject 17.7+)")
     assert any(i.id == agenda_item_id for i in listed.results)
 
 
 async def test_create_update_delete_meeting_agenda_item_denied_outside_write_allowlist(
     denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
+    """MeetingAgendaItemService.create's allowlist check
+    (_ensure_meeting_allowed) runs BEFORE the agenda-items-specific 17.6+
+    endpoint is ever touched, so a denied_client call always raises
+    PermissionDeniedError regardless of instance version -- it can never
+    raise NotFoundError. The 17.6+-availability skip therefore only needs to
+    wrap the unrestricted client's own create_meeting_agenda_item call
+    below, not the denied_client attempt above it (same reasoning as
+    test_create_update_delete_meeting_outcome_denied_outside_write_allowlist)."""
     try:
         meeting_result = await client.create_meeting(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
@@ -324,9 +366,12 @@ async def test_create_update_delete_meeting_agenda_item_denied_outside_write_all
             meeting_id=meeting_id, title="[integration-test] denied", confirm=True
         )
 
-    existing = await client.create_meeting_agenda_item(
-        meeting_id=meeting_id, title="[integration-test] agenda item", confirm=True
-    )
+    try:
+        existing = await client.create_meeting_agenda_item(
+            meeting_id=meeting_id, title="[integration-test] agenda item", confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert existing.ready
     agenda_item_id = existing.agenda_item_id
 
@@ -355,9 +400,12 @@ async def test_create_get_update_delete_meeting_outcome(
     meeting_id = meeting_result.meeting_id
     meeting_ids.append(meeting_id)
 
-    agenda_result = await client.create_meeting_agenda_item(
-        meeting_id=meeting_id, title="[integration-test] agenda item for outcome", confirm=True
-    )
+    try:
+        agenda_result = await client.create_meeting_agenda_item(
+            meeting_id=meeting_id, title="[integration-test] agenda item for outcome", confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert agenda_result.ready, agenda_result.validation_errors
     agenda_item_id = agenda_result.agenda_item_id
 
@@ -412,9 +460,12 @@ async def test_list_meeting_outcomes_text_limit_overrides_the_server_default(
     meeting_id = meeting_result.meeting_id
     meeting_ids.append(meeting_id)
 
-    agenda_result = await client.create_meeting_agenda_item(
-        meeting_id=meeting_id, title="[integration-test] agenda item for outcome text_limit", confirm=True
-    )
+    try:
+        agenda_result = await client.create_meeting_agenda_item(
+            meeting_id=meeting_id, title="[integration-test] agenda item for outcome text_limit", confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert agenda_result.ready, agenda_result.validation_errors
     agenda_item_id = agenda_result.agenda_item_id
 
@@ -451,9 +502,12 @@ async def test_create_update_delete_meeting_outcome_denied_outside_write_allowli
     (_ensure_via_agenda_item) runs BEFORE the outcomes-specific 17.6+
     endpoint is ever touched, so a denied_client call always raises
     PermissionDeniedError regardless of instance version -- it can never
-    raise NotFoundError. The 17.6+-availability skip therefore only needs to
-    wrap the unrestricted client's own create_meeting_outcome call below,
-    not the denied_client attempt above it."""
+    raise NotFoundError. But the agenda item this test needs as a fixture is
+    ITSELF 17.6+-only (same as create_meeting_outcome), so that call also
+    needs its own skip guard -- the 17.6+-availability skip therefore wraps
+    both the fixture's create_meeting_agenda_item call and the unrestricted
+    client's own create_meeting_outcome call below, not the denied_client
+    attempt above the latter."""
     try:
         meeting_result = await client.create_meeting(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
@@ -464,9 +518,12 @@ async def test_create_update_delete_meeting_outcome_denied_outside_write_allowli
     meeting_id = meeting_result.meeting_id
     meeting_ids.append(meeting_id)
 
-    agenda_result = await client.create_meeting_agenda_item(
-        meeting_id=meeting_id, title="[integration-test] agenda item for outcome denial", confirm=True
-    )
+    try:
+        agenda_result = await client.create_meeting_agenda_item(
+            meeting_id=meeting_id, title="[integration-test] agenda item for outcome denial", confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert agenda_result.ready
     agenda_item_id = agenda_result.agenda_item_id
 
