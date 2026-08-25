@@ -56,9 +56,7 @@ class MeetingSectionService:
         return hidden_fields.apply_hidden_fields("meeting_section", summary, settings=self._settings)
 
     async def _ensure_meeting_allowed(self, meeting_id: int, *, write: bool) -> None:
-        meeting = await call_version_gated(
-            lambda: self._meeting_api.get(meeting_id), feature="Meeting sections", floor="17.4"
-        )
+        meeting = await call_version_gated(lambda: self._meeting_api.get(meeting_id), feature="Meetings", floor="17.4")
         if write:
             scope_policy.ensure_project_write_link_allowed(
                 meeting.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
@@ -96,7 +94,7 @@ class MeetingSectionService:
 
     async def get(self, section_id: int) -> MeetingSectionSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        record = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.4")
+        record = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.6")
         meeting_id = record.summary.meeting_id
         if meeting_id is None:
             # meeting_id is a mandatory belongs_to upstream and the global
@@ -149,7 +147,7 @@ class MeetingSectionService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await call_version_gated(lambda: self._api.create(payload), feature="Meeting sections", floor="17.4")
+        record = await call_version_gated(lambda: self._api.create(payload), feature="Meeting sections", floor="17.6")
         result = self._stamp(record.summary)
         return MeetingSectionWriteResult(
             action="create",
@@ -175,7 +173,7 @@ class MeetingSectionService:
 
         `backlog` cannot be changed after creation -- pass it only on create().
         """
-        current = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.4")
+        current = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.6")
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
             # See get()'s comment: fail closed rather than silently skip the
@@ -205,7 +203,7 @@ class MeetingSectionService:
 
         access.ensure_write_enabled("meeting", settings=self._settings)
         record = await call_version_gated(
-            lambda: self._api.update(section_id, payload), feature="Meeting sections", floor="17.4"
+            lambda: self._api.update(section_id, payload), feature="Meeting sections", floor="17.6"
         )
         result = self._stamp(record.summary)
         return MeetingSectionWriteResult(
@@ -221,7 +219,7 @@ class MeetingSectionService:
         )
 
     async def delete(self, *, section_id: int, confirm: bool = False) -> MeetingSectionWriteResult:
-        current = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.4")
+        current = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.6")
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
             # See get()'s comment: fail closed rather than silently skip the
@@ -245,7 +243,7 @@ class MeetingSectionService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await call_version_gated(lambda: self._api.delete(section_id), feature="Meeting sections", floor="17.4")
+        await call_version_gated(lambda: self._api.delete(section_id), feature="Meeting sections", floor="17.6")
         return MeetingSectionWriteResult(
             action="delete",
             state="confirmed",

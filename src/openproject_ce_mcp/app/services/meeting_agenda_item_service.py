@@ -67,9 +67,7 @@ class MeetingAgendaItemService:
         return hidden_fields.apply_hidden_fields("meeting_agenda_item", summary, settings=self._settings)
 
     async def _ensure_meeting_allowed(self, meeting_id: int, *, write: bool) -> None:
-        meeting = await call_version_gated(
-            lambda: self._meeting_api.get(meeting_id), feature="Meeting agenda items", floor="17.4"
-        )
+        meeting = await call_version_gated(lambda: self._meeting_api.get(meeting_id), feature="Meetings", floor="17.4")
         if write:
             scope_policy.ensure_project_write_link_allowed(
                 meeting.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
@@ -125,8 +123,8 @@ class MeetingAgendaItemService:
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
         records = await call_version_gated(
             lambda: self._api.list_for_work_package(resolved_id, text_limit=text_limit),
-            feature="Meeting agenda items",
-            floor="17.4",
+            feature="Work package meeting agenda items",
+            floor="17.7",
         )
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
@@ -143,7 +141,7 @@ class MeetingAgendaItemService:
     async def get(self, agenda_item_id: int) -> MeetingAgendaItemSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
         record = await call_version_gated(
-            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.6"
         )
         meeting_id = record.summary.meeting_id
         if meeting_id is None:
@@ -242,7 +240,7 @@ class MeetingAgendaItemService:
 
         access.ensure_write_enabled("meeting", settings=self._settings)
         record = await call_version_gated(
-            lambda: self._api.create(payload), feature="Meeting agenda items", floor="17.4"
+            lambda: self._api.create(payload), feature="Meeting agenda items", floor="17.6"
         )
         result = self._stamp(record.summary)
         return MeetingAgendaItemWriteResult(
@@ -270,7 +268,7 @@ class MeetingAgendaItemService:
         confirm: bool = False,
     ) -> MeetingAgendaItemWriteResult:
         current = await call_version_gated(
-            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.6"
         )
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
@@ -305,7 +303,7 @@ class MeetingAgendaItemService:
 
         access.ensure_write_enabled("meeting", settings=self._settings)
         record = await call_version_gated(
-            lambda: self._api.update(agenda_item_id, payload), feature="Meeting agenda items", floor="17.4"
+            lambda: self._api.update(agenda_item_id, payload), feature="Meeting agenda items", floor="17.6"
         )
         result = self._stamp(record.summary)
         return MeetingAgendaItemWriteResult(
@@ -322,7 +320,7 @@ class MeetingAgendaItemService:
 
     async def delete(self, *, agenda_item_id: int, confirm: bool = False) -> MeetingAgendaItemWriteResult:
         current = await call_version_gated(
-            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.6"
         )
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
@@ -347,7 +345,7 @@ class MeetingAgendaItemService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await call_version_gated(lambda: self._api.delete(agenda_item_id), feature="Meeting agenda items", floor="17.4")
+        await call_version_gated(lambda: self._api.delete(agenda_item_id), feature="Meeting agenda items", floor="17.6")
         return MeetingAgendaItemWriteResult(
             action="delete",
             state="confirmed",

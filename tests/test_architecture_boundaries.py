@@ -1974,16 +1974,23 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
     independent questions. A delegation method that only tests call is
     exactly as dead as one nothing calls at all: production code has already
     moved on to `client.<domain>.<method>(...)` and left the flat wrapper
-    behind. This scans every non-`_CLIENT_NON_DELEGATING_METHODS` pure
-    delegation for a `.<name>(` call site anywhere under src/ OUTSIDE the
-    delegation's own body -- the delegation's own `return await
-    self._x_service.<name>(...)` line always contains that substring too, so
-    it must be excised (by source line range, not just its `def` line) before
-    searching, or the check trivially finds itself as a "caller" every time
-    and never flags anything (confirmed live: a first version of this check
-    that only stripped the `def` line passed even with a genuinely orphaned
-    method manually injected -- caught by an independent review, not by this
-    test itself)."""
+    behind.
+
+    This scans for a call to the FLAT form specifically -- `client.<name>(`,
+    `self.client.<name>(`, or (for a call from within client.py itself, as
+    `get_my_project_access` calls `self.current_user.get_current_user()`'s
+    sibling flat methods) `self.<name>(` -- never a bare `.<name>(`, which
+    would also match the facade form `client.<domain>.<name>(...)` and so
+    prove nothing: the facade calling a same-named Service method is not
+    evidence the flat wrapper is still needed, it's the exact reason it
+    usually isn't (caught by an independent review: an earlier version of
+    this check used the bare-substring form and could not tell the two
+    apart). The delegation's own body -- `return await
+    self._x_service.<name>(...)` -- never matches any of these three
+    patterns (the object before the dot is `self._x_service`, not `client`,
+    `self.client`, or bare `self`), so no self-referential false positive is
+    possible here, unlike the bare-substring version's failure mode; the
+    def-through-body span therefore does not need excising."""
     tree = ast.parse((SRC / "client.py").read_text())
     class_node = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "OpenProjectClient")
     public_methods = [n for n in class_node.body if isinstance(n, ast.AsyncFunctionDef) and not n.name.startswith("_")]
@@ -1996,22 +2003,14 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
         # resumes doing real work. Nothing to check right now.
         return
 
-    client_lines = (SRC / "client.py").read_text().splitlines(keepends=True)
-    other_files_text = "\n".join(path.read_text() for path in SRC.rglob("*.py") if path != SRC / "client.py")
-
-    orphaned = []
-    for m in pure_delegations:
-        # Excise the delegation's own def-through-body source range (its full
-        # AST span, not just the `def` line) from client.py's text -- what
-        # remains is every OTHER call site in this file, which combined with
-        # every other src/ file is the true "does anything besides this
-        # method's own body call it" search space.
-        client_text_without_self = "".join(
-            line for i, line in enumerate(client_lines, start=1) if not (m.lineno <= i <= m.end_lineno)
+    all_files_text = "\n".join(path.read_text() for path in SRC.rglob("*.py"))
+    orphaned = [
+        m.name
+        for m in pure_delegations
+        if not any(
+            pattern in all_files_text for pattern in (f"client.{m.name}(", f"self.client.{m.name}(", f"self.{m.name}(")
         )
-        search_space = client_text_without_self + other_files_text
-        if f".{m.name}(" not in search_space:
-            orphaned.append(m.name)
+    ]
     assert not orphaned, (
         f"OpenProjectClient methods {orphaned} are pure Service delegations with no caller anywhere under "
         "src/ (only tests still call them, if anything does) -- migrate their test call sites to the facade "

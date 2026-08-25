@@ -62,14 +62,15 @@ class MeetingOutcomeService:
         """Fetch agenda item -> extract meeting_id -> fetch meeting -> check
         allowlist against the meeting's project. Returns meeting_id (needed
         by list_for_agenda_item's two-id path)."""
-        # Both calls below are the 17.4 floor of their OWN domains (Meeting
-        # Agenda Items / Meetings), not this Service's own 17.6 floor -- an
-        # instance below 17.4 (but at/above 17.6, impossible, but keeping the
-        # distinction explicit) must not get a misleading "Meeting outcomes
-        # requires 17.6" hint when the real cause is an older instance
-        # failing on the agenda-item/meeting lookup itself.
+        # Both calls below are the floor of their OWN domain/route, not this
+        # Service's own 17.6 floor -- an instance failing on the agenda-item/
+        # meeting lookup itself must not get a misleading "Meeting outcomes
+        # requires 17.6" hint that names the wrong feature. The agenda-item
+        # lookup here uses the top-level `meeting_agenda_items/{id}` route
+        # (same one MeetingAgendaItemService.get() uses), which is 17.6+, not
+        # the 17.4+ meeting-nested list route.
         agenda_item = await call_version_gated(
-            lambda: self._meeting_agenda_item_api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+            lambda: self._meeting_agenda_item_api.get(agenda_item_id), feature="Meeting agenda items", floor="17.6"
         )
         meeting_id = agenda_item.summary.meeting_id
         if meeting_id is None:
