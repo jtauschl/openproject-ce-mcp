@@ -778,18 +778,20 @@ async def test_get_project_work_package_context(client: OpenProjectClient, test_
 async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside_read_allowlist(
     client: OpenProjectClient, test_project: str, wp_ids: list[int], project_refs: list[str]
 ) -> None:
-    """Baseline for the pre-migration behavior of `_filter_hierarchy_allowlist`
-    (client.py:1706-1736): OpenProject's parent/child hierarchy is not
-    project-constrained, so a linked work package's ancestor/child can belong
-    to a project the caller isn't allowed to read. The anchor work package
-    (`test_project`, inside `client`'s read allowlist) must still be
-    returned, but a cross-project ancestor/child outside the allowlist must
-    be dropped from `ancestors`/`children` rather than leaked.
+    """Baseline for the behavior of `WorkPackageService._filter_hierarchy_allowlist`:
+    OpenProject's parent/child hierarchy is not project-constrained, so a
+    linked work package's ancestor/child can belong to a project the caller
+    isn't allowed to read. The anchor work package (`test_project`, inside
+    `client`'s read allowlist) must still be returned, but a cross-project
+    ancestor/child outside the allowlist must be dropped from
+    `ancestors`/`children` rather than leaked.
 
-    Written against the still-flat client.py before the Work Packages READ
-    migration (domain-migration-runbook.md step 4's live-test-ordering rule)
-    so the identical test proves no regression once `get_work_package`
-    delegates to the new `WorkPackageService`."""
+    Originally written against the still-flat client.py before the Work
+    Packages READ migration (domain-migration-runbook.md step 4's
+    live-test-ordering rule) so the identical test would prove no regression
+    once `get_work_package` came to delegate to `WorkPackageService`; that
+    migration is long since complete and this test now runs against
+    `WorkPackageService` directly."""
     unrestricted_settings = dataclasses.replace(
         client.settings,
         read_projects=("*",),

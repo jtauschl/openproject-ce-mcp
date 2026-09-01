@@ -1,15 +1,13 @@
 """Preview-vs-confirmed payload semantic equivalence.
 
 Generic at the mechanism level, representative at the edges -- not one test per
-tool. `client.py:_finalize_write` (the shared preview/confirm state machine
-behind 7 form-based write finalizers: project, work_package, board, grid,
-membership, user) and `app/services/version_service.py`'s separate,
-deliberately duplicated copy of the same shape both read the *same* `payload`
-local for both the preview return and the confirmed HTTP call -- so proving the
-property once per mechanism proves it for every one of their callers by
-construction. The two hand-rolled outliers below (`create_work_package_relation`,
-`delete_work_package`) don't route through either shared helper and are proven
-individually.
+tool. `app/services/_write_outcome.py`'s `_finalize_write` (the shared
+preview/confirm state machine used by Versions, Projects, and Memberships)
+reads the *same* `payload` local for both the preview return and the
+confirmed HTTP call -- so proving the property once per mechanism proves it
+for every one of its callers by construction. The two hand-rolled outliers
+below (`create_work_package_relation`, `delete_work_package`) don't route
+through that shared helper and are proven individually.
 
 Allowed deviations: lockVersion, form-validation results, server-determined
 hrefs, unavoidable time-dependent values. This file
@@ -31,10 +29,11 @@ from openproject_ce_mcp.client import OpenProjectClient
 
 @pytest.mark.asyncio
 async def test_finalize_write_sends_the_same_payload_it_previewed() -> None:
-    """Proof at the client.py `_finalize_write` mechanism level, exercised via
-    one real caller (create_project) -- all 7 of that helper's current callers
-    inherit this guarantee by construction, since preview and the confirmed
-    POST/PATCH both read the identical `payload` local (client.py:6707-6785).
+    """Proof at the shared `_finalize_write` mechanism level (in
+    app/services/_write_outcome.py), exercised via one real caller
+    (create_project) -- every one of that helper's current callers inherits
+    this guarantee by construction, since preview and the confirmed
+    POST/PATCH both read the identical `payload` local.
     """
     sent_body: dict | None = None
 
@@ -75,9 +74,9 @@ async def test_finalize_write_sends_the_same_payload_it_previewed() -> None:
 
 @pytest.mark.asyncio
 async def test_version_service_finalize_write_sends_the_same_payload_it_previewed() -> None:
-    """Same proof for app/services/version_service.py's separate _finalize_write
-    copy (duplicated, not shared, because an Application Service calls a port
-    rather than doing I/O itself -- see that module's own docstring)."""
+    """Same proof exercised via VersionService, one of _finalize_write's
+    shared callers (an Application Service calls a port rather than doing
+    I/O itself -- see app/services/_write_outcome.py's own docstring)."""
     sent_body: dict | None = None
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -128,12 +127,12 @@ async def test_version_service_finalize_write_sends_the_same_payload_it_previewe
 
 @pytest.mark.asyncio
 async def test_create_work_package_relation_preview_payload_matches_sent_body_modulo_echo_fields() -> None:
-    """The hand-rolled outlier (client.py:2989-3046, not routed through
-    _finalize_write): its preview payload is `payload | {"to_work_package_id":
-    related_numeric_id}` -- a caller-readability echo key that is never part of
-    the actual POST body. Equivalence holds once that one documented key is
-    excluded -- the fifth allowed-deviation category this file's module
-    docstring names.
+    """The hand-rolled outlier (RelationService.create, not routed through
+    _finalize_write -- see that Service's own docstring for why): its preview
+    payload is `payload | {"to_work_package_id": related_numeric_id}` -- a
+    caller-readability echo key that is never part of the actual POST body.
+    Equivalence holds once that one documented key is excluded -- the fifth
+    allowed-deviation category this file's module docstring names.
     """
     sent_body: dict | None = None
 

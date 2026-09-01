@@ -137,7 +137,7 @@ async def test_update_commits_and_stamps_hidden_fields_when_confirmed() -> None:
 
 @pytest.mark.asyncio
 async def test_update_checks_write_enabled_even_on_preview_not_only_on_commit() -> None:
-    """Verbatim port of client.py:3542's gate placement: the write-scope
+    """UserPreferencesService.update()'s gate placement: the write-scope
     check sits at the TOP of update(), before the confirm branch -- so even
     a preview call (confirm=False) is denied without personal-write, unlike
     DocumentService's ordering (gate only inside the confirmed branch). This
