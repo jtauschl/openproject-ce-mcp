@@ -1,7 +1,7 @@
 # Claude Desktop app
 
 <p align="center">
-  <img src="../img/claude.jpg" alt="Claude artwork for the Claude Desktop MCP guide." width="960">
+  <img src="../img/claude.jpg" alt="Claude artwork for the Claude Desktop MCP guide." width="960">  <!-- markdownlint-disable-line MD013 -->
 </p>
 
 This guide covers the standalone **Claude Desktop app** (macOS/Windows/Linux
@@ -34,6 +34,7 @@ See [Installation](installation.md) for installing the package first.
    In the app you can open it via **Settings → Developer → Edit Config**.
 
 2. **Add the server:**
+
    ```json
    {
      "mcpServers": {
@@ -81,15 +82,20 @@ not enough). Then:
 - Ask Claude to call `list_projects` (or `get_current_user`). A successful reply
   confirms the base URL and token work.
 - If the server does not appear, re-check the file location, that the JSON is
-  valid, and that `command` is available on PATH (or is the absolute `.venv` path for a source install).
+  valid, and that `command` is available on PATH (or is the absolute `.venv`
+  path for a source install).
 
 ## Notes
 
 - Claude Desktop and Claude Code use separate config files. If you already
-  configured the server in Claude Desktop and want it in Claude Code too, you can
-  import it with `claude mcp add-from-claude-desktop`.
-- `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects.
-- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by default and do nothing until a project is listed here; set one to `false` to exclude that category instead.
+  configured the server in Claude Desktop and want it in Claude Code too, you
+  can import it with `claude mcp add-from-claude-desktop`.
+- `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or
+  glob patterns: `project-one,team-*`. Use `*` for all visible projects.
+- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core
+  write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on
+  by default and do nothing until a project is listed here; set one to
+  `false` to exclude that category instead.
 
 ## See also
 

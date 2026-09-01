@@ -1,0 +1,34 @@
+{
+  // Scoped to docs/*.md only -- this project's other Markdown (README.md,
+  // CHANGELOG.md, openproject-ce-mcp-int/, etc.) is not covered by this
+  // config or by the cleanup pass that introduced it.
+  "globs": ["docs/*.md"],
+
+  // MD013 (line-length) is unenforceable on GFM table rows -- a table cell
+  // cannot wrap onto a second physical line without breaking the table
+  // syntax, and this project's docs/*.md files use wide reference tables
+  // (tool name + description) throughout. "tables: false" is markdownlint's
+  // own documented escape hatch for exactly this case; prose lines outside
+  // tables still get checked at the default 80-character limit.
+  //
+  // MD033 (no-inline-html) is restricted to allow only <p>/<img> -- the
+  // <p align="center"><img .../></p> centered title-image block every
+  // docs/*.md file opens with (plain Markdown has no way to center an
+  // image; this is a deliberate, consistent convention across all 15
+  // files, not stray HTML). Any other inline HTML still gets flagged.
+  //
+  // MD013's "code_blocks: false" exempts fenced code blocks -- this repo's
+  // docs/architecture.md includes a hand-aligned ASCII directory-tree
+  // diagram inside a ```text block; wrapping those lines at 80 chars would
+  // destroy the alignment the diagram depends on.
+  "config": {
+    "MD013": {
+      "line_length": 80,
+      "tables": false,
+      "code_blocks": false
+    },
+    "MD033": {
+      "allowed_elements": ["p", "img"]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 # Cursor
 
 <p align="center">
-  <img src="../img/cursor.jpg" alt="Cursor artwork for the Cursor MCP guide." width="960">
+  <img src="../img/cursor.jpg" alt="Cursor artwork for the Cursor MCP guide." width="960">  <!-- markdownlint-disable-line MD013 -->
 </p>
 
 Cursor uses the same MCP config shape as Claude Code (`mcpServers` with
@@ -9,11 +9,11 @@ Cursor uses the same MCP config shape as Claude Code (`mcpServers` with
 
 ## Recommended setup
 
-For a local STDIO server in the Cursor IDE, Cursor supports `${env:VAR_NAME}`
-as a placeholder in `env` values — it resolves to an already-set OS
-environment variable at launch instead of embedding the value in
-`.cursor/mcp.json`. For a private credential like an OpenProject API token,
-this keeps the token out of `.cursor/mcp.json`:
+For a local STDIO server in the Cursor IDE, Cursor supports `${env:VAR_NAME}` as
+a placeholder in `env` values — it resolves to an already-set OS environment
+variable at launch instead of embedding the value in `.cursor/mcp.json`. For a
+private credential like an OpenProject API token, this keeps the token out of
+`.cursor/mcp.json`:
 
 ```json
 {
@@ -33,13 +33,13 @@ this keeps the token out of `.cursor/mcp.json`:
 
 `OPENPROJECT_API_TOKEN` must be set in the environment of the process that
 launches Cursor — a shell profile is enough if Cursor starts from that same
-initialized shell; a GUI launch may need an OS-level environment mechanism or
-a secret manager instead. Restart Cursor afterward so it picks up the
-variable. `${env:...}` is Cursor's documented interpolation mechanism for
-keeping the token out of `mcp.json`; unlike VS Code, Cursor does not support
-`${input:...}` there. This guidance covers a local STDIO server in the Cursor
-IDE specifically — Cursor Agent CLI, Cloud Agents/Automations, and remote
-environments may resolve variables differently and aren't covered here.
+initialized shell; a GUI launch may need an OS-level environment mechanism or a
+secret manager instead. Restart Cursor afterward so it picks up the variable.
+`${env:...}` is Cursor's documented interpolation mechanism for keeping the
+token out of `mcp.json`; unlike VS Code, Cursor does not support `${input:...}`
+there. This guidance covers a local STDIO server in the Cursor IDE specifically
+— Cursor Agent CLI, Cloud Agents/Automations, and remote environments may
+resolve variables differently and aren't covered here.
 
 ## Automatic setup provided by this package
 
@@ -52,8 +52,8 @@ Cursor — it writes `.cursor/mcp.json` for you. See
 ## Manual setup (matching this package's automatic `.cursor/mcp.json` output)
 
 If you'd rather reproduce what `configure` writes automatically, create
-`.cursor/mcp.json`. The structure is identical to every other client
-(root key `mcpServers`):
+`.cursor/mcp.json`. The structure is identical to every other client (root key
+`mcpServers`):
 
 ```json
 {
@@ -71,25 +71,24 @@ If you'd rather reproduce what `configure` writes automatically, create
 }
 ```
 
-With a PyPI install the command is simply `openproject-ce-mcp`; source
-installs can use the `.venv` binary path. The full set of `env` keys is the
-same as every other client — see [`.mcp.json.example`](../.mcp.json.example)
-or [Configuration](configuration.md).
+With a PyPI install the command is simply `openproject-ce-mcp`; source installs
+can use the `.venv` binary path. The full set of `env` keys is the same as every
+other client — see [`.mcp.json.example`](../.mcp.json.example) or
+[Configuration](configuration.md).
 
 ## Protect credentials
 
-With the `${env:...}` pattern above, `.cursor/mcp.json` itself holds no
-secret. The current automatic setup (`configure`) writes the token directly
-into the file, and a manual setup that skips `${env:...}` does the same — in
-both cases, protect it:
+With the `${env:...}` pattern above, `.cursor/mcp.json` itself holds no secret.
+The current automatic setup (`configure`) writes the token directly into the
+file, and a manual setup that skips `${env:...}` does the same — in both cases,
+protect it:
 
 ```bash
 chmod 600 .cursor/mcp.json
 ```
 
 Add `.cursor/mcp.json` and `.cursor/mcp.json.bak*` to your project's
-`.gitignore` so neither the file nor its timestamped backups are ever
-committed.
+`.gitignore` so neither the file nor its timestamped backups are ever committed.
 
 ## Reload and verify
 
@@ -101,22 +100,29 @@ Open the command palette and run "Reload Window". Then:
 
 ## User-wide setup (alternative)
 
-Use `~/.cursor/mcp.json` (same content, same `chmod 600` credential
-protection) to make the server available in all projects instead of one.
-Project-scoped is preferred for per-project permissions; for credentials
-specifically, the `${env:...}` pattern under "Recommended setup" above is
-preferred either way.
+Use `~/.cursor/mcp.json` (same content, same `chmod 600` credential protection)
+to make the server available in all projects instead of one. Project-scoped is
+preferred for per-project permissions; for credentials specifically, the
+`${env:...}` pattern under "Recommended setup" above is preferred either way.
 
 ## Notes
 
-- Cursor supports user-level configuration in `~/.cursor/mcp.json` and project-scoped configuration in `.cursor/mcp.json`
-- Project-scoped setup (`.cursor/mcp.json`) is preferred for fine-grained project permissions
-- After changing the config, run "Reload Window" from the command palette so Cursor picks up the change
-- `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
-- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by default and do nothing until a project is listed here; set one to `false` to exclude that category instead
+- Cursor supports user-level configuration in `~/.cursor/mcp.json` and
+  project-scoped configuration in `.cursor/mcp.json`
+- Project-scoped setup (`.cursor/mcp.json`) is preferred for fine-grained
+  project permissions
+- After changing the config, run "Reload Window" from the command palette so
+  Cursor picks up the change
+- `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or
+  glob patterns: `project-one,team-*`. Use `*` for all visible projects
+- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core
+  write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by
+  default and do nothing until a project is listed here; set one to `false` to
+  exclude that category instead
 
 ## See also
 
 - [Documentation hub](README.md) — full documentation index
-- [Clients](clients.md) — global vs. project-scoped, and every client's file layout
+- [Clients](clients.md) — global vs. project-scoped, and every client's file
+  layout
 - [Configuration](configuration.md) — the full environment variable reference
