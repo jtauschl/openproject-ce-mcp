@@ -411,18 +411,25 @@ CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 APP_ADAPTERS = ROOT / "src" / "openproject_ce_mcp" / "app" / "adapters"
 APP_SERVICES = ROOT / "src" / "openproject_ce_mcp" / "app" / "services"
 
-# Resources whose v3 API lives in a separate module engine (modules/<x>/).
-# fetch-sources.sh does fetch each module's lib/api/v3 subtree, but this tool
-# only parses the top-level lib/api/v3 tree, not per-module route/representer
-# files, so these are reported as "module" (not source-verified here) rather
-# than missing. They exist in CE and are verified at runtime instead.
+# Resources with no lib/api/v3 footprint at all -- neither the core tree nor
+# any module's own (see _resource_roots) -- so _resource_present can never
+# find them. Reported as "module" (not source-verified here) rather than
+# missing. They exist in CE and are verified at runtime instead.
+#
+# documents/file_links/sprints/time_entries used to be listed here too, back
+# when _resource_present only searched the core lib/api/v3 tree and CE
+# feature-module resources (Documents, Storages, Backlogs, Costs) were
+# invisible to it. Fixed in cf803d9 to also search modules/*/lib/api/v3 (see
+# _resource_roots); re-verified live afterwards (OPM-451) that all four are
+# now genuinely found there across the full 16.0-17.7 pinned range (sprints
+# only from 17.3 on, when Backlogs' own sprints_api.rb route lands -- caught
+# and reported correctly by the normal "introduced after 16.0" cell, not a
+# special case), so they no longer need this unconditional exemption. Only
+# grids and job_statuses were confirmed to have zero hits anywhere in the
+# pinned source range.
 MODULE_RESOURCES = {
     "grids": "my_page",
-    "documents": "documents",
-    "file_links": "storages",
     "job_statuses": "job_statuses",
-    "sprints": "backlogs",
-    "time_entries": "costs",
 }
 # Path-helper / directory names that differ from the client's path segment.
 RESOURCE_ALIASES = {"statuses": "status", "my_preferences": "user_preferences"}
