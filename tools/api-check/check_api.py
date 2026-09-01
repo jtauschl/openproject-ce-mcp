@@ -136,6 +136,13 @@ ASSUMPTIONS: list[Assumption] = [
     Assumption("percentageDone field", "field", "property :done_ratio", subtree=_WP_REPRESENTER),
     Assumption("derivedPercentageDone field", "field", "property :derived_done_ratio", subtree=_WP_REPRESENTER),
     Assumption("readonly field", "field", "property :readonly", subtree=_WP_REPRESENTER),
+    Assumption(
+        "hasProjectAttributes field",
+        "field",
+        "property :has_project_attributes",
+        subtree=_WP_REPRESENTER,
+        present_from="17.7",
+    ),  # absent before 17.7 (confirmed against the full pinned 16.0-17.7 range)
     # Ruby source spells these without an underscore (firstname/lastname), not
     # first_name/last_name.
     Assumption("firstName field", "field", "property :firstname", subtree=_USER_REPRESENTER),

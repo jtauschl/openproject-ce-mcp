@@ -992,6 +992,27 @@ def test_custom_fields_and_custom_comments_reused_verbatim_in_detail_from_summar
     assert detail.custom_comments_truncated is False
 
 
+@pytest.mark.parametrize("wire_value", [True, False])
+def test_has_project_attributes_round_trips_through_summary_and_detail(wire_value: bool) -> None:
+    payload = _wp_payload(hasProjectAttributes=wire_value)
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+    detail = normalize_work_package_detail(payload, text_limit=None, summary=summary)
+
+    assert summary.has_project_attributes is wire_value
+    assert detail.has_project_attributes is wire_value
+
+
+def test_has_project_attributes_is_none_when_absent_from_payload() -> None:
+    payload = _wp_payload()
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+    detail = normalize_work_package_detail(payload, text_limit=None, summary=summary)
+
+    assert summary.has_project_attributes is None
+    assert detail.has_project_attributes is None
+
+
 @pytest.mark.asyncio
 async def test_get_work_package_exposes_custom_fields_end_to_end() -> None:
     payload = _wp_payload(customField1="Acme Corp")

@@ -282,8 +282,8 @@ async def list_work_packages(
     parent_id, parent_display_id, start_date, due_date, estimated_time,
     spent_time, created_at, updated_at, author, category, description,
     schedule_manually, derived_start_date, derived_due_date, percentage_done,
-    derived_percentage_done, readonly, ignore_non_working_days, custom_fields,
-    custom_fields_truncated, custom_comments, custom_comments_truncated.
+    derived_percentage_done, readonly, has_project_attributes, ignore_non_working_days,
+    custom_fields, custom_fields_truncated, custom_comments, custom_comments_truncated.
     custom_fields/custom_comments are selectable/hideable only as a whole
     field, not by individual custom-field key (per-key filtering is
     OPENPROJECT_HIDE_CUSTOM_FIELDS' concern, not select's).

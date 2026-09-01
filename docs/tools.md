@@ -1,7 +1,7 @@
 # Tool reference
 
 <p align="center">
-  <img src="../img/tools-reference.jpg" alt="A structured set of project tools connected through a central router to a work board." width="960">
+  <img src="../img/tools-reference.jpg" alt="A structured set of project tools connected through a central router to a work board." width="960">  <!-- markdownlint-disable-line MD013 -->
 </p>
 
 All tools exposed by the OpenProject CE MCP server.
@@ -11,24 +11,56 @@ All mutating tools follow the same guarded write pattern by default:
 - Call the tool without `confirm=true` to get a preview or validation result.
 - Call it again with `confirm=true` to execute the write or delete.
 
-Every mutation requires explicit `confirm=true` — there is no way to skip the preview step.
+Every mutation requires explicit `confirm=true` — there is no way to skip the
+preview step.
 
-Clearing a field: on `update_work_package` and `update_project`, pass the string `"none"` to unassign a nullable association instead of changing it — work-package `assignee`, `responsible`, `version`, `sprint`, `parent`, `category`, `project_phase`, and project `parent`. Omitting a field leaves it unchanged; `"none"` clears it. Required fields (type, status, subject, project) cannot be cleared.
+Clearing a field: on `update_work_package` and `update_project`, pass the string
+`"none"` to unassign a nullable association instead of changing it —
+work-package `assignee`, `responsible`, `version`, `sprint`, `parent`,
+`category`, `project_phase`, and project `parent`. Omitting a field leaves it
+unchanged; `"none"` clears it. Required fields (type, status, subject, project)
+cannot be cleared.
 
-All list tools are bounded and paginated. They return compact summaries — not raw OpenProject HAL payloads.
+All list tools are bounded and paginated. They return compact summaries — not
+raw OpenProject HAL payloads.
 
-Responses are trimmed for context economy: list results omit the derivable `count`/`truncated` fields, and a confirmed write omits the echoed request `payload` (its normalized `result` carries the same data). `list_work_packages`, `search_work_packages`, `list_projects`, `list_users` and the batch-read `get_work_packages` accept an optional `select` (a list of field names) to return only the fields you need per row (for `get_work_packages`, per fetched work package; for `search_work_packages`, also its `exact_match` when present); an invalid name returns the allowed set for that row type.
+Responses are trimmed for context economy: list results omit the derivable
+`count`/`truncated` fields, and a confirmed write omits the echoed request
+`payload` (its normalized `result` carries the same data). `list_work_packages`,
+`search_work_packages`, `list_projects`, `list_users` and the batch-read
+`get_work_packages` accept an optional `select` (a list of field names) to
+return only the fields you need per row (for `get_work_packages`, per fetched
+work package; for `search_work_packages`, also its `exact_match` when present);
+an invalid name returns the allowed set for that row type.
 
-Beyond the obvious fields, work packages also carry scheduling/derived state (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`, `derived_due_date`, `percentage_done`, `derived_percentage_done`, `readonly`); versions and memberships carry `created_at`/`updated_at`; users carry `firstname`/`lastname`; categories carry `default_assignee`/`default_assignee_id`; projects carry `favorited`, and `get_project`'s detail shape additionally carries `ancestors` (its parent-project chain, absent from `list_projects`' compact summary shape); Backlogs sprints carry `status`, `finish_date`, `defining_workspace`/`defining_workspace_id`, and `created_at`/`updated_at`; Backlogs backlog buckets carry `defining_workspace`/`defining_workspace_id` and `created_at`/`updated_at`. Any of these can be hidden per entity via the matching `OPENPROJECT_HIDE_<ENTITY>_FIELDS` environment variable — see [Configuration](configuration.md).
+Beyond the obvious fields, work packages also carry scheduling/derived state
+(`schedule_manually`, `ignore_non_working_days`, `derived_start_date`,
+`derived_due_date`, `percentage_done`, `derived_percentage_done`, `readonly`,
+`has_project_attributes` — the last requires OpenProject 17.7+, absent/`None` on
+older instances); versions and memberships carry `created_at`/`updated_at`;
+users carry `firstname`/`lastname`; categories carry
+`default_assignee`/`default_assignee_id`; projects carry `favorited`, and
+`get_project`'s detail shape additionally carries `ancestors` (its
+parent-project chain, absent from `list_projects`' compact summary shape);
+Backlogs sprints carry `status`, `finish_date`,
+`defining_workspace`/`defining_workspace_id`, and `created_at`/`updated_at`;
+Backlogs backlog buckets carry `defining_workspace`/`defining_workspace_id` and
+`created_at`/`updated_at`. Any of these can be hidden per entity via the
+matching `OPENPROJECT_HIDE_<ENTITY>_FIELDS` environment variable — see
+[Configuration](configuration.md).
 
-A subset of rarely-used metadata tools — the `get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days` — is **opt-in**: they are registered only when `OPENPROJECT_ENABLE_EXTENDED_READ=true`, to keep them out of the default tool set and save context.
+A subset of rarely-used metadata tools — the `get_query_*` schema tools,
+`render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`,
+`list_working_days`/`list_non_working_days` — is **opt-in**: they are registered
+only when `OPENPROJECT_ENABLE_EXTENDED_READ=true`, to keep them out of the
+default tool set and save context.
 
 ---
 
 ## Projects
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_projects` | List visible projects with an optional name/identifier filter |
 | `get_project` | Fetch a compact project summary by id or identifier |
 | `get_project_admin_context` | Return project admin metadata such as lifecycle statuses, parent project options, and writable fields |
@@ -56,7 +88,7 @@ in this table: it returns the instance-wide user/group list (the same PII as
 [Groups](#groups) read tools below, not `OPENPROJECT_ENABLE_MEMBERSHIP_READ`.
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_roles` | List OpenProject roles visible to the current user |
 | `list_principals` | List users and groups that can be used for memberships (`OPENPROJECT_ENABLE_ADMIN_READ`) |
 | `list_project_memberships` | List memberships for a project, including principals and role names |
@@ -75,7 +107,7 @@ looks up other users and requires `OPENPROJECT_ENABLE_ADMIN_READ=true`
 since this is instance-wide PII with no project-scope boundary.
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_current_user` | Return the currently authenticated user's profile |
 | `list_users` | List visible OpenProject users with an optional search filter (`OPENPROJECT_ENABLE_ADMIN_READ`) |
 | `get_user` | Fetch a compact user profile by id (`OPENPROJECT_ENABLE_ADMIN_READ`) |
@@ -91,7 +123,7 @@ Same gating as [Users](#users) above: reads need
 `OPENPROJECT_ENABLE_ADMIN_WRITE=true`.
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_groups` | List visible OpenProject groups with an optional search filter |
 | `get_group` | Fetch a compact group profile by id |
 | `create_group` | Validate and then create a group; only writes when called again with `confirm=true` |
@@ -116,7 +148,7 @@ are read-only in OpenProject's API — no create/update/delete endpoint exists
 for that resource.
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_storages` | List configured external file storage connections (`OPENPROJECT_ENABLE_ADMIN_READ`) |
 | `get_storage` | Fetch a single storage connection by id (`OPENPROJECT_ENABLE_ADMIN_READ`) |
 | `create_storage` | Validate and then create a storage connection; only writes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
@@ -145,7 +177,7 @@ permission, else OpenProject returns 404 (not 403) to avoid confirming that
 user exists.
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_user_non_working_times` | List a user's non-working-time (vacation) date ranges, with an optional `year` filter |
 | `create_user_non_working_time` | Validate and then create a non-working-time date range for a user; only writes when called again with `confirm=true` |
 | `update_user_non_working_time` | Validate and then update a user's non-working-time date range; only writes when called again with `confirm=true` |
@@ -159,21 +191,21 @@ user exists.
 ## Notifications
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_notifications` | List the current user's unread notifications |
 | `mark_notifications_read` | Mark a single notification as read (pass `notification_id`), or every unread notification as read (omit it) |
 
 ## Actions & capabilities
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_actions` | List API actions exposed by the current OpenProject instance |
 | `list_capabilities` | List capabilities for a specific project/workspace context or capability id |
 
 ## Query metadata
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_query_filter` | Fetch a single query filter definition by id such as `assignee` |
 | `get_query_column` | Fetch a single query column definition by id such as `subject` |
 | `get_query_operator` | Fetch a single query operator definition by id such as `=` |
@@ -184,7 +216,7 @@ user exists.
 ## Project lifecycle
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_project_phase_definitions` | List available project lifecycle phase definitions |
 | `get_project_phase_definition` | Fetch a single project lifecycle phase definition by id |
 | `get_project_phase` | Fetch a single project lifecycle phase by id |
@@ -192,7 +224,7 @@ user exists.
 ## Views
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_views` | List saved OpenProject views, optionally filtered by project, view subtype, or name search |
 | `get_view` | Fetch a single OpenProject view by id |
 | `execute_query` | Execute a saved OpenProject query by id and return its resolved work packages, filtered against `OPENPROJECT_READ_PROJECTS` |
@@ -200,7 +232,7 @@ user exists.
 ## Documents
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_documents` | List documents globally or filtered to a specific project, with an optional title search filter |
 | `get_document` | Fetch a single document by id |
 | `update_document` | Validate and then update a document title or description; only writes when called again with `confirm=true`. On OpenProject 16.6, the server rejects every update with a generic permission error unless the instance's "Block note editor" experimental feature flag is enabled (`/admin/settings/experimental`) — this flag is on by default from 17.x onward, so this only affects older instances. |
@@ -208,7 +240,7 @@ user exists.
 ## News
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_news` | List news entries globally or filtered to a specific project |
 | `get_news` | Fetch a single news entry by id |
 | `create_news` | Validate and then create a news entry; only writes when called again with `confirm=true` |
@@ -218,14 +250,15 @@ user exists.
 ## Wiki
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_wiki_page` | Fetch a single wiki page by id |
 | `list_work_package_wiki_links` | List wiki pages linked to a work package (requires OpenProject 17.6+; the collection endpoint exists from 17.6, but see the pagination note below) |
 | `create_work_package_wiki_link` | Validate and then create a link from a work package to a wiki page; only writes when called again with `confirm=true` (requires OpenProject 17.7+ — the server's `POST work_packages/{id}/wiki_page_links` handler does not exist at all on 17.6 or earlier) |
 | `delete_work_package_wiki_link` | Validate and then delete a work package's wiki page link; only deletes when called again with `confirm=true` (requires OpenProject 17.7+, for the same reason as `create_work_package_wiki_link` above) |
 
 > **Note:** OpenProject API v3 does not provide a collection endpoint for wiki pages
-> (`GET /api/v3/projects/{id}/wiki_pages` is not implemented). `list_wiki_pages` has
+> (`GET /api/v3/projects/{id}/wiki_pages` is not implemented). `list_wiki_pages`
+has
 > therefore been removed. Individual pages can be fetched by id via `get_wiki_page`.
 >
 > **Note:** the `wiki_page_links` endpoint (`list_work_package_wiki_links`/
@@ -245,7 +278,7 @@ user exists.
 ## Forums
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_post` | Fetch a single forum post by id |
 
 > **Note:** OpenProject API v3 provides exactly one route for forum posts —
@@ -262,7 +295,7 @@ user exists.
 > (`bulk_create_work_packages`, `bulk_update_work_packages`) are numeric-only.
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_statuses` | List available work-package statuses |
 | `get_status` | Fetch a single work-package status by id |
 | `list_priorities` | List available work-package priorities |
@@ -320,7 +353,7 @@ differs sharply between create and update and depends on how many optional
 fields resolve by name rather than numeric ID:
 
 | Scenario | First item | Later items, same project |
-|---|---|---|
+| --- | --- | --- |
 | Create, only required fields (`project`/`type`/`subject`) | 3 requests | 2 requests |
 | Create, type + version by name, `assignee="me"`, one custom field | `7 + L` requests | `3 + L` requests (often just 3) |
 | Update, no optional fields (only the target work package's id) | 3 requests | 3 requests (no batch saving) |
@@ -352,18 +385,22 @@ saving over N individual `update_work_package` calls is real but modest.
 ## Attachments
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_work_package_attachments` | List attachments on a work package |
 | `get_attachment` | Fetch a single work-package attachment by id |
 | `create_work_package_attachment` | Validate and then upload an attachment to a work package; only writes when called again with `confirm=true` |
 | `delete_attachment` | Validate and then delete an attachment; only deletes when called again with `confirm=true` |
 
-`OPENPROJECT_ATTACHMENT_ROOT` must be set to an absolute directory for local uploads to work at all — `create_work_package_attachment` isn't even registered otherwise, no working-directory fallback. Once set, files outside it — and credential/config files such as `.mcp.json`, `.env`, or private keys even inside it — are refused, so a tool call cannot exfiltrate local secrets.
+`OPENPROJECT_ATTACHMENT_ROOT` must be set to an absolute directory for local
+uploads to work at all — `create_work_package_attachment` isn't even registered
+otherwise, no working-directory fallback. Once set, files outside it — and
+credential/config files such as `.mcp.json`, `.env`, or private keys even inside
+it — are refused, so a tool call cannot exfiltrate local secrets.
 
 ## Versions
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_versions` | List versions globally or scoped to a specific project, with an optional name filter |
 | `get_version` | Fetch a compact version summary by id |
 | `create_version` | Validate and then create a version; only writes when called again with `confirm=true` |
@@ -373,7 +410,7 @@ saving over N individual `update_work_package` calls is real but modest.
 ## Boards
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_boards` | List saved OpenProject boards/queries globally or scoped to a project |
 | `get_board` | Fetch a saved OpenProject board/query by id |
 | `create_board` | Validate and then create a saved OpenProject board/query; only writes when called again with `confirm=true` |
@@ -382,10 +419,19 @@ saving over N individual `update_work_package` calls is real but modest.
 
 ## Meetings
 
-Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope (default: both `true`, same as Boards), shared by all five sub-resources below. Requires OpenProject 17.4+ for Meetings and Recurring Meetings. Agenda Items and Sections are both split the same way: the meeting-nested list routes (`GET meetings/{id}/agenda_items`, `GET meetings/{id}/sections`) work from 17.4+, but every other operation (get/create/update/delete, all addressed via a top-level `meeting_agenda_items`/`meeting_sections` route) does not exist server-side before 17.6. `list_work_package_meeting_agenda_items` needs its own, later floor of 17.7+ (a third route, `GET work_packages/{id}/meeting_agenda_items`, added later still). Meeting Outcomes require 17.6+ throughout.
+Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope
+(default: both `true`, same as Boards), shared by all five sub-resources below.
+Requires OpenProject 17.4+ for Meetings and Recurring Meetings. Agenda Items and
+Sections are both split the same way: the meeting-nested list routes (`GET
+meetings/{id}/agenda_items`, `GET meetings/{id}/sections`) work from 17.4+, but
+every other operation (get/create/update/delete, all addressed via a top-level
+`meeting_agenda_items`/`meeting_sections` route) does not exist server-side
+before 17.6. `list_work_package_meeting_agenda_items` needs its own, later floor
+of 17.7+ (a third route, `GET work_packages/{id}/meeting_agenda_items`, added
+later still). Meeting Outcomes require 17.6+ throughout.
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_meetings` | List meetings globally or scoped to a project (requires OpenProject 17.4+) |
 | `get_meeting` | Fetch a single meeting by id (requires OpenProject 17.4+) |
 | `create_meeting` | Validate and then create a meeting in a project; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
@@ -436,7 +482,7 @@ Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope 
 ## Time entries
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_time_entry_activities` | List available time entry activities |
 | `list_time_entries` | List time entries with optional project, work package, user, and date filters |
 | `get_time_entry` | Fetch a single time entry by id |
@@ -449,7 +495,7 @@ Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope 
 ## Costs
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_cost_entry` | Fetch a single cost entry by id |
 | `list_work_package_cost_entries` | List all cost entries recorded against a work package |
 | `get_work_package_costs_by_type` | Get a work package's costs aggregated by cost type |
@@ -462,7 +508,7 @@ Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope 
 ## GitHub / GitLab work-package linkage
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_github_pull_request` | Fetch a single GitHub pull request by its own id |
 | `list_work_package_github_pull_requests` | List all GitHub pull requests linked to a work package |
 | `list_work_package_gitlab_issues` | List all GitLab issues linked to a work package |
@@ -480,7 +526,7 @@ Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope 
 ## Grids
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_grids` | List dashboard grids globally or scoped to a project or user |
 | `get_grid` | Fetch a single grid by id |
 | `create_grid` | Validate and then create a dashboard grid for a scope such as `/my/page` or `/projects/<identifier>`; only writes when called again with `confirm=true` |
@@ -490,40 +536,40 @@ Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope 
 ## User preferences
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_my_preferences` | Return the current user's preferences (language, timezone, comment sorting, …) |
 | `update_my_preferences` | Prepare or update the current user's preferences; only writes when called again with `confirm=true` |
 
 ## Text rendering
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `render_text` | Render markdown or plain text to HTML using the OpenProject API |
 
 ## Help texts
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_help_texts` | List all help texts configured for work-package and project attributes |
 | `get_help_text` | Fetch a single help text by id |
 
 ## Working days
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_working_days` | List the working-day configuration (Mon–Sun) for a given year or the current year |
 | `list_non_working_days` | List non-working days (public holidays / closures) for a given year or the current year |
 
 ## Custom options
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `get_custom_option` | Fetch the label/value of a single custom field option by id |
 
 ## Relations (global)
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `list_relations` | List all relations across the instance, optionally filtered by type |
 | `update_relation` | Prepare or update the type or description of a relation; only writes when called again with `confirm=true` |
 
@@ -534,7 +580,7 @@ Every tool failure carries a stable, machine-readable category as a leading
 type instead of parsing free text. The categories are:
 
 | Category | Meaning |
-|---|---|
+| --- | --- |
 | `[validation_error]` | An input was rejected before the request (fix the arguments and retry) |
 | `[auth_error]` | Authentication failed (check the API token) |
 | `[permission_denied]` | The token lacks permission, or a write scope is disabled |
@@ -550,7 +596,8 @@ Successful write previews are not errors — they return a structured result wit
 ## See also
 
 - [Documentation hub](README.md) — full documentation index
-- [Work package filters](filters.md) — filter keys and operators for `list_work_packages` / `search_work_packages`
+- [Work package filters](filters.md) — filter keys and operators for
+`list_work_packages` / `search_work_packages`
 - [Field hiding](field-hiding.md) — full list of entities supported by `OPENPROJECT_HIDE_<ENTITY>_FIELDS`
 - [Configuration](configuration.md) — the full environment variable reference
 - [Troubleshooting](troubleshooting.md) — common tool/setup issues

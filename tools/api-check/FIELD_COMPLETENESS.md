@@ -33,7 +33,7 @@ work_package   derivedPercentageDone      property                 COVERED    �
 work_package   createdAt                  date_time_property       COVERED    —
 work_package   updatedAt                  date_time_property       COVERED    —
 work_package   readonly                   property                 COVERED    —
-work_package   hasProjectAttributes       property                 EXCLUDED   internal_other
+work_package   hasProjectAttributes       property                 COVERED    —
 work_package   category                   associated_resource      COVERED    —
 work_package   type                       associated_resource      COVERED    —
 work_package   priority                   associated_resource      COVERED    —
@@ -102,7 +102,7 @@ membership     roles                      associated_resources     COVERED    �
 membership     createdAt                  date_time_property       COVERED    —
 membership     updatedAt                  date_time_property       COVERED    —
 
-Summary: resources=6, checked_fields=94, covered=82, excluded=12, untriaged=0
+Summary: resources=6, checked_fields=94, covered=83, excluded=11, untriaged=0
 ```
 
 ## Untriaged drift
@@ -125,7 +125,6 @@ _None — every checked field is modeled or has a documented exclusion._
 - `work_package.date` — Milestone-only date_property (work_package_representer.rb:380, getter: default_date_getter(:due_date)); this client normalizes it into start_date/due_date at runtime (both get the same value for a milestone) rather than modeling a separate field -- a deliberate composite/semantic mapping, not an unmodeled field.
 - `work_package.projectPhaseDefinition` — Secondary link to the phase *definition* record (link :projectPhaseDefinition), distinct from the already-modeled project_phase value/name. list_project_phase_definitions/get_project_phase_definition already provide independent definition lookups; not worth a second WorkPackageDetail field.
 - `work_package.targetVersions` — Upstream's intended successor to the single-version model (multi-version assignment, associated_resources :target_versions); this client deliberately keeps the compatible single-version model instead, and strips the form's own echoed value from write payloads so it never collides with an intentional version change (see _strip_unrequested_target_versions). Known limitation, not a harmless echo: Setting::WorkPackageMultipleVersions (app/models/setting/work_package_multiple_versions.rb) gates this feature behind an ordinary Setting plus an experimental FeatureDecisions flag -- not an Enterprise token -- so it is available, if off by default, on this CE-only server too. If ever active, a write through the single `version` field can collapse an existing multi-version assignment down to that one version, since upstream syncs a version_id change back into target_versions and this client never reads or preserves the pre-write list. Accepted as a known modeling gap unless multi-version assignment is ever surfaced as a feature in its own right here.
-- `work_package.hasProjectAttributes` — Read-only derived capability hint (true if the work package's project has any custom fields configured for its type). A genuine, low-priority modeling gap deliberately deferred rather than rushed into this release; not excluded on technical grounds like the entries above it.
 
 ### large_embedded
 

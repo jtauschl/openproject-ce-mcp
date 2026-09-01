@@ -336,15 +336,6 @@ EXCLUSIONS: list[FieldExclusion] = [
         "list. Accepted as a known modeling gap unless multi-version assignment "
         "is ever surfaced as a feature in its own right here.",
     ),
-    FieldExclusion(
-        "work_package",
-        "hasProjectAttributes",
-        ExclusionCategory.INTERNAL_OTHER,
-        "Read-only derived capability hint (true if the work package's project has "
-        "any custom fields configured for its type). A genuine, low-priority "
-        "modeling gap deliberately deferred rather than rushed into this release; "
-        "not excluded on technical grounds like the entries above it.",
-    ),
 ]
 _EXCLUSION_INDEX: dict[tuple[str, str], FieldExclusion] = {(e.resource, e.wire_name): e for e in EXCLUSIONS}
 
