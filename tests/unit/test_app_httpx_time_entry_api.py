@@ -181,16 +181,19 @@ async def test_fetch_activities_returns_none_on_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_activities_for_entity_sends_entity_link_when_work_package_known() -> None:
+async def test_fetch_activities_for_entity_sends_work_package_link_when_work_package_known() -> None:
     """GitHub issue #10 regression: OpenProject's log_own_time permission check
     can only validate against a concrete WorkPackage/Meeting entity -- a
-    project-only link falls through to requiring log_time instead. The
-    entity link must be sent whenever a work package is already known."""
+    project-only link falls through to requiring log_time instead. A
+    work-package link must be sent whenever a work package is already known.
+    Uses `workPackage`, not `entity`: both set the same server-side entity
+    attribute on 16.6+, but `entity` doesn't exist as a link key before 16.6
+    (verified live against 16.0 -- see the adapter's own comment)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/time_entries/form"
         body = json.loads(request.content)
-        assert body["_links"] == {"entity": {"href": "/api/v3/work_packages/42"}}
+        assert body["_links"] == {"workPackage": {"href": "/api/v3/work_packages/42"}}
         return httpx.Response(200, json={"_embedded": {"schema": {}}}, request=request)
 
     async with _client(handler) as http_client:
@@ -333,6 +336,21 @@ def test_normalize_time_entry_extracts_entity_and_project_fields() -> None:
     assert entry.activity == "Development"
     assert entry.hours == "PT1H"
     assert entry.spent_on == "2026-03-20"
+
+
+def test_normalize_time_entry_falls_back_to_work_package_link_when_entity_absent() -> None:
+    """`entity` doesn't exist as a link key before OpenProject 16.6 (server
+    representer only has `workPackage` there, verified against source) --
+    normalize_time_entry_raw must still resolve entity_id/entity_name/
+    entity_type from `workPackage` on those older servers."""
+    payload = _time_entry_payload()
+    payload["_links"]["workPackage"] = {"href": "/api/v3/work_packages/55", "title": "Feature A"}
+
+    entry = normalize_time_entry_raw(payload, text_limit=None)
+
+    assert entry.entity_id == 55
+    assert entry.entity_name == "Feature A"
+    assert entry.entity_type == "WorkPackage"
 
 
 def test_normalize_time_entry_caps_comment_when_text_limit_given() -> None:

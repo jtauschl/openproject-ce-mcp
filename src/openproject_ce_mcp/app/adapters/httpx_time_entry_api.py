@@ -74,7 +74,11 @@ def normalize_time_entry_raw(payload: dict[str, Any], *, text_limit: int | None)
     """
     links = payload.get("_links", {})
     project_link = links.get("project")
-    entity_link = links.get("entity")
+    # `entity` covers both WorkPackage and Meeting time entries but doesn't
+    # exist before 16.6 (server representer only has `workPackage` there --
+    # meeting time entries aren't a thing on those versions either, so this
+    # fallback loses no coverage on older servers).
+    entity_link = links.get("entity") or links.get("workPackage")
     entity_href = entity_link.get("href") if isinstance(entity_link, dict) else None
     trimmed, truncated, full_length = _extract_formattable_text_with_meta(payload.get("comment"), limit=text_limit)
     return TimeEntrySummary(
@@ -204,10 +208,19 @@ class HttpxTimeEntryApi:
         # (case model.entity ... else false) -- a project-only link makes it fall
         # through to requiring log_time instead, denying a caller who only has
         # log_own_time even though they're entitled to log their own time on this
-        # work package. Send the entity link whenever the work package is already
-        # known, matching what the real create/update payload sends (GitHub #10).
+        # work package. Send a work-package link whenever the work package is
+        # already known, matching what the real create/update payload sends
+        # (GitHub #10). Uses the `workPackage` key, not `entity`: on 16.6+
+        # both set the same underlying `entity` model attribute (its setter is
+        # literally the entity setter -- verified in source), but `entity` as
+        # a link key doesn't exist at all before 16.6 and is silently dropped
+        # there, making assignable_activities see no project/work_package and
+        # return none (verified live against 16.0: `entity` link -> empty
+        # allowedValues, `workPackage` link -> correct 6 activities).
+        # `workPackage` works identically on every version in the support
+        # range, so there is no need to branch on server version here.
         links: dict[str, dict[str, str]] = (
-            {"entity": {"href": _api_href(f"work_packages/{work_package_id}", api_prefix=self._api_prefix)}}
+            {"workPackage": {"href": _api_href(f"work_packages/{work_package_id}", api_prefix=self._api_prefix)}}
             if work_package_id is not None
             else {"project": {"href": _api_href(f"projects/{project_id}", api_prefix=self._api_prefix)}}
         )

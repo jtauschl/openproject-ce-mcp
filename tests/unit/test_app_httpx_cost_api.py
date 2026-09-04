@@ -50,6 +50,21 @@ async def test_get_cost_entry_raw_requests_single_cost_entry() -> None:
     assert raw["id"] == 9
 
 
+def test_normalize_cost_entry_raw_falls_back_to_work_package_link_when_entity_absent() -> None:
+    """`entity` doesn't exist as a link key before OpenProject 16.6 (server
+    representer only has `workPackage` there, verified against source) --
+    normalize_cost_entry_raw must still resolve entity_id/entity_name from
+    `workPackage` on those older servers."""
+    payload = _cost_entry_payload()
+    del payload["_links"]["entity"]
+    payload["_links"]["workPackage"] = {"href": "/api/v3/work_packages/42", "title": "Do the thing"}
+
+    summary = normalize_cost_entry_raw(payload)
+
+    assert summary.entity_id == 42
+    assert summary.entity_name == "Do the thing"
+
+
 @pytest.mark.asyncio
 async def test_fetch_cost_entries_for_work_package_requests_the_sub_resource_and_extracts_elements() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:

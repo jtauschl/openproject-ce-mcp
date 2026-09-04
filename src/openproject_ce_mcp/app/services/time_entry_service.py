@@ -410,7 +410,13 @@ class TimeEntryService:
             payload["ongoing"] = ongoing
         if work_package_id is not None:
             hidden_fields.ensure_field_writable("time_entry", "entity", settings=self._settings)
-            links["entity"] = {"href": _api_href(f"work_packages/{work_package_id}", api_prefix=self._api_prefix)}
+            # `workPackage`, not `entity`: both set the same underlying
+            # server-side entity attribute on 16.6+ (verified in source: the
+            # workPackage setter literally calls the entity setter), but the
+            # `entity` link key itself doesn't exist before 16.6 and is
+            # silently dropped there -- see httpx_time_entry_api.py's
+            # fetch_activities_for_entity for the live-verified detail.
+            links["workPackage"] = {"href": _api_href(f"work_packages/{work_package_id}", api_prefix=self._api_prefix)}
         elif project is not None:
             hidden_fields.ensure_field_writable("time_entry", "project", settings=self._settings)
             project_id = await self._resolve_project_id(project)

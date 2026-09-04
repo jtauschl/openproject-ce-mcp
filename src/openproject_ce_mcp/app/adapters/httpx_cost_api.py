@@ -56,7 +56,10 @@ from ._text import trim_text as _trim_text
 
 def normalize_cost_entry_raw(payload: dict[str, Any]) -> CostEntrySummary:
     links = payload.get("_links", {})
-    entity_link = links.get("entity")
+    # `entity` doesn't exist before 16.6 (server representer only has
+    # `workPackage` there) -- same fallback as httpx_time_entry_api.py's
+    # normalize_time_entry_raw.
+    entity_link = links.get("entity") or links.get("workPackage")
     return CostEntrySummary(
         id=int(payload["id"]),
         project=_link_title(links.get("project")),

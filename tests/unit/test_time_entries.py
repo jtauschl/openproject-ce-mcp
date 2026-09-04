@@ -642,11 +642,11 @@ async def test_create_time_entry_sends_start_time_but_never_end_time() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_time_entry_entity_link_uses_numeric_id_for_semantic_ref() -> None:
-    """A semantic work-package ref (PROJ-7) must produce a numeric entity href.
+async def test_create_time_entry_work_package_link_uses_numeric_id_for_semantic_ref() -> None:
+    """A semantic work-package ref (PROJ-7) must produce a numeric workPackage href.
 
     HAL links only resolve by numeric id; passing the displayId form through
-    would build an invalid ``entity`` link.
+    would build an invalid ``workPackage`` link.
     """
     captured: dict[str, dict] = {}
 
@@ -675,7 +675,7 @@ async def test_create_time_entry_entity_link_uses_numeric_id_for_semantic_ref() 
         confirm=True,
     )
 
-    assert captured["body"]["_links"]["entity"]["href"] == "/api/v3/work_packages/7"
+    assert captured["body"]["_links"]["workPackage"]["href"] == "/api/v3/work_packages/7"
 
     await client.aclose()
 
@@ -712,7 +712,7 @@ async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_sha
         confirm=True,
     )
 
-    assert captured["body"]["_links"]["entity"]["href"] == "/api/v3/work_packages/7"
+    assert captured["body"]["_links"]["workPackage"]["href"] == "/api/v3/work_packages/7"
     assert requests == [
         ("GET", "/api/v3/work_packages/PROJ-7"),
         ("POST", "/api/v3/time_entries/form"),
@@ -866,15 +866,16 @@ async def test_update_time_entry_preview_reflects_openproject_validation_errors(
 
 
 @pytest.mark.asyncio
-async def test_create_time_entry_resolves_activity_via_entity_link_when_work_package_known() -> None:
+async def test_create_time_entry_resolves_activity_via_work_package_link_when_work_package_known() -> None:
     """Regression (GitHub issue #10): OpenProject's CreateContract#allowed_to_log_own?
     can only validate the log_own_time permission against a concrete WorkPackage/Meeting
     entity (case model.entity ... else false) -- a project-only discovery link makes it
     fall through to requiring log_time instead, denying a caller who only has
     log_own_time even though they're entitled to log their own time on this work
     package. When the work package is already known (the normal create_time_entry
-    case), the activity-discovery form request must send the entity link, not just
-    the project link."""
+    case), the activity-discovery form request must send a work-package link, not
+    just the project link (workPackage, not entity -- entity doesn't exist as a
+    link key before 16.6, see the adapter's own comment)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
@@ -885,7 +886,7 @@ async def test_create_time_entry_resolves_activity_via_entity_link_when_work_pac
             )
         if request.url.path == "/api/v3/time_entries/form":
             body = json.loads(request.content)
-            if body == {"_links": {"entity": {"href": "/api/v3/work_packages/42"}}}:
+            if body == {"_links": {"workPackage": {"href": "/api/v3/work_packages/42"}}}:
                 return httpx.Response(
                     200,
                     json={
