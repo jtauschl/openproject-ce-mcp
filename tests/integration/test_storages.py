@@ -62,14 +62,24 @@ from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient
 pytestmark = pytest.mark.integration
 
 
+async def _seed_storage_or_skip(client: OpenProjectClient):
+    """The seed Nextcloud storage only exists when `up.sh 177nc` seeded it
+    (SEED_NEXTCLOUD_STORAGE=1) -- absent on every other `up.sh` invocation,
+    which is the normal case for versions other than 17.7. Skip rather than
+    fail when it's missing; this is a fixture-availability gap, not a
+    version floor to enforce."""
+    listed = await client.storage.list_storages()
+    matches = [s for s in listed.results if s.name == "Seed Nextcloud Storage"]
+    if not matches:
+        pytest.skip("seed Nextcloud storage not present -- run `up.sh 177nc` to seed it")
+    return matches[0]
+
+
 # --- Read path: against the seeded Nextcloud storage/project_storage --------
 
 
 async def test_list_storages_finds_seed_nextcloud_storage(client: OpenProjectClient) -> None:
-    listed = await client.storage.list_storages()
-    matches = [s for s in listed.results if s.name == "Seed Nextcloud Storage"]
-    assert len(matches) == 1
-    storage = matches[0]
+    storage = await _seed_storage_or_skip(client)
     assert storage.provider_type == "Nextcloud"
     # The fixture deliberately bypasses live OAuth/setup validation, so the
     # storage stays unconfigured.
@@ -77,30 +87,39 @@ async def test_list_storages_finds_seed_nextcloud_storage(client: OpenProjectCli
 
 
 async def test_get_storage_returns_nextcloud_fields(client: OpenProjectClient) -> None:
-    listed = await client.storage.list_storages()
-    seed = next(s for s in listed.results if s.name == "Seed Nextcloud Storage")
+    seed = await _seed_storage_or_skip(client)
 
     detail = await client.storage.get_storage(seed.id)
 
     assert detail.provider_type == "Nextcloud"
     assert detail.has_application_password is False
-    assert detail.forbidden_file_name_characters == '<>:"\\/|?*'
+    # forbiddenFileNameCharacters was added to the storage representer in
+    # 17.1 (absent in 16.x/17.0, verified against op-sources) -- an older
+    # instance legitimately reports None here rather than the string.
+    if detail.forbidden_file_name_characters is not None:
+        assert detail.forbidden_file_name_characters == '<>:"\\/|?*'
     assert detail.tenant_id is None
     assert detail.drive_id is None
 
 
-async def test_list_project_storages_finds_seed_link(client: OpenProjectClient) -> None:
+async def _seed_project_storage_or_skip(client: OpenProjectClient):
+    """Same fixture-availability gap as _seed_storage_or_skip, for the
+    project_storage side."""
     listed = await client.project_storage.list_project_storages()
     matches = [ps for ps in listed.results if ps.storage_name == "Seed Nextcloud Storage"]
-    assert len(matches) == 1
-    project_storage = matches[0]
+    if not matches:
+        pytest.skip("seed Nextcloud project storage not present -- run `up.sh 177nc` to seed it")
+    return matches[0]
+
+
+async def test_list_project_storages_finds_seed_link(client: OpenProjectClient) -> None:
+    project_storage = await _seed_project_storage_or_skip(client)
     assert project_storage.project_folder_mode == "inactive"
     assert project_storage.project is not None
 
 
 async def test_get_project_storage_returns_creator(client: OpenProjectClient) -> None:
-    listed = await client.project_storage.list_project_storages()
-    seed = next(ps for ps in listed.results if ps.storage_name == "Seed Nextcloud Storage")
+    seed = await _seed_project_storage_or_skip(client)
 
     detail = await client.project_storage.get_project_storage(seed.id)
 
@@ -119,8 +138,7 @@ async def test_update_storage_rename_rejected_by_seeded_insecure_host(client: Op
     non-localhost hostname, which `SecureContextUriValidator` always rejects
     -- so even this no-op-on-host rename 422s. See the module docstring
     for the full explanation."""
-    listed = await client.storage.list_storages()
-    seed = next(s for s in listed.results if s.name == "Seed Nextcloud Storage")
+    seed = await _seed_storage_or_skip(client)
 
     new_name = f"Seed Nextcloud Storage [{uuid.uuid4().hex[:8]}]"
     with pytest.raises(InvalidInputError, match="[Ss]ecure [Cc]ontext"):

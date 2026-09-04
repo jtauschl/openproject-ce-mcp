@@ -15,6 +15,8 @@ import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient
 
+from .conftest import skip_if_unsupported
+
 pytestmark = pytest.mark.integration
 
 
@@ -49,7 +51,7 @@ async def test_list_work_package_reactions(client: OpenProjectClient, test_proje
     # A freshly created work package has no reactions at all yet -- `== 0` is
     # the actual, checkable expectation here, not `>= 0` (true of any
     # response, including a broken one).
-    result = await client.emoji_reaction.list_for_work_package(wp_id)
+    result = await skip_if_unsupported(lambda: client.emoji_reaction.list_for_work_package(wp_id))
     assert result.count == 0
     assert result.results == []
 
@@ -59,7 +61,7 @@ async def test_toggle_activity_emoji_reaction_adds_then_removes(
 ) -> None:
     _wp_id, activity_id = await _create_wp_and_comment_activity_id(client, test_project, wp_ids)
 
-    added = await client.emoji_reaction.toggle(activity_id, "thumbs_up", confirm=True)
+    added = await skip_if_unsupported(lambda: client.emoji_reaction.toggle(activity_id, "thumbs_up", confirm=True))
     assert added.state == "confirmed"
     assert added.result is not None
     matches = [r for r in added.result.results if r.reaction == "thumbs_up"]
@@ -79,8 +81,8 @@ async def test_toggle_activity_emoji_reaction_preview_does_not_write(
 ) -> None:
     wp_id, activity_id = await _create_wp_and_comment_activity_id(client, test_project, wp_ids)
 
-    preview = await client.emoji_reaction.toggle(activity_id, "heart", confirm=False)
+    preview = await skip_if_unsupported(lambda: client.emoji_reaction.toggle(activity_id, "heart", confirm=False))
     assert preview.state == "preview"
 
-    listed = await client.emoji_reaction.list_for_work_package(wp_id)
+    listed = await skip_if_unsupported(lambda: client.emoji_reaction.list_for_work_package(wp_id))
     assert all(r.reaction != "heart" for r in listed.results)

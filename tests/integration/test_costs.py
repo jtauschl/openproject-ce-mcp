@@ -57,8 +57,16 @@ async def test_list_cost_entries_accepts_a_semantic_work_package_ref(
 ) -> None:
     wp_id = await _new_wp_id(client, test_project, wp_ids)
     wp = await client.work_package.get(wp_id)
+    display_id = wp.display_id or ""
+    # Semantic identifiers (project-prefixed, e.g. "TST-105") only exist on
+    # 17.5+ in semantic mode. On 16.x display_id is absent (added in 17.4);
+    # on classic 17.x it's the numeric id as a string. Same detection as
+    # test_semantic_identifiers.py::test_reference_resolution_matches_instance_mode.
+    is_semantic = "-" in display_id and not display_id.isdigit()
+    if not is_semantic:
+        pytest.skip("instance is not in semantic identifier mode; nothing to resolve")
 
-    result = await client.cost.list_work_package_cost_entries(wp.display_id)
+    result = await client.cost.list_work_package_cost_entries(display_id)
 
     assert result.count == len(result.results)
 

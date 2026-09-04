@@ -19,6 +19,7 @@ Required environment variables:
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import os
 import subprocess
@@ -26,7 +27,7 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
 from openproject_ce_mcp.config import Settings
 
 # Directory containing docker/test/compose.yml -- `docker compose exec` needs
@@ -88,6 +89,38 @@ def _resolve_test_project() -> str:
             f"project (default: mcp-test)."
         )
     return project
+
+
+async def skip_if_unsupported(probe_call):
+    """Await `probe_call()`; skip the test if it raises NotFoundError.
+
+    Some domains (emoji reactions, reminders, project phases: all added in
+    16.1) don't exist as routes at all on older supported servers -- a 404
+    there means "not on this version," not a real failure. Returns the
+    probe's result so callers can reuse it instead of a second real call.
+    """
+    try:
+        return await probe_call()
+    except NotFoundError:
+        pytest.skip("endpoint not available on this OpenProject version")
+
+
+async def wait_for_not_found(get_call, *, timeout: float = 15.0) -> None:
+    """Poll `get_call()` until it raises NotFoundError, or fail after `timeout`.
+
+    Some deletes (groups, users) are `success_status: 202` server-side --
+    background-job async, not synchronous -- so a GET right after delete can
+    still find the resource briefly.
+    """
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        try:
+            await get_call()
+        except NotFoundError:
+            return
+        if asyncio.get_event_loop().time() > deadline:
+            pytest.fail(f"resource still found {timeout}s after a confirmed delete (async delete job never finished?)")
+        await asyncio.sleep(0.5)
 
 
 def disposable_project_identifier() -> str:

@@ -20,11 +20,17 @@ from .conftest import disposable_project_identifier
 pytestmark = pytest.mark.integration
 
 
-async def test_list_grids(client: OpenProjectClient) -> None:
+async def test_list_grids(client: OpenProjectClient, grid_ids: list[int]) -> None:
+    # A brand-new instance genuinely has zero grids until one is visited/
+    # created (a project overview grid is not seeded at project creation) --
+    # create one instead of assuming pre-existing state.
+    created = await client.grid.create(name="[integration-test] list probe", scope="/my/page", confirm=True)
+    assert created.ready, created.validation_errors
+    assert created.grid_id is not None
+    grid_ids.append(created.grid_id)
+
     result = await client.grid.list()
     assert result is not None
-    # A project's own overview page is itself a grid -- near-guaranteed
-    # non-empty on any instance with at least one accessible project.
     assert result.count > 0
     assert result.results[0].scope
 

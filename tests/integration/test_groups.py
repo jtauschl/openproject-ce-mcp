@@ -13,7 +13,9 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import InvalidInputError, NotFoundError, OpenProjectClient, PermissionDeniedError
+from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
+
+from .conftest import wait_for_not_found
 
 pytestmark = pytest.mark.integration
 
@@ -95,8 +97,8 @@ async def test_delete_group_removes_it(client: OpenProjectClient) -> None:
     deleted = await client.group.delete(group_id, confirm=True)
     assert deleted.ready and deleted.state == "confirmed"
 
-    with pytest.raises(NotFoundError):
-        await client.group.get_group(group_id)
+    # Group delete is async server-side -- see wait_for_not_found's docstring.
+    await wait_for_not_found(lambda: client.group.get_group(group_id))
 
 
 async def test_create_and_delete_group_denied_when_admin_write_disabled(

@@ -8,6 +8,8 @@ import pytest
 
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
+from .conftest import skip_if_unsupported
+
 pytestmark = pytest.mark.integration
 
 
@@ -53,8 +55,8 @@ async def test_list_reminders_finds_created_reminder(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
-    created = await client.reminder.create(
-        work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
+    created = await skip_if_unsupported(
+        lambda: client.reminder.create(work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
@@ -79,8 +81,8 @@ async def test_update_reminder_denied_outside_write_allowlist(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
-    created = await client.reminder.create(
-        work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
+    created = await skip_if_unsupported(
+        lambda: client.reminder.create(work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
@@ -98,8 +100,8 @@ async def test_update_reminder_changes_note(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
-    created = await client.reminder.create(
-        work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
+    created = await skip_if_unsupported(
+        lambda: client.reminder.create(work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
@@ -131,8 +133,8 @@ async def test_delete_reminder_denied_outside_write_allowlist(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
-    created = await client.reminder.create(
-        work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
+    created = await skip_if_unsupported(
+        lambda: client.reminder.create(work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
 
@@ -150,8 +152,8 @@ async def test_delete_reminder_removes_it(client: OpenProjectClient, test_projec
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
-    created = await client.reminder.create(
-        work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
+    created = await skip_if_unsupported(
+        lambda: client.reminder.create(work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
 

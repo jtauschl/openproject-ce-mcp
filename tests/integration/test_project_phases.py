@@ -16,11 +16,15 @@ import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient
 
+from .conftest import skip_if_unsupported
+
 pytestmark = pytest.mark.integration
 
 
 async def test_list_project_phase_definitions(client: OpenProjectClient) -> None:
-    result = await client.project.list_phase_definitions()
+    # project_phase_definitions was added in OpenProject 16.1 -- absent (404)
+    # on older supported versions.
+    result = await skip_if_unsupported(client.project.list_phase_definitions)
     # OpenProject pre-seeds this instance-wide list itself (Initiating/
     # Planning/Executing/Closing, see module docstring) -- a real, healthy
     # instance always has at least one, so `count >= 0` alone (true even for
@@ -30,7 +34,7 @@ async def test_list_project_phase_definitions(client: OpenProjectClient) -> None
 
 
 async def test_get_project_phase_definition(client: OpenProjectClient) -> None:
-    listed = await client.project.list_phase_definitions()
+    listed = await skip_if_unsupported(client.project.list_phase_definitions)
     if listed.count == 0:
         pytest.skip("instance has no project phase definitions configured")
 
@@ -40,6 +44,6 @@ async def test_get_project_phase_definition(client: OpenProjectClient) -> None:
 
 
 async def test_get_project_phase(client: OpenProjectClient, seed_project_phase_id: int) -> None:
-    phase = await client.project.get_phase(seed_project_phase_id)
+    phase = await skip_if_unsupported(lambda: client.project.get_phase(seed_project_phase_id))
     assert phase.id == seed_project_phase_id
     assert phase.name

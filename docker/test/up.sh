@@ -4,20 +4,39 @@
 # print copy-paste env blocks for running the integration tests.
 #
 # Usage:
-#   docker/test/up.sh            # all five versions (16.6 + 17.4 + 17.5 + 17.6 + 17.7)
+#   docker/test/up.sh            # every minor 16.0-17.7 (15 versions), in
+#                                 # batches of 5 concurrent instances (see
+#                                 # "all" mode below)
+#   docker/test/up.sh all 3      # every minor, 3 concurrent instances per batch
+#   docker/test/up.sh 160        # only 16.0
+#   docker/test/up.sh 161        # only 16.1
+#   docker/test/up.sh 162        # only 16.2
+#   docker/test/up.sh 163        # only 16.3
+#   docker/test/up.sh 164        # only 16.4
+#   docker/test/up.sh 165        # only 16.5
 #   docker/test/up.sh 16         # only 16.6
+#   docker/test/up.sh 170        # only 17.0
+#   docker/test/up.sh 171        # only 17.1
+#   docker/test/up.sh 172        # only 17.2
+#   docker/test/up.sh 173        # only 17.3
 #   docker/test/up.sh 174        # only 17.4
 #   docker/test/up.sh 17         # only 17.5
 #   docker/test/up.sh 176        # only 17.6
 #   docker/test/up.sh 177        # only 17.7
 #   docker/test/up.sh 177nc      # 17.7 + the Nextcloud storage fixture
 #
-# On a small Docker VM (~4 GB) five all-in-one containers can exhaust memory;
-# bring them up one at a time (16, then 174, then 17, then 176, then 177) if
-# that happens.
+# "all" mode brings up instances in sequential BATCHES rather than all 15 at
+# once -- 15 concurrent all-in-one containers would exhaust a small Docker
+# VM's memory. Batch size defaults to 5 (the previous full set: 16.6 + 17.4 +
+# 17.5 + 17.6 + 17.7) and is overridable as a second argument
+# (`up.sh all <n>`); each batch is brought up, waited on, seeded, printed, and
+# torn down (volumes kept) before the next batch starts. Batch size 1
+# effectively means "one instance fully sequential" -- the safest, slowest
+# option on a very small VM.
 #
-# First boot takes several minutes (migrations + asset precompile). The script
-# waits on the container healthcheck, not a fixed sleep.
+# First boot takes several minutes per instance (migrations + asset
+# precompile). The script waits on each container's healthcheck, not a fixed
+# sleep.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -31,62 +50,37 @@ if [ ! -f .env ]; then
     echo "generated docker/test/.env"
 fi
 
-WITH_NEXTCLOUD=0
-case "${1:-all}" in
-16)
-    SERVICES=(op-16-6)
-    SEMANTIC=("op-16-6:0")
-    ;;
-174)
-    SERVICES=(op-17-4)
-    SEMANTIC=("op-17-4:0")
-    ;; # displayId present, semantic off
-17 | 175)
-    SERVICES=(op-17-5)
-    SEMANTIC=("op-17-5:1")
-    ;;
-176)
-    SERVICES=(op-17-6)
-    SEMANTIC=("op-17-6:1")
-    ;;
-177)
-    SERVICES=(op-17-7)
-    SEMANTIC=("op-17-7:1")
-    ;;
-177nc)
-    SERVICES=(op-17-7 nextcloud)
-    SEMANTIC=("op-17-7:1")
-    WITH_NEXTCLOUD=1
-    ;;
-all | "")
-    SERVICES=(op-16-6 op-17-4 op-17-5 op-17-6 op-17-7)
-    SEMANTIC=("op-16-6:0" "op-17-4:0" "op-17-5:1" "op-17-6:1" "op-17-7:1")
-    ;;
-*)
-    echo "usage: up.sh [16|174|17|176|177|177nc|all]" >&2
-    exit 2
-    ;;
-esac
+# Full ordered version list, oldest first -- "all" mode batches through this.
+# Each entry is "service:semantic" (semantic identifiers active from 17.5 on).
+ALL_ENTRIES=(
+    "op-16-0:0" "op-16-1:0" "op-16-2:0" "op-16-3:0" "op-16-4:0" "op-16-5:0" "op-16-6:0"
+    "op-17-0:0" "op-17-1:0" "op-17-2:0" "op-17-3:0" "op-17-4:0"
+    "op-17-5:1" "op-17-6:1" "op-17-7:1"
+)
 
-echo "Starting: ${SERVICES[*]} (first boot can take >5 min)…"
-docker compose up -d "${SERVICES[@]}"
-
-if [ "$WITH_NEXTCLOUD" = "1" ]; then
-    echo -n "Waiting for nextcloud to become healthy"
-    nc_cid="$(docker compose ps -q nextcloud)"
-    nc_healthy=0
-    for _ in $(seq 1 60); do
-        nc_state="$(docker inspect -f '{{.State.Health.Status}}' "$nc_cid" 2>/dev/null || echo starting)"
-        if [ "$nc_state" = "healthy" ]; then
-            echo " ok"
-            nc_healthy=1
-            break
-        fi
-        echo -n "."
-        sleep 10
-    done
-    [ "$nc_healthy" = "1" ] || echo " TIMEOUT (continuing — seed.rb's storage fixture does not require a live connection)"
-fi
+port_for() {
+    case "$1" in
+    op-16-0) echo 8160 ;;
+    op-16-1) echo 8161 ;;
+    op-16-2) echo 8162 ;;
+    op-16-3) echo 8163 ;;
+    op-16-4) echo 8164 ;;
+    op-16-5) echo 8165 ;;
+    op-16-6) echo 8166 ;;
+    op-17-0) echo 8170 ;;
+    op-17-1) echo 8171 ;;
+    op-17-2) echo 8172 ;;
+    op-17-3) echo 8173 ;;
+    op-17-4) echo 8174 ;;
+    op-17-5) echo 8175 ;;
+    op-17-6) echo 8176 ;;
+    op-17-7) echo 8177 ;;
+    *)
+        echo "unknown service: $1" >&2
+        return 2
+        ;;
+    esac
+}
 
 wait_healthy() {
     local svc="$1" cid
@@ -106,45 +100,51 @@ wait_healthy() {
     return 1
 }
 
-port_for() {
-    case "$1" in
-    op-16-6) echo 8166 ;;
-    op-17-4) echo 8174 ;;
-    op-17-5) echo 8175 ;;
-    op-17-6) echo 8176 ;;
-    op-17-7) echo 8177 ;;
-    *)
-        echo "unknown service: $1" >&2
-        return 2
-        ;;
-    esac
+wait_nextcloud_healthy() {
+    echo -n "Waiting for nextcloud to become healthy"
+    local nc_cid nc_healthy=0
+    nc_cid="$(docker compose ps -q nextcloud)"
+    for _ in $(seq 1 60); do
+        local nc_state
+        nc_state="$(docker inspect -f '{{.State.Health.Status}}' "$nc_cid" 2>/dev/null || echo starting)"
+        if [ "$nc_state" = "healthy" ]; then
+            echo " ok"
+            nc_healthy=1
+            break
+        fi
+        echo -n "."
+        sleep 10
+    done
+    [ "$nc_healthy" = "1" ] || echo " TIMEOUT (continuing — seed.rb's storage fixture does not require a live connection)"
 }
 
-for entry in "${SEMANTIC[@]}"; do
-    svc="${entry%%:*}"
-    semantic="${entry#*:}"
+# Seeds one already-healthy instance and prints its copy-paste env block.
+seed_and_print() {
+    local svc="$1" semantic="$2" with_nextcloud="$3" port
     port="$(port_for "$svc")"
-    wait_healthy "$svc"
-    seed_nextcloud=0
-    [ "$WITH_NEXTCLOUD" = "1" ] && [ "$svc" = "op-17-7" ] && seed_nextcloud=1
+    local seed_nextcloud=0
+    [ "$with_nextcloud" = "1" ] && [ "$svc" = "op-17-7" ] && seed_nextcloud=1
     # File link seeding needs the Nextcloud storage fixture above to already
     # have linked a Storage to this project -- same gate, no separate flag.
-    seed_file_link="$seed_nextcloud"
+    local seed_file_link="$seed_nextcloud"
     echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=$seed_nextcloud, SEED_FILE_LINK=$seed_file_link)…"
+    local seed_output
     seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" -e SEED_NEXTCLOUD_STORAGE="$seed_nextcloud" \
         -e SEED_FILE_LINK="$seed_file_link" "$svc" \
         bundle exec rails runner - <seed.rb)"
     echo "$seed_output"
+    local token restricted_token
     token="$(sed -n 's/^SEED: API_TOKEN=//p' <<<"$seed_output" | tail -1)"
     restricted_token="$(sed -n 's/^SEED: RESTRICTED_API_TOKEN=//p' <<<"$seed_output" | tail -1)"
     if [ -z "$token" ]; then
         echo "WARNING: could not capture API token for $svc — check seed output above." >&2
-        continue
+        return 0
     fi
     if [ -z "$restricted_token" ]; then
         echo "WARNING: could not capture restricted API token for $svc — check seed output above." >&2
     fi
     # Project identifier matches seed.rb: uppercase in semantic mode, lowercase otherwise
+    local test_project
     test_project="$([ "$semantic" = "1" ] && echo "TST" || echo "tst")"
     cat <<EOF
 
@@ -156,7 +156,91 @@ OPENPROJECT_TEST_PROJECT=$test_project \\
 OPENPROJECT_DOCKER_SERVICE=$svc \\
 uv run pytest -m integration -v
 EOF
-done
+}
+
+# Brings up, waits on, and seeds a fixed set of services (optionally with
+# Nextcloud alongside one of them) -- used both by single-version mode and by
+# each batch of "all" mode.
+bring_up_batch() {
+    local with_nextcloud="$1"
+    shift
+    local entries=("$@")
+    local services=()
+    for entry in "${entries[@]}"; do
+        services+=("${entry%%:*}")
+    done
+    [ "$with_nextcloud" = "1" ] && services+=(nextcloud)
+
+    echo "Starting: ${services[*]} (first boot can take >5 min)…"
+    docker compose up -d "${services[@]}"
+
+    [ "$with_nextcloud" = "1" ] && wait_nextcloud_healthy
+
+    for entry in "${entries[@]}"; do
+        local svc="${entry%%:*}" semantic="${entry#*:}"
+        wait_healthy "$svc"
+        seed_and_print "$svc" "$semantic" "$with_nextcloud"
+    done
+}
+
+MODE="${1:-all}"
+
+if [ "$MODE" = "all" ] || [ -z "$MODE" ]; then
+    BATCH_SIZE="${2:-5}"
+    case "$BATCH_SIZE" in
+    '' | *[!0-9]*)
+        echo "usage: up.sh all [batch-size:integer]" >&2
+        exit 2
+        ;;
+    esac
+    echo "Running all ${#ALL_ENTRIES[@]} versions in batches of $BATCH_SIZE…"
+    total=${#ALL_ENTRIES[@]}
+    i=0
+    while [ "$i" -lt "$total" ]; do
+        batch=("${ALL_ENTRIES[@]:$i:$BATCH_SIZE}")
+        echo
+        echo "=== Batch starting at index $i: ${batch[*]%%:*} ==="
+        bring_up_batch 0 "${batch[@]}"
+        i=$((i + BATCH_SIZE))
+        if [ "$i" -lt "$total" ]; then
+            echo "Tearing down this batch before starting the next (volumes kept)…"
+            docker compose down --remove-orphans >/dev/null
+        fi
+    done
+    echo
+    echo "Done. Tear down the final batch with docker/test/down.sh (add --purge to drop volumes)."
+    exit 0
+fi
+
+case "$MODE" in
+160) ENTRIES=("op-16-0:0") ;;
+161) ENTRIES=("op-16-1:0") ;;
+162) ENTRIES=("op-16-2:0") ;;
+163) ENTRIES=("op-16-3:0") ;;
+164) ENTRIES=("op-16-4:0") ;;
+165) ENTRIES=("op-16-5:0") ;;
+16) ENTRIES=("op-16-6:0") ;;
+170) ENTRIES=("op-17-0:0") ;;
+171) ENTRIES=("op-17-1:0") ;;
+172) ENTRIES=("op-17-2:0") ;;
+173) ENTRIES=("op-17-3:0") ;;
+174) ENTRIES=("op-17-4:0") ;; # displayId present, semantic off
+17 | 175) ENTRIES=("op-17-5:1") ;;
+176) ENTRIES=("op-17-6:1") ;;
+177) ENTRIES=("op-17-7:1") ;;
+177nc)
+    bring_up_batch 1 "op-17-7:1"
+    echo
+    echo "Done. Tear down with docker/test/down.sh (add --purge to drop volumes)."
+    exit 0
+    ;;
+*)
+    echo "usage: up.sh [all [batch-size]|160|161|162|163|164|165|16|170|171|172|173|174|17|176|177|177nc]" >&2
+    exit 2
+    ;;
+esac
+
+bring_up_batch 0 "${ENTRIES[@]}"
 
 echo
 echo "Done. Tear down with docker/test/down.sh (add --purge to drop volumes)."

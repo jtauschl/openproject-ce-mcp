@@ -20,7 +20,9 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import InvalidInputError, NotFoundError, OpenProjectClient, PermissionDeniedError
+from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
+
+from .conftest import wait_for_not_found
 
 pytestmark = pytest.mark.integration
 
@@ -114,7 +116,7 @@ async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: lis
     assert fetched.id == user_id
     assert fetched.login == login
 
-    updated = await client.user.update(user_id, lastname=f"Test {suffix} Renamed", confirm=True)
+    updated = await client.user.update(user_id=user_id, lastname=f"Test {suffix} Renamed", confirm=True)
     assert updated.state == "confirmed"
     assert updated.result is not None
     assert updated.result.lastname == f"Test {suffix} Renamed"
@@ -133,8 +135,8 @@ async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: lis
     assert deleted.state == "confirmed"
     user_ids.remove(user_id)
 
-    with pytest.raises(NotFoundError):
-        await client.user.get_user(str(user_id))
+    # User delete is async server-side -- see wait_for_not_found's docstring.
+    await wait_for_not_found(lambda: client.user.get_user(str(user_id)))
 
 
 async def test_second_user_membership_interaction(

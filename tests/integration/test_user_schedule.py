@@ -5,11 +5,10 @@ Requires OpenProject 17.3+ (feature-flag-gated `guard_feature_flag
 :user_working_times` through 17.6, generally available 17.7+ -- verified
 against op-sources: present in 17.3-17.6's `working_hours_by_user_api.rb`/
 `non_working_times_by_user_api.rb`, absent in 17.7's; the route does not
-exist at all before 17.3). Earlier versions are expected to fail with a
-[server_error] on every tool in this file; no client-side version gate
-exists (this MCP passes server errors through unmodified, per this
-project's established pattern), so these tests are only meaningful run
-against a 17.3+ instance.
+exist at all before 17.3). Earlier versions 404, which UserNonWorkingTimeService/
+UserWorkingHoursService's `call_version_gated` re-raises as a clearer
+NotFoundError -- every write entry point below uses `skip_if_unsupported` to
+turn that into a skip rather than a failure on those versions.
 
 user_ref="me" (self-service) is used throughout as the primary path, for two
 reasons: it works regardless of whether the integration token's user has the
@@ -38,11 +37,14 @@ these tests do not use `test_project`/`wp_ids` and do not need
 
 from __future__ import annotations
 
+import datetime
 import uuid
 
 import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient
+
+from .conftest import skip_if_unsupported
 
 pytestmark = pytest.mark.integration
 
@@ -55,25 +57,36 @@ _USER_REF = "me"
 async def test_create_list_update_delete_user_non_working_time(
     client: OpenProjectClient, user_non_working_time_ids: list[tuple[str, int]]
 ) -> None:
-    # Use a random-ish date range far in the future to avoid colliding with
-    # any real non-working time an operator may have configured for this
-    # account, and to keep repeated runs independent of each other.
-    year_offset = (uuid.uuid4().int % 20) + 5
-    start_date = f"20{50 + year_offset}-01-10"
-    end_date = f"20{50 + year_offset}-01-15"
+    # Randomize year AND day-of-year (not just year, against a fixed
+    # month/day) far in the future -- widens the collision space against a
+    # leftover record from an earlier run whose cleanup didn't fire (e.g. an
+    # assertion failure between create and the cleanup-list append). A fixed
+    # "01-10..01-15" with only ~20 possible years collided in practice: a
+    # stray record from a prior interrupted run occupied one of those 20
+    # slots and made every later run landing on that year fail with
+    # "overlaps with an existing non-working day range" even though the
+    # server-side create/overlap logic itself was working correctly.
+    year_offset = (uuid.uuid4().int % 100) + 5
+    day_offset = uuid.uuid4().int % 300
+    range_start = datetime.date(2050 + year_offset, 1, 1) + datetime.timedelta(days=day_offset)
+    range_end = range_start + datetime.timedelta(days=5)
+    start_date = range_start.isoformat()
+    end_date = range_end.isoformat()
 
-    create_result = await client.user_non_working_time.create(
-        _USER_REF, start_date=start_date, end_date=end_date, confirm=True
+    create_result = await skip_if_unsupported(
+        lambda: client.user_non_working_time.create(
+            _USER_REF, start_date=start_date, end_date=end_date, confirm=True
+        )
     )
     assert create_result.ready and create_result.state == "confirmed", create_result.validation_errors
     non_working_time_id = create_result.non_working_time_id
     assert non_working_time_id is not None and non_working_time_id > 0
     user_non_working_time_ids.append((_USER_REF, non_working_time_id))
 
-    listed = await client.user_non_working_time.list_for_user(_USER_REF, year=2050 + year_offset)
+    listed = await client.user_non_working_time.list_for_user(_USER_REF, year=range_start.year)
     assert any(item.id == non_working_time_id for item in listed.results)
 
-    updated_end_date = f"20{50 + year_offset}-01-20"
+    updated_end_date = (range_end + datetime.timedelta(days=5)).isoformat()
     update_result = await client.user_non_working_time.update(
         _USER_REF, non_working_time_id, end_date=updated_end_date, confirm=True
     )
@@ -84,7 +97,7 @@ async def test_create_list_update_delete_user_non_working_time(
     await client.user_non_working_time.delete(_USER_REF, non_working_time_id, confirm=True)
     user_non_working_time_ids.remove((_USER_REF, non_working_time_id))
 
-    listed_after_delete = await client.user_non_working_time.list_for_user(_USER_REF, year=2050 + year_offset)
+    listed_after_delete = await client.user_non_working_time.list_for_user(_USER_REF, year=range_start.year)
     assert all(item.id != non_working_time_id for item in listed_after_delete.results)
 
 
@@ -97,7 +110,7 @@ async def test_create_user_non_working_time_preview_without_confirm_does_not_wri
     assert preview_result.state == "preview"
     assert preview_result.result is None
 
-    listed = await client.user_non_working_time.list_for_user(_USER_REF, year=2077)
+    listed = await skip_if_unsupported(lambda: client.user_non_working_time.list_for_user(_USER_REF, year=2077))
     assert all(item.start_date != "2077-02-01" for item in listed.results)
 
 
@@ -130,8 +143,10 @@ async def test_create_get_list_update_delete_user_working_hours(
     year_offset = (uuid.uuid4().int % 20) + 5
     valid_from = f"20{50 + year_offset}-02-01"
 
-    create_result = await client.user_working_hours.create(
-        _USER_REF, valid_from=valid_from, monday_hours=8.0, tuesday_hours=8.0, confirm=True
+    create_result = await skip_if_unsupported(
+        lambda: client.user_working_hours.create(
+            _USER_REF, valid_from=valid_from, monday_hours=8.0, tuesday_hours=8.0, confirm=True
+        )
     )
     assert create_result.ready and create_result.state == "confirmed", create_result.validation_errors
     working_hours_id = create_result.working_hours_id

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
+from openproject_ce_mcp.client import NotFoundError, OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -75,6 +75,10 @@ async def test_get_and_update_document(client: OpenProjectClient, test_project: 
             "update_document is gated behind the 'Block note editor' feature flag on this "
             "OpenProject version, and it's off by default -- not a client-side permission gap"
         )
+    except NotFoundError:
+        # No PATCH route at all before 16.6 (verified against source: no
+        # `patch do` block in documents_api.rb until then).
+        pytest.skip("update_document has no PATCH route on this OpenProject version (added in 16.6)")
     assert update_result.ready, update_result.validation_errors
     assert update_result.result is not None
     assert update_result.result.title == new_title
