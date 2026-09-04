@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from openproject_ce_mcp.config import ConfigError, Settings, legacy_env_warnings
+from openproject_ce_mcp.config import ConfigError, Settings
 
 # A real absolute path in native format for whichever OS runs the tests
 # (e.g. /tmp/uploads on Linux/macOS, C:\Users\...\Temp\uploads on Windows) —
@@ -514,104 +514,33 @@ def test_empty_attachment_root_is_accepted_at_config_time() -> None:
     assert settings.attachment_root == ""
 
 
-# ── legacy_env_warnings ───────────────────────────────────────────────────────────
+# ── legacy env-var names (removed) ──────────────────────────────────────────
 
 
-def test_legacy_env_warnings_empty_when_no_legacy_vars_present() -> None:
-    assert legacy_env_warnings({"OPENPROJECT_BASE_URL": "https://op.example.com"}) == []
-
-
-def test_legacy_env_warnings_names_both_old_and_new_var() -> None:
-    warnings = legacy_env_warnings({"OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM"})
-    assert len(warnings) == 1
-    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
-    assert "OPENPROJECT_READ_PROJECTS" in warnings[0]
-    assert "deprecated" in warnings[0]
-    assert "fail-closed" in warnings[0]
-
-
-def test_legacy_env_warnings_one_line_per_detected_name_in_map_order() -> None:
+def test_legacy_env_var_names_have_no_effect_on_settings() -> None:
+    # OPM-136: the warn-only deprecation window (OPM-128) is over -- legacy
+    # names are now unrecognized env vars like any other, silently ignored by
+    # Settings.from_env with no warning and no special-cased adoption.
     env = {
-        "OPENPROJECT_TOOLS": "projects",
+        "OPENPROJECT_BASE_URL": "https://op.example.com",
+        "OPENPROJECT_API_TOKEN": "token-value",
         "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM",
-        "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
+        "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "OPM",
+        "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
+        "OPENPROJECT_PERSONAL_WRITE": "true",
+        "OPENPROJECT_TOOLS": "projects,work-packages",
+        "OPENPROJECT_ENABLE_METADATA_TOOLS": "true",
+        "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
+        "OPENPROJECT_AUTO_CONFIRM_DELETE": "true",
     }
-    warnings = legacy_env_warnings(env)
-    assert len(warnings) == 3
-    # Deterministic order = _LEGACY_ENV_VAR_MAP's own definition order, not the
-    # dict-iteration order of the (arbitrarily ordered) input env.
-    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
-    assert "OPENPROJECT_ENABLE_METADATA_TOOLS" in warnings[1]
-    assert "OPENPROJECT_TOOLS" in warnings[2]
-
-
-def test_legacy_env_warnings_openproject_tools_is_deprecated() -> None:
-    warnings = legacy_env_warnings({"OPENPROJECT_TOOLS": "projects,work-packages"})
-    assert len(warnings) == 1
-    assert "OPENPROJECT_TOOLS" in warnings[0]
-    assert "deprecated" in warnings[0]
-    assert "OPENPROJECT_ENABLE_" in warnings[0]  # points at the individual replacement variables
-
-
-def test_legacy_env_warnings_metadata_tools_points_at_extended_read() -> None:
-    warnings = legacy_env_warnings({"OPENPROJECT_ENABLE_METADATA_TOOLS": "true"})
-    assert len(warnings) == 1
-    assert "OPENPROJECT_ENABLE_METADATA_TOOLS" in warnings[0]
-    assert "OPENPROJECT_ENABLE_EXTENDED_READ" in warnings[0]
-
-
-def test_legacy_env_warnings_personal_write_points_at_enable_personal_write() -> None:
-    # OPENPROJECT_PERSONAL_WRITE was renamed to OPENPROJECT_ENABLE_PERSONAL_WRITE
-    # for naming consistency with every other write flag — never released, so a
-    # straight rename, but still tracked in the legacy map like every other
-    # rename in this codebase (warn once, never silently adopt the old value).
-    warnings = legacy_env_warnings({"OPENPROJECT_PERSONAL_WRITE": "true"})
-    assert len(warnings) == 1
-    assert "OPENPROJECT_PERSONAL_WRITE" in warnings[0]
-    assert "OPENPROJECT_ENABLE_PERSONAL_WRITE" in warnings[0]
-
-
-@pytest.mark.parametrize("var_name", ["OPENPROJECT_AUTO_CONFIRM_WRITE", "OPENPROJECT_AUTO_CONFIRM_DELETE"])
-def test_legacy_env_warnings_auto_confirm_vars_warn_with_no_replacement(var_name: str) -> None:
-    # These were removed outright (not renamed) — every write now unconditionally
-    # requires confirm=true, so there's no "use X instead" to point at.
-    warnings = legacy_env_warnings({var_name: "true"})
-    assert len(warnings) == 1
-    assert var_name in warnings[0]
-    assert "deprecated" in warnings[0]
-    assert "no replacement" in warnings[0] or "removed with no" in warnings[0]
-    assert "use" not in warnings[0].lower()  # no misleading "use X instead"
-    assert "deprecated" in warnings[0]
-
-
-def test_personal_write_legacy_name_is_ignored_by_effective_settings() -> None:
-    # Presence has zero effect on the parsed Settings — only a warning. The old
-    # name must not be silently adopted as the new one's value.
-    settings = Settings.from_env(
-        {
-            "OPENPROJECT_BASE_URL": "https://op.example.com",
-            "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
-            "OPENPROJECT_PERSONAL_WRITE": "true",  # legacy name — must be ignored
-        }
-    )
+    settings = Settings.from_env(env)
+    assert settings.read_projects == ()
+    assert settings.write_projects == ()
     assert settings.write_enabled("personal") is False
+    assert settings.read_enabled("extended") is False
 
 
-def test_openproject_tools_is_ignored_by_effective_settings() -> None:
-    # Presence has zero effect on the parsed Settings — only a warning.
-    settings = Settings.from_env(
-        {
-            "OPENPROJECT_BASE_URL": "https://op.example.com",
-            "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_TOOLS": "",  # would have meant "disable every group" under the old CSV design
-        }
-    )
-    assert settings.read_enabled("project") is True
-    assert settings.read_enabled("work_package") is True
-
-
-def test_core_five_legacy_names_now_take_effect_with_no_warning() -> None:
+def test_core_five_legacy_names_now_take_effect() -> None:
     # The 5 individual booleans are current, not legacy.
     env = {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
@@ -627,33 +556,9 @@ def test_core_five_legacy_names_now_take_effect_with_no_warning() -> None:
         "OPENPROJECT_ENABLE_BOARD_READ": "false",
         "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
     }
-    assert legacy_env_warnings(env) == []
     settings = Settings.from_env(env)
     assert settings.read_enabled("project") is False
     assert settings.read_enabled("work_package") is False
     assert settings.read_enabled("membership") is False
     assert settings.read_enabled("version") is False
     assert settings.read_enabled("board") is False
-
-
-def test_legacy_env_warnings_still_warns_when_replacement_is_also_present() -> None:
-    # The old value is never adopted either way, but a legacy var sitting next
-    # to its already-correct replacement is still dead config worth flagging.
-    env = {"OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM", "OPENPROJECT_READ_PROJECTS": "TST"}
-    warnings = legacy_env_warnings(env)
-    assert len(warnings) == 1
-    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
-
-
-def test_legacy_env_warnings_does_not_resurrect_old_value() -> None:
-    # The old value is never adopted — fail-closed defaults apply exactly as if
-    # the legacy variable weren't set at all.
-    env = {
-        "OPENPROJECT_BASE_URL": "https://op.example.com",
-        "OPENPROJECT_API_TOKEN": "tok",
-        "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM",
-    }
-    assert legacy_env_warnings(env)  # sanity: this env does trigger a warning
-    settings = Settings.from_env(env)
-    assert settings.read_projects == ()
-    assert settings.attachment_root == ""

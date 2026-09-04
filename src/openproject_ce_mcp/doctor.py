@@ -18,7 +18,7 @@ import httpx
 
 from . import __version__
 from .client import AuthenticationError, OpenProjectClient, OpenProjectError
-from .config import ConfigError, Settings, legacy_env_warnings
+from .config import ConfigError, Settings
 from .models import CurrentUser
 
 EXIT_SUCCESS = 0
@@ -197,9 +197,6 @@ def _check_env_config(
     # MCP client will actually use.
     combined_env = dict(os.environ)
     combined_env.update(client_env)
-
-    for warning in legacy_env_warnings(combined_env):
-        print(f"[WARN] {warning}", file=sys.stderr)
 
     try:
         settings = Settings.from_env(environ=combined_env)

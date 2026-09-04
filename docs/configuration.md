@@ -172,31 +172,6 @@ Invalid combinations (e.g. `MAX_RETRIES` above 10, `DEFAULT_PAGE_SIZE` above
 `MAX_PAGE_SIZE`) fail at startup with a clear error rather than being silently
 clamped.
 
-## Legacy configuration migration
-
-At runtime, these older variable names are detected but never used to configure
-the server — setting one has no effect beyond a one-time startup/`doctor`
-warning naming its replacement. The setup wizard additionally preserves legacy
-project-allowlist values, as described below. Rename to the current variable for
-the setting to actually take effect at runtime:
-
-| Legacy variable | Replaced by |
-| --- | --- |
-| `OPENPROJECT_ALLOWED_PROJECTS` | `OPENPROJECT_READ_PROJECTS` |
-| `OPENPROJECT_ALLOWED_PROJECTS_READ` | `OPENPROJECT_READ_PROJECTS` |
-| `OPENPROJECT_ALLOWED_PROJECTS_WRITE` | `OPENPROJECT_WRITE_PROJECTS` |
-| `OPENPROJECT_ENABLE_METADATA_TOOLS` | `OPENPROJECT_ENABLE_EXTENDED_READ` |
-| `OPENPROJECT_TOOLS` | the individual `OPENPROJECT_ENABLE_<GROUP>_READ` variables above |
-| `OPENPROJECT_PERSONAL_WRITE` | `OPENPROJECT_ENABLE_PERSONAL_WRITE` |
-
-`openproject-ce-mcp configure` preserves the legacy project-allowlist variables'
-values (`OPENPROJECT_ALLOWED_PROJECTS`/`_READ`/`_WRITE`) when rewriting an
-existing configuration, prefilling `OPENPROJECT_READ_PROJECTS`/
-`OPENPROJECT_WRITE_PROJECTS` from them. The other legacy variables in this table
-are warned about but ignored — rename them manually before running the wizard if
-you want to keep their setting. This table is only relevant if you edit a config
-file by hand.
-
 ## See also
 
 - [Documentation hub](README.md) — full documentation index

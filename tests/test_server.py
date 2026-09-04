@@ -620,10 +620,9 @@ async def _noop_verify_strict_dispatch(mcp) -> None:
     pass
 
 
-def test_run_server_warns_on_legacy_env_var(monkeypatch, capsys) -> None:
-    # Unlike doctor (a separate, manually-invoked command), the real server
-    # startup path also emits legacy-var warnings, so a project config silently
-    # relying on the old names produces a diagnostic instead of failing silent.
+def test_run_server_ignores_legacy_env_var_with_no_warning(monkeypatch, capsys) -> None:
+    # OPM-136: the warn-only deprecation window (OPM-128) is over -- legacy
+    # names are now unrecognized env vars like any other, no diagnostic emitted.
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://op.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "tok")
     monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "OPM")
@@ -633,9 +632,7 @@ def test_run_server_warns_on_legacy_env_var(monkeypatch, capsys) -> None:
     server._run_server()
 
     err = capsys.readouterr().err
-    assert "[WARN]" in err
-    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in err
-    assert "OPENPROJECT_READ_PROJECTS" in err
+    assert "[WARN]" not in err
 
 
 def test_run_server_silent_when_no_legacy_env_vars(monkeypatch, capsys) -> None:

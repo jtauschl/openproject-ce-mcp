@@ -215,47 +215,7 @@ def test_env_config_warns_on_http_url(capsys, make_doctor_settings, monkeypatch)
     assert "HTTP" in output
 
 
-def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
-    """Should warn when the legacy comma-separated tool-exposure variable is present.
-
-    The warning names the specific old variable AND its replacement (not a
-    generic "legacy tool-exposure variables" grouped message).
-    """
-    from openproject_ce_mcp.doctor import _check_env_config
-
-    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
-    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
-    monkeypatch.setenv("OPENPROJECT_TOOLS", "projects")
-
-    _check_env_config(None, {})
-
-    captured = capsys.readouterr()
-    output = captured.out + captured.err
-    assert "[WARN]" in output
-    assert "OPENPROJECT_TOOLS" in output
-    assert "individual OPENPROJECT_ENABLE_" in output
-    assert "deprecated" in output
-
-
-def test_env_config_warns_on_legacy_project_scope_vars(capsys, monkeypatch):
-    """Same per-name warning applies to the project-scope legacy vars, not just
-    the tool-exposure one."""
-    from openproject_ce_mcp.doctor import _check_env_config
-
-    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
-    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
-    monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "OPM")
-
-    _check_env_config(None, {})
-
-    captured = capsys.readouterr()
-    output = captured.out + captured.err
-    assert "[WARN]" in output
-    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in output
-    assert "OPENPROJECT_READ_PROJECTS" in output
-
-
-def test_env_config_no_legacy_warning_with_only_current_read_vars(capsys, monkeypatch):
+def test_env_config_no_warning_with_only_current_read_vars(capsys, monkeypatch):
     """Should NOT warn when only the current individual read booleans are set."""
     from openproject_ce_mcp.doctor import _check_env_config
 
@@ -271,10 +231,10 @@ def test_env_config_no_legacy_warning_with_only_current_read_vars(capsys, monkey
     assert "[WARN]" not in output
 
 
-def test_env_config_legacy_tool_exposure_vars_are_ignored_by_effective_settings(monkeypatch):
-    """The warned-about legacy var must actually be ignored: the effective Settings
-    reflect the current per-scope read defaults, not the legacy CSV value — matching
-    the runtime's own resolution, not just a cosmetic warning that diverges from it."""
+def test_env_config_legacy_tool_exposure_var_is_ignored_by_effective_settings(monkeypatch):
+    """OPM-136: legacy env-var names get no special handling any more -- they
+    are just unrecognized keys, silently ignored by Settings.from_env exactly
+    like any other unknown variable."""
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
@@ -285,8 +245,8 @@ def test_env_config_legacy_tool_exposure_vars_are_ignored_by_effective_settings(
 
     assert env_ok is True
     assert settings is not None
-    # Legacy var is ignored — board read falls back to its own current
-    # default (True), not the (now-inert) OPENPROJECT_TOOLS CSV value.
+    # Unrecognized var is ignored -- board read falls back to its own current
+    # default (True), not the (never-implemented) OPENPROJECT_TOOLS CSV value.
     assert settings.read_enabled("board") is True
 
 
@@ -300,9 +260,9 @@ def test_env_config_legacy_tool_exposure_vars_are_ignored_by_effective_settings(
 )
 def test_env_config_legacy_project_scope_vars_are_ignored_by_effective_settings(monkeypatch, legacy_var, attr):
     """Same guarantee as the tool-exposure case, for all three legacy project-scope
-    vars: each must be ignored by the effective Settings (fail-closed empty tuple),
-    not just warned about cosmetically. Without the WRITE case, the write-relevant
-    fail-closed path would stay unguarded by any test."""
+    vars: each must be ignored by the effective Settings (fail-closed empty tuple).
+    Without the WRITE case, the write-relevant fail-closed path would stay
+    unguarded by any test."""
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")

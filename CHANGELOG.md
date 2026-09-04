@@ -90,6 +90,15 @@ support.
   `search`, matching every other search-capable tool.
 - Breaking: `list_roles` now returns a paginated result instead of the
   complete role collection in one call.
+- Breaking: the legacy env-var names deprecated (warn-only) in 0.3.0 are
+  removed with no replacement handling — `OPENPROJECT_ALLOWED_PROJECTS`/
+  `_READ`/`_WRITE`, `OPENPROJECT_TOOLS`, `OPENPROJECT_ENABLE_METADATA_TOOLS`,
+  `OPENPROJECT_PERSONAL_WRITE`, and `OPENPROJECT_AUTO_CONFIRM_WRITE`/`_DELETE`
+  are now unrecognized env vars like any other: silently ignored, with no
+  startup/`doctor` warning and no wizard prefill from their values. Rename to
+  the current variable (`OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`,
+  the individual `OPENPROJECT_ENABLE_<GROUP>_READ` flags, `OPENPROJECT_ENABLE_
+  EXTENDED_READ`, `OPENPROJECT_ENABLE_PERSONAL_WRITE`) before upgrading.
 
 ### Fixed
 
