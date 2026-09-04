@@ -1,8 +1,8 @@
 {
-  // Scoped to docs/*.md only -- this project's other Markdown (README.md,
-  // CHANGELOG.md, openproject-ce-mcp-int/, etc.) is not covered by this
-  // config or by the cleanup pass that introduced it.
-  "globs": ["docs/*.md"],
+  // Scoped to docs/*.md and CHANGELOG.md -- this project's remaining
+  // Markdown (README.md, openproject-ce-mcp-int/, etc.) is not covered by
+  // this config or by the cleanup pass that introduced it.
+  "globs": ["docs/*.md", "CHANGELOG.md"],
 
   // MD013 (line-length) is unenforceable on GFM table rows -- a table cell
   // cannot wrap onto a second physical line without breaking the table
@@ -21,11 +21,23 @@
   // docs/architecture.md includes a hand-aligned ASCII directory-tree
   // diagram inside a ```text block; wrapping those lines at 80 chars would
   // destroy the alignment the diagram depends on.
+  //
+  // MD024's "siblings_only: true" allows the same heading text to repeat
+  // across different parent sections -- CHANGELOG.md follows the Keep a
+  // Changelog convention of a "### Added"/"### Fixed"/etc. heading under
+  // every "## [x.y.z]" version section; without siblings_only, every
+  // repeated section-name heading across ~40 version sections would flag as
+  // a duplicate, even though each is scoped to its own version and repeating
+  // the name is the whole point of the convention, not accidental
+  // duplication.
   "config": {
     "MD013": {
       "line_length": 80,
       "tables": false,
       "code_blocks": false
+    },
+    "MD024": {
+      "siblings_only": true
     },
     "MD033": {
       "allowed_elements": ["p", "img"]
