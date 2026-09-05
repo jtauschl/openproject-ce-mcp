@@ -65,6 +65,7 @@ If a check fails, doctor prints a `[FAIL]` message with details and suggestions.
 | Auth failure | Check that your API token is valid (regenerate it in OpenProject if needed). |
 | Cannot connect | Verify your base URL is correct and the OpenProject instance is reachable. |
 | No configs found | Run `openproject-ce-mcp configure` to register the server with your MCP clients — see [Installation](installation.md) and [Clients](clients.md). |
+| Codex CLI shows the server, IDE extension doesn't | A known upstream Codex bug: a server configured correctly in `.codex/config.toml`/`~/.codex/config.toml` is sometimes not detected by the IDE extension even though the CLI sees it fine (tracked upstream as Codex GitHub issue #6465). Reload the editor window or fully restart the IDE first; if the server still doesn't appear there while `codex mcp list` (CLI) shows it, this is the known extension-side detection gap, not a problem with this server's config — check the upstream issue for its current status. |
 
 Every MCP tool failure also carries a stable, machine-readable category as a
 leading `[category]` prefix on the error message — see the [error
