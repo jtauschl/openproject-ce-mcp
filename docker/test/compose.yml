@@ -313,6 +313,25 @@ services:
       retries: 40
       start_period: 120s
 
+  op-17-8:
+    image: openproject/openproject:17.8.0
+    ports:
+      - "8178:80"
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8178
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_DEFAULT__LANGUAGE: en
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set via up.sh / .env}
+    volumes:
+      - op178_pgdata:/var/openproject/pgdata
+      - op178_assets:/var/openproject/assets
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health_checks/default"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
   # Nextcloud fixture for the OPM-179 (storages/project_storages) read-tool
   # tests. SQLite-backed, one-container, non-interactive install via env vars
   # (confirmed against the image's own /entrypoint.sh). Only ever brought up
@@ -376,4 +395,6 @@ volumes:
   op176_assets:
   op177_pgdata:
   op177_assets:
+  op178_pgdata:
+  op178_assets:
   nextcloud_data:

@@ -4,7 +4,7 @@
 # print copy-paste env blocks for running the integration tests.
 #
 # Usage:
-#   docker/test/up.sh            # every minor 16.0-17.7 (15 versions), in
+#   docker/test/up.sh            # every minor 16.0-17.8 (16 versions), in
 #                                 # batches of 5 concurrent instances (see
 #                                 # "all" mode below)
 #   docker/test/up.sh all 3      # every minor, 3 concurrent instances per batch
@@ -23,16 +23,25 @@
 #   docker/test/up.sh 17         # only 17.5
 #   docker/test/up.sh 176        # only 17.6
 #   docker/test/up.sh 177        # only 17.7
-#   docker/test/up.sh 177nc      # 17.7 + the Nextcloud storage fixture
+#   docker/test/up.sh 178        # only 17.8
 #
-# "all" mode brings up instances in sequential BATCHES rather than all 15 at
-# once -- 15 concurrent all-in-one containers would exhaust a small Docker
-# VM's memory. Batch size defaults to 5 (the previous full set: 16.6 + 17.4 +
-# 17.5 + 17.6 + 17.7) and is overridable as a second argument
-# (`up.sh all <n>`); each batch is brought up, waited on, seeded, printed, and
-# torn down (volumes kept) before the next batch starts. Batch size 1
-# effectively means "one instance fully sequential" -- the safest, slowest
-# option on a very small VM.
+# The Nextcloud storage fixture is now seeded unconditionally alongside every
+# instance this script brings up -- every mode above (including "all" and its
+# batches) gets a `nextcloud` container and a seeded Storages::NextcloudStorage
+# row on every OpenProject instance. There is no separate "nc" suffix mode
+# any more (removed: 177nc/178nc are gone, since every mode now does what
+# they used to do) -- this costs one extra container's worth of boot time/RAM
+# per batch (Nextcloud is shared across every instance in a batch, not one
+# per instance), in exchange for the storages/project_storages read-tool
+# tests never needing to be skipped.
+#
+# "all" mode brings up instances in sequential BATCHES rather than all 16 at
+# once -- 16 concurrent all-in-one containers would exhaust a small Docker
+# VM's memory. Batch size defaults to 5 and is overridable as a second
+# argument (`up.sh all <n>`); each batch is brought up, waited on, seeded,
+# printed, and torn down (volumes kept) before the next batch starts. Batch
+# size 1 effectively means "one instance fully sequential" -- the safest,
+# slowest option on a very small VM.
 #
 # First boot takes several minutes per instance (migrations + asset
 # precompile). The script waits on each container's healthcheck, not a fixed
@@ -55,7 +64,7 @@ fi
 ALL_ENTRIES=(
     "op-16-0:0" "op-16-1:0" "op-16-2:0" "op-16-3:0" "op-16-4:0" "op-16-5:0" "op-16-6:0"
     "op-17-0:0" "op-17-1:0" "op-17-2:0" "op-17-3:0" "op-17-4:0"
-    "op-17-5:1" "op-17-6:1" "op-17-7:1"
+    "op-17-5:1" "op-17-6:1" "op-17-7:1" "op-17-8:1"
 )
 
 port_for() {
@@ -75,6 +84,7 @@ port_for() {
     op-17-5) echo 8175 ;;
     op-17-6) echo 8176 ;;
     op-17-7) echo 8177 ;;
+    op-17-8) echo 8178 ;;
     *)
         echo "unknown service: $1" >&2
         return 2
@@ -119,18 +129,14 @@ wait_nextcloud_healthy() {
 }
 
 # Seeds one already-healthy instance and prints its copy-paste env block.
+# Nextcloud is always seeded (see the top-of-file note) -- no on/off switch.
 seed_and_print() {
-    local svc="$1" semantic="$2" with_nextcloud="$3" port
+    local svc="$1" semantic="$2" port
     port="$(port_for "$svc")"
-    local seed_nextcloud=0
-    [ "$with_nextcloud" = "1" ] && [ "$svc" = "op-17-7" ] && seed_nextcloud=1
-    # File link seeding needs the Nextcloud storage fixture above to already
-    # have linked a Storage to this project -- same gate, no separate flag.
-    local seed_file_link="$seed_nextcloud"
-    echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=$seed_nextcloud, SEED_FILE_LINK=$seed_file_link)…"
+    echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=1, SEED_FILE_LINK=1)…"
     local seed_output
-    seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" -e SEED_NEXTCLOUD_STORAGE="$seed_nextcloud" \
-        -e SEED_FILE_LINK="$seed_file_link" "$svc" \
+    seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" -e SEED_NEXTCLOUD_STORAGE=1 \
+        -e SEED_FILE_LINK=1 "$svc" \
         bundle exec rails runner - <seed.rb)"
     echo "$seed_output"
     local token restricted_token
@@ -158,28 +164,25 @@ uv run pytest -m integration -v
 EOF
 }
 
-# Brings up, waits on, and seeds a fixed set of services (optionally with
-# Nextcloud alongside one of them) -- used both by single-version mode and by
-# each batch of "all" mode.
+# Brings up, waits on, and seeds a fixed set of services plus a shared
+# Nextcloud container -- used both by single-version mode and by each batch
+# of "all" mode.
 bring_up_batch() {
-    local with_nextcloud="$1"
-    shift
     local entries=("$@")
-    local services=()
+    local services=(nextcloud)
     for entry in "${entries[@]}"; do
         services+=("${entry%%:*}")
     done
-    [ "$with_nextcloud" = "1" ] && services+=(nextcloud)
 
     echo "Starting: ${services[*]} (first boot can take >5 min)…"
     docker compose up -d "${services[@]}"
 
-    [ "$with_nextcloud" = "1" ] && wait_nextcloud_healthy
+    wait_nextcloud_healthy
 
     for entry in "${entries[@]}"; do
         local svc="${entry%%:*}" semantic="${entry#*:}"
         wait_healthy "$svc"
-        seed_and_print "$svc" "$semantic" "$with_nextcloud"
+        seed_and_print "$svc" "$semantic"
     done
 }
 
@@ -200,7 +203,7 @@ if [ "$MODE" = "all" ] || [ -z "$MODE" ]; then
         batch=("${ALL_ENTRIES[@]:$i:$BATCH_SIZE}")
         echo
         echo "=== Batch starting at index $i: ${batch[*]%%:*} ==="
-        bring_up_batch 0 "${batch[@]}"
+        bring_up_batch "${batch[@]}"
         i=$((i + BATCH_SIZE))
         if [ "$i" -lt "$total" ]; then
             echo "Tearing down this batch before starting the next (volumes kept)…"
@@ -228,19 +231,14 @@ case "$MODE" in
 17 | 175) ENTRIES=("op-17-5:1") ;;
 176) ENTRIES=("op-17-6:1") ;;
 177) ENTRIES=("op-17-7:1") ;;
-177nc)
-    bring_up_batch 1 "op-17-7:1"
-    echo
-    echo "Done. Tear down with docker/test/down.sh (add --purge to drop volumes)."
-    exit 0
-    ;;
+178) ENTRIES=("op-17-8:1") ;;
 *)
-    echo "usage: up.sh [all [batch-size]|160|161|162|163|164|165|16|170|171|172|173|174|17|176|177|177nc]" >&2
+    echo "usage: up.sh [all [batch-size]|160|161|162|163|164|165|16|170|171|172|173|174|17|176|177|178]" >&2
     exit 2
     ;;
 esac
 
-bring_up_batch 0 "${ENTRIES[@]}"
+bring_up_batch "${ENTRIES[@]}"
 
 echo
 echo "Done. Tear down with docker/test/down.sh (add --purge to drop volumes)."
