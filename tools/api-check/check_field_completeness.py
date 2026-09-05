@@ -55,7 +55,7 @@ from typing import Any, NamedTuple
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT.parent / "op-sources"
 FIELD_COMPLETENESS_MD = Path(__file__).resolve().parent / "FIELD_COMPLETENESS.md"
-SOURCE_VERSION = "17.7"
+SOURCE_VERSION = "17.8"
 
 sys.path.insert(0, str(ROOT / "src"))
 from openproject_ce_mcp import models  # noqa: E402
