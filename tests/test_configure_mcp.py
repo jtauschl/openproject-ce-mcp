@@ -3273,3 +3273,151 @@ def test_minimal_env_orders_keys_canonically() -> None:
     assert present == list(_CANONICAL_SCOPE_KEY_ORDER)
     actual_scope_keys = [key for key in minimal if key in _CANONICAL_SCOPE_KEY_ORDER]
     assert actual_scope_keys == present
+
+
+# ── OPM-96: real _clients() end-to-end, not the mock Client fixtures above ──────
+
+
+@_needs_tomllib
+def test_configure_writes_valid_project_scoped_config_for_every_real_client(monkeypatch, tmp_path: Path) -> None:
+    """Drives the actual `_clients()` definitions (not the `_json_client`/
+    `_toml_client` mock fixtures every other test in this file uses) through a
+    real project-scoped `main()` run, then structurally validates every file
+    it writes against that client's real format (JSON or TOML) and the
+    top-level key/table this project's own docs promise for each client.
+
+    This is the "MCP client setup paths" item of OPM-96 (RC compatibility
+    matrix) -- every other test in this file proves the wizard's *logic*
+    against synthetic clients; this one proves the wizard's output is valid
+    for the five real, currently-documented, project-scoped-capable clients
+    all at once, in one real run, the way a user actually experiences it.
+    Claude Desktop is excluded: `project_target=None` in its real `_clients()`
+    entry (global-only, matching its own real-world config model), so it has
+    no project-scoped file to validate here.
+    """
+    real_clients = c._clients()
+    project_capable = [client for client in real_clients if client.project_target is not None]
+    # Fails loudly (not silently under-testing) if a future _clients() change
+    # removes project-scoped support from one of the five without anyone
+    # noticing here.
+    assert {client.key for client in project_capable} == {"claude-code", "codex", "vscode", "cursor"}
+
+    monkeypatch.setattr(c, "_check_python", lambda: None)
+    monkeypatch.setattr(c, "_installed_mode", lambda: True)
+    monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
+    monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code": "y",
+        "Configure Codex": "y",
+        "Configure VS Code": "y",
+        "Configure Cursor": "y",
+        "OpenProject base URL": "https://op.example.com",
+        "Readable projects": "OPM, TST",
+        "Enable write access?": "n",
+    }
+    book = _AnswerBook(answers)
+    monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, "opapi-real-client-check"))
+    monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-real-client-check")
+    c.main([], interactive=False)
+
+    # Claude Code: .mcp.json, {"mcpServers": {"openproject": {...}}}
+    mcp_json = json.loads((tmp_path / ".mcp.json").read_text())
+    openproject_entry = mcp_json["mcpServers"]["openproject"]
+    assert openproject_entry["env"]["OPENPROJECT_BASE_URL"] == "https://op.example.com"
+    assert openproject_entry["env"]["OPENPROJECT_API_TOKEN"] == "opapi-real-client-check"
+
+    # Codex: .codex/config.toml, [mcp_servers.openproject]
+    codex_toml = tomllib.loads((tmp_path / ".codex" / "config.toml").read_text())
+    codex_entry = codex_toml["mcp_servers"]["openproject"]
+    assert codex_entry["env"]["OPENPROJECT_BASE_URL"] == "https://op.example.com"
+
+    # VS Code: .vscode/mcp.json, {"servers": {"openproject": {...}}} (not
+    # "mcpServers" -- VS Code's own top-level key differs from every other
+    # client here, per this project's own root_key="servers" in _clients()).
+    vscode_json = json.loads((tmp_path / ".vscode" / "mcp.json").read_text())
+    vscode_entry = vscode_json["servers"]["openproject"]
+    assert vscode_entry["env"]["OPENPROJECT_BASE_URL"] == "https://op.example.com"
+
+    # Cursor: .cursor/mcp.json, {"mcpServers": {"openproject": {...}}}
+    cursor_json = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    cursor_entry = cursor_json["mcpServers"]["openproject"]
+    assert cursor_entry["env"]["OPENPROJECT_BASE_URL"] == "https://op.example.com"
+
+    # Every written env carries the same scope answer -- proves the same
+    # collected answers reached all four writers identically, not just that
+    # each file independently parses.
+    for entry in (openproject_entry, codex_entry, vscode_entry, cursor_entry):
+        assert entry["env"]["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
+
+
+def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tmp_path: Path) -> None:
+    """Companion to the project-scoped real-client test above: Claude Desktop
+    is `project_target=None` (global-only) in the real `_clients()` list, so
+    it is the one real client never exercised by that test. Drives the real
+    `_clients()` definition through a real global-only `main()` run, patching
+    `_home` -- the same safe, already-established hook every other
+    global-scope test in this file uses (see e.g.
+    test_main_global_only_writes_no_mcp_json) -- rather than touching the
+    real per-user Application Support directory.
+    """
+    # _home must be patched BEFORE _clients() is ever called: Client.target for
+    # claude-desktop is computed eagerly, once, from _claude_desktop_path() ->
+    # _platform_config_root() -> _home() at _clients()-construction time, not
+    # resolved lazily on access. Patching _home afterwards would leave the
+    # already-built claude_desktop.target pointing at the real, live
+    # ~/Library/Application Support/Claude/claude_desktop_config.json.
+    monkeypatch.setattr(c, "_home", lambda: tmp_path)
+    real_clients_probe = c._clients()
+    claude_desktop_probe = next(client for client in real_clients_probe if client.key == "claude-desktop")
+    assert claude_desktop_probe.project_target is None
+    assert (
+        claude_desktop_probe.target
+        == tmp_path / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    )
+
+    real_clients_factory = c._clients
+
+    def _clients_claude_desktop_only() -> list[c.Client]:
+        # _run_configure() calls c._clients() itself, fresh -- it does not
+        # reuse any list built here, so patching instances from a locally-held
+        # list would be silently ineffective. Wrapping the factory instead
+        # forces every OTHER real client undetected so only Claude Desktop is
+        # offered, isolating this test to the one client under test (this dev
+        # machine has Claude Code/Codex actually installed, so their real
+        # _detect() would otherwise also fire and the wizard would ask about
+        # them too).
+        built = real_clients_factory()
+        for client in built:
+            if client.key != "claude-desktop":
+                client._detect = lambda: False
+            else:
+                client._detect = lambda: True
+        return built
+
+    monkeypatch.setattr(c, "_clients", _clients_claude_desktop_only)
+    monkeypatch.setattr(c, "_check_python", lambda: None)
+    monkeypatch.setattr(c, "_installed_mode", lambda: True)
+    monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
+    monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
+    answers = {
+        "Configure globally": "y",
+        "Configure Claude Desktop app?": "y",
+        "OpenProject base URL": "https://op.example.com",
+        "Readable projects": "OPM, TST",
+        "Enable write access?": "n",
+    }
+    book = _AnswerBook(answers)
+    monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, "opapi-desktop-check"))
+    monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-desktop-check")
+    c.main([], interactive=False)
+
+    desktop_target = tmp_path / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    data = json.loads(desktop_target.read_text())
+    entry = data["mcpServers"]["openproject"]
+    assert entry["env"]["OPENPROJECT_BASE_URL"] == "https://op.example.com"
+    assert entry["env"]["OPENPROJECT_API_TOKEN"] == "opapi-desktop-check"
+    assert entry["env"]["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
