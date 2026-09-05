@@ -119,10 +119,15 @@ preferred for per-project permissions; for credentials specifically, the
   write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by
   default and do nothing until a project is listed here; set one to `false` to
   exclude that category instead
-- Cursor caps tool availability at **40 tools total across every MCP server
-  configured in Cursor**, not just this one — with everything enabled, this
-  server alone can use a meaningful share of that budget. If you hit the cap
-  (Cursor stops listing/calling some tools once the total is exceeded), use the
+- Cursor has historically capped tool availability at 40 tools total across
+  every MCP server configured in Cursor, not just this one — with everything
+  enabled, this server alone can use a meaningful share of that budget. Cursor
+  has since shipped [dynamic context
+  discovery](https://cursor.com/blog/dynamic-context-discovery) for MCP tools
+  (only tool names are loaded as static context; full definitions are looked
+  up on demand), which changes how this limit applies in practice — check
+  Cursor's own current docs/release notes for the exact behavior on your
+  version. Either way, if you run into a tool-count issue, use the
   `OPENPROJECT_ENABLE_*_READ`/`OPENPROJECT_ENABLE_*_WRITE` flags to disable the
   tool groups you don't need — see [Configuration](configuration.md#tool-groups)
   — rather than removing another MCP server you still want

@@ -3289,25 +3289,55 @@ def test_configure_writes_valid_project_scoped_config_for_every_real_client(monk
     This is the "MCP client setup paths" item of OPM-96 (RC compatibility
     matrix) -- every other test in this file proves the wizard's *logic*
     against synthetic clients; this one proves the wizard's output is valid
-    for the five real, currently-documented, project-scoped-capable clients
+    for the four real, currently-documented, project-scoped-capable clients
     all at once, in one real run, the way a user actually experiences it.
     Claude Desktop is excluded: `project_target=None` in its real `_clients()`
     entry (global-only, matching its own real-world config model), so it has
     no project-scoped file to validate here.
+
+    Both `.target` (e.g. ~/.codex/config.toml, ~/.claude.json) and
+    `.project_target` (e.g. cwd/.mcp.json) are live, real paths on the
+    machine running this test, and BOTH are computed eagerly, once, at
+    `_clients()`-construction time (`_home()` for the former,
+    `_project_cwd()` -- which reads $PWD -- for the latter) -- never
+    resolved lazily on access. `_home` and $PWD/cwd must therefore both be
+    patched BEFORE `_clients()` is ever called, not just before `main()`.
+    Getting this wrong doesn't just risk a harmless read: an earlier version
+    of this test patched $PWD/cwd only via `monkeypatch.chdir`/`setenv`
+    *after* already calling the real `_clients()` (to build the
+    `project_capable` assertion below) and then pinned `c._clients` to
+    return that already-built, stale-cwd list -- which made `main()`
+    genuinely overwrite this repo checkout's own real `.mcp.json`,
+    `.codex/config.toml`, `.vscode/mcp.json`, and `.cursor/mcp.json` on a
+    live run of this test (caught, and the checkout's working tree restored,
+    2026-09-05 -- see git history around that date for the incident). Every
+    real client's own detection is also forced deterministically True here,
+    so answers don't depend on what's actually installed on the host, and
+    the global gate's "n" branch doesn't fall into `_offer_removal` reading
+    real global configs the developer running the suite happens to have.
     """
+    monkeypatch.setattr(c, "_home", lambda: tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
     real_clients = c._clients()
+    for client in real_clients:
+        client._detect = lambda: True
     project_capable = [client for client in real_clients if client.project_target is not None]
     # Fails loudly (not silently under-testing) if a future _clients() change
     # removes project-scoped support from one of the five without anyone
     # noticing here.
     assert {client.key for client in project_capable} == {"claude-code", "codex", "vscode", "cursor"}
+    for client in project_capable:
+        assert client.project_target is not None
+        assert client.project_target.is_relative_to(tmp_path), (
+            f"{client.key}.project_target {client.project_target} escaped tmp_path -- would write into a real directory"
+        )
 
+    monkeypatch.setattr(c, "_clients", lambda: real_clients)
     monkeypatch.setattr(c, "_check_python", lambda: None)
     monkeypatch.setattr(c, "_installed_mode", lambda: True)
     monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
     monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("PWD", str(tmp_path))
     answers = {
         "Configure globally": "n",
         "Configure project-scoped": "y",
@@ -3323,6 +3353,7 @@ def test_configure_writes_valid_project_scoped_config_for_every_real_client(monk
     monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, "opapi-real-client-check"))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-real-client-check")
     c.main([], interactive=False)
+    book.assert_consumed()
 
     # Claude Code: .mcp.json, {"mcpServers": {"openproject": {...}}}
     mcp_json = json.loads((tmp_path / ".mcp.json").read_text())
@@ -3370,7 +3401,17 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
     # resolved lazily on access. Patching _home afterwards would leave the
     # already-built claude_desktop.target pointing at the real, live
     # ~/Library/Application Support/Claude/claude_desktop_config.json.
+    # Also pin cwd/$PWD to tmp_path, defense-in-depth: every OTHER real
+    # client's project_target (claude-code, codex, vscode, cursor) is still
+    # eagerly computed from the real launch directory unless this is patched
+    # too, and only this test's own control-flow reasoning (global-only
+    # answers never reach a project-scoped write) keeps that from mattering
+    # -- reasoning that already broke once for the project-scoped test above
+    # (see its docstring). Pinning cwd/$PWD here removes the need to trust
+    # that reasoning at all.
     monkeypatch.setattr(c, "_home", lambda: tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
     real_clients_probe = c._clients()
     claude_desktop_probe = next(client for client in real_clients_probe if client.key == "claude-desktop")
     assert claude_desktop_probe.project_target is None
@@ -3378,6 +3419,11 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
         claude_desktop_probe.target
         == tmp_path / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
     )
+    for client in real_clients_probe:
+        if client.project_target is not None:
+            assert client.project_target.is_relative_to(tmp_path), (
+                f"{client.key}.project_target {client.project_target} escaped tmp_path"
+            )
 
     real_clients_factory = c._clients
 
@@ -3414,6 +3460,7 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
     monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, "opapi-desktop-check"))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-desktop-check")
     c.main([], interactive=False)
+    book.assert_consumed()
 
     desktop_target = tmp_path / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
     data = json.loads(desktop_target.read_text())

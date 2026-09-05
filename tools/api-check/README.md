@@ -127,7 +127,7 @@ renders as camelCase JSON (`lockVersion`).
 
 Checks six resources (work_package, user, category, project, version,
 membership) against a single pinned source version (`SOURCE_VERSION`,
-currently 17.7). Each field a CE representer declares is classified:
+currently 17.8). Each field a CE representer declares is classified:
 
 - **COVERED** — modeled on the resource's `Summary`/`Detail` dataclass(es) in
   `models.py`.
