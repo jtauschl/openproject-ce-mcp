@@ -74,9 +74,7 @@ async def test_create_list_update_delete_user_non_working_time(
     end_date = range_end.isoformat()
 
     create_result = await skip_if_unsupported(
-        lambda: client.user_non_working_time.create(
-            _USER_REF, start_date=start_date, end_date=end_date, confirm=True
-        )
+        lambda: client.user_non_working_time.create(_USER_REF, start_date=start_date, end_date=end_date, confirm=True)
     )
     assert create_result.ready and create_result.state == "confirmed", create_result.validation_errors
     non_working_time_id = create_result.non_working_time_id
