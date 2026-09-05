@@ -4,27 +4,35 @@ Spin up real OpenProject Community Edition instances locally to verify the MCP
 client's runtime behaviour across identifier modes — the behaviour the offline
 `tools/api-check/` symbol check cannot prove.
 
-We run the latest patch of each minor where the API changed in a way that
-matters to this client (all-in-one images, each bundles PostgreSQL + memcached):
+We run every supported minor's latest patch (all-in-one images, each bundles
+PostgreSQL + memcached) — 16.0 through 17.8 as of this pin (16 versions total).
+The version-specific API behavior that actually matters to this client:
 
-| service    | version | port | why this version |
-|------------|---------|------|------------------|
-| `op-16-6`  | 16.6.10 | 8166 | classic baseline (no displayId, no semantic) |
-| `op-17-4`  | 17.4.1  | 8174 | displayId field introduced |
-| `op-17-5`  | 17.5.1  | 8175 | semantic identifiers active + workspaces (favorites) |
-| `op-17-6`  | 17.6.0  | 8176 | same semantic-identifier generation as 17.5 (no client-relevant API change; kept for currency) |
-| `op-17-7`  | 17.7.2  | 8177 | latest release as of this pin; same semantic-identifier generation as 17.5/17.6 |
+| minor range | why it matters |
+|-------------|-----------------|
+| 16.0–16.5   | classic baseline (no displayId, no semantic); several domains (emoji reactions, reminders, project phase definitions) don't exist as routes at all until 16.1; documents PATCH doesn't exist until 16.6; the `entity` HAL link key (time/cost entries) doesn't exist until 16.6, only `workPackage` does (OPM-466) |
+| 16.6        | classic baseline with documents PATCH and the `entity` link key now present |
+| 17.0–17.3   | workspaces (17.0); storages' `forbiddenFileNameCharacters` field (17.1); sprints/meetings/user-schedule domains (17.3) |
+| 17.4        | displayId field introduced, semantic identifiers still off |
+| 17.5–17.8   | project-based semantic identifiers active + workspaces (favorites); 17.7 makes user working-times generally available (no longer feature-flag-gated); 17.8 is the latest release as of this pin |
+
+Exact per-minor patch pins live in `compose.yml` and `tools/api-check/fetch-sources.sh`'s
+`VERSIONS` array — check those directly rather than trusting a copy of the pin
+list here, since they're the actual source of truth and this table would drift.
 
 ## Usage
 
 ```bash
-docker/test/up.sh           # all versions; waits until healthy, seeds, prints env
-docker/test/up.sh 17        # only 17.5.1
-docker/test/up.sh 174       # only 17.4.1
-docker/test/up.sh 16        # only 16.6.10
-docker/test/up.sh 176       # only 17.6.0
-docker/test/up.sh 177       # only 17.7.2
-docker/test/up.sh 177nc     # 17.7.2 + the Nextcloud storage fixture (see below)
+docker/test/up.sh           # every version (16.0-17.8), in batches of 5
+docker/test/up.sh all 3     # every version, 3 concurrent instances per batch
+docker/test/up.sh 17        # only 17.5.x
+docker/test/up.sh 174       # only 17.4.x
+docker/test/up.sh 16        # only 16.6.x
+docker/test/up.sh 176       # only 17.6.x
+docker/test/up.sh 177       # only 17.7.x
+docker/test/up.sh 178       # only 17.8.x
+# ... and 160-165/170-173 for every other pinned minor -- see up.sh's own
+# usage comment for the full list.
 
 # up.sh prints a ready-to-run block per instance, e.g.:
 OPENPROJECT_BASE_URL=http://localhost:8175 \
@@ -36,13 +44,23 @@ docker/test/down.sh         # stop, keep volumes (fast re-up)
 docker/test/down.sh --purge # also drop volumes
 ```
 
-## Nextcloud storage fixture (`up.sh 177nc`)
+"all" mode brings instances up in sequential BATCHES (default 5 concurrent),
+not all 16 at once — that would exhaust a small Docker VM's memory. Each batch
+is brought up, waited on, seeded, printed, and torn down (volumes kept)
+before the next starts.
 
-For the `storages`/`project_storages` MCP tools (OPM-179), `up.sh 177nc` also
-brings up a `nextcloud` service (plain `nextcloud:30-apache` image, SQLite
-backend, non-interactive install via `NEXTCLOUD_ADMIN_USER`/
-`NEXTCLOUD_ADMIN_PASSWORD` env vars — the password is generated once into the
-same gitignored `.env` as `SECRET_KEY_BASE`) alongside `op-17-7`.
+## Nextcloud storage fixture (seeded on every instance)
+
+For the `storages`/`project_storages` MCP tools (OPM-179), every `up.sh`
+invocation — single-version and every "all" batch — also brings up a
+`nextcloud` service (plain `nextcloud:30-apache` image, SQLite backend,
+non-interactive install via `NEXTCLOUD_ADMIN_USER`/`NEXTCLOUD_ADMIN_PASSWORD`
+env vars — the password is generated once into the same gitignored `.env` as
+`SECRET_KEY_BASE`), shared across every OpenProject instance in that batch.
+This used to be an opt-in `nc` suffix mode (`177nc`) available only for 17.7;
+it's unconditional now, closing a real gap where the storages/project_storages
+read-tool tests silently skipped on every other version even though nothing
+about them was actually 17.7-specific.
 
 `seed.rb` then creates a `Storages::NextcloudStorage` row (host
 `http://nextcloud/`, reachable via Compose's default service-name DNS) and a
