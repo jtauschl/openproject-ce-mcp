@@ -597,7 +597,14 @@ class ProjectAdminService:
         # Fail closed: a parent-project candidate outside READ_PROJECTS must not
         # leak its name/identifier through this picklist just because it's a
         # valid parent target.
-        available_parent_projects = [ref for ref in parent_candidates if _parent_ref_allowed(ref)]
+        # Mask each candidate the same way ProjectSummary.name/identifier are
+        # masked -- _stamp_project applies generically to any dataclass via
+        # apply_hidden_fields("project", ...), so calling it on ProjectRef too
+        # keeps OPENPROJECT_HIDE_PROJECT_FIELDS=name/identifier honored here,
+        # not just on get_project/list_projects.
+        available_parent_projects = [
+            _stamp_project(ref, settings=self._settings) for ref in parent_candidates if _parent_ref_allowed(ref)
+        ]
         # Non-writable/internal schema entries (id, timestamps, lockVersion, ...)
         # aren't useful to an agent discovering what it can set here.
         writable_fields = [field for field in fields if field.writable]

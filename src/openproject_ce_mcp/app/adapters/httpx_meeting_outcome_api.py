@@ -24,6 +24,7 @@ from ...models import MeetingOutcomeSummary
 from ..ports.meeting_outcome_api import MeetingOutcomeRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
@@ -44,7 +45,7 @@ def normalize_meeting_outcome(payload: dict[str, Any], *, text_limit: int | None
     return MeetingOutcomeSummary(
         id=int(payload["id"]),
         kind=_trim_text(payload.get("kind"), limit=SUBJECT_LIMIT),
-        notes=notes,
+        notes=_delimit_user_content(notes),
         notes_truncated=notes_truncated,
         notes_length=notes_length,
         author=_link_title(author_link),

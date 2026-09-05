@@ -769,6 +769,22 @@ async def test_list_all_omits_total_hours_by_default() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_all_total_hours_is_none_when_hours_hidden() -> None:
+    # Mirrors test_list_for_work_package_total_size_is_none_when_file_size_hidden
+    # in test_app_attachment_service.py: a hidden field must not leak
+    # indirectly through an aggregate even though every per-row `hours` is
+    # correctly masked by _stamp.
+    api = _FakeTimeEntryApi(records=[_summary(7, hours="PT2H")])
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), hidden_fields={"time_entry": ("hours",)})
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(include_total_hours=True)
+
+    assert result.total_hours is None
+    assert result.total_hours_truncated is False
+
+
+@pytest.mark.asyncio
 async def test_list_all_sums_hours_across_every_page_when_requested() -> None:
     records = [_summary(i, hours=h) for i, h in enumerate(["PT2H", "PT30M", "PT1H15M"])]
     api = _PaginatingFakeTimeEntryApi(records)

@@ -334,7 +334,15 @@ class TimeEntryService:
         _TOTAL_HOURS_MAX_PAGES: if the walk is cut off before the collection
         is exhausted, total_hours_truncated=True signals the sum is a
         partial one rather than silently under-reporting it as complete.
+
+        Returns (None, False) if `hours` is hidden via
+        OPENPROJECT_HIDE_TIME_ENTRY_FIELDS, matching how
+        _sum_attachment_sizes treats a hidden file_size_bytes -- otherwise
+        total_hours would leak the true summed duration even though every
+        per-row `hours` field is already correctly masked by _stamp.
         """
+        if hidden_fields.field_hidden("time_entry", "hours", settings=self._settings):
+            return None, False
         total_seconds = 0.0
         walk_offset = 1
         page_size = self._settings.max_page_size

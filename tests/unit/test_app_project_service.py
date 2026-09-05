@@ -20,6 +20,7 @@ from openproject_ce_mcp.app.ports.project_api import (
 from openproject_ce_mcp.app.resolvers.project_resolver import ProjectResolver
 from openproject_ce_mcp.app.services.project_service import ProjectAdminService, ProjectService
 from openproject_ce_mcp.models import ProjectDetail, ProjectPhase, ProjectSummary
+from openproject_ce_mcp.presentation import _to_payload
 
 BASE_URL = "https://op.example.com"
 
@@ -397,6 +398,27 @@ async def test_get_admin_context_filters_parent_projects_by_read_allowlist() -> 
     context = await service.get_admin_context("demo")
 
     assert [ref.identifier for ref in context.available_parent_projects] == ["root"]
+
+
+@pytest.mark.asyncio
+async def test_get_admin_context_masks_hidden_fields_on_parent_project_candidates() -> None:
+    """Regression: OPENPROJECT_HIDE_PROJECT_FIELDS must apply to each
+    available_parent_projects candidate the same way it applies to
+    get_project/list_projects -- this picklist must not be a side channel
+    that bypasses field-level masking just because it returns ProjectRef
+    instead of ProjectSummary. The allowlist filter (previous test) and
+    field-level masking (this test) are independent controls."""
+    api = _FakeProjectApi()
+    api.parent_projects = [ProjectRef(id=1, identifier="root", name="Root")]
+    settings = dataclasses.replace(make_settings(), hidden_fields={"project": ("name",)})
+    service = _admin_service(api, settings=settings)
+
+    context = await service.get_admin_context("demo")
+
+    assert len(context.available_parent_projects) == 1
+    payload = _to_payload(context.available_parent_projects[0])
+    assert "name" not in payload
+    assert payload["identifier"] == "root"
 
 
 @pytest.mark.asyncio

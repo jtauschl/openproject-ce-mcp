@@ -30,6 +30,7 @@ from ...models import MeetingAgendaItemSummary
 from ..ports.meeting_agenda_item_api import MeetingAgendaItemRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
@@ -55,7 +56,7 @@ def normalize_meeting_agenda_item(payload: dict[str, Any], *, text_limit: int | 
     return MeetingAgendaItemSummary(
         id=int(payload["id"]),
         title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT),
-        notes=notes,
+        notes=_delimit_user_content(notes),
         notes_truncated=notes_truncated,
         notes_length=notes_length,
         position=payload.get("position"),

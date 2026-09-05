@@ -1716,6 +1716,32 @@ async def test_bulk_create_partial_failure_is_isolated_per_item() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bulk_create_sanitizes_error_message_for_unexpected_exception(monkeypatch) -> None:
+    """Regression: bulk_create's per-item except Exception is deliberately
+    broad (isolating one item's failure must not abort the rest, unlike
+    get_batch's asyncio.gather-based fetch_one) -- but an exception outside
+    the typed OpenProjectError hierarchy is a real internal bug, and its raw
+    str() must not reach the caller verbatim (it could carry an internal
+    detail an OpenProjectError's own sanitized message never would)."""
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    async def _raise_unexpected(*args, **kwargs):
+        raise KeyError("some/internal/path/detail")
+
+    monkeypatch.setattr(service, "create", _raise_unexpected)
+
+    result = await service.bulk_create(
+        items=[{"project": "demo", "type": "Task", "subject": "Anything"}],
+        confirm=False,
+    )
+
+    assert result.items[0].success is False
+    assert "some/internal/path/detail" not in result.items[0].error
+    assert result.items[0].error == "Internal error creating this item."
+
+
+@pytest.mark.asyncio
 async def test_bulk_create_shares_resolution_context_across_items_in_same_project() -> None:
     api = _FakeWorkPackageApi()
     project_resolve_calls = 0
@@ -2152,6 +2178,28 @@ async def test_bulk_update_partial_failure_is_isolated_per_item() -> None:
     assert result.total == 2
     assert result.succeeded == 1
     assert result.failed == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_sanitizes_error_message_for_unexpected_exception(monkeypatch) -> None:
+    """Regression: see test_bulk_create_sanitizes_error_message_for_unexpected_exception
+    -- same fix, same rationale, applied to bulk_update's own item loop."""
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    async def _raise_unexpected(*args, **kwargs):
+        raise KeyError("some/internal/path/detail")
+
+    monkeypatch.setattr(service, "update", _raise_unexpected)
+
+    result = await service.bulk_update(
+        items=[{"work_package_id": 6, "subject": "Anything"}],
+        confirm=False,
+    )
+
+    assert result.items[0].success is False
+    assert "some/internal/path/detail" not in result.items[0].error
+    assert result.items[0].error == "Internal error updating this item."
 
 
 # ----------------------------------------------------------------------

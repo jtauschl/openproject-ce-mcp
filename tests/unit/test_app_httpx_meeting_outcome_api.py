@@ -43,7 +43,7 @@ def test_normalize_meeting_outcome_extracts_all_fields() -> None:
     summary = normalize_meeting_outcome(_outcome_payload(), text_limit=None)
     assert summary.id == 31
     assert summary.kind == "info"
-    assert summary.notes == "Follow up next week"
+    assert summary.notes == "<user-content>Follow up next week</user-content>"
     assert summary.notes_truncated is False
     assert summary.author == "Alice"
     assert summary.work_package_id == 99

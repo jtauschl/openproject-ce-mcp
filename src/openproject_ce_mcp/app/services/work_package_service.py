@@ -1812,7 +1812,21 @@ class WorkPackageService:
                     )
                     item_results.append(_bulk_item_result(index=i, result=result))
                 except Exception as exc:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+                    # Broad on purpose: unlike fetch_one's asyncio.gather
+                    # (where one item's failure would abort ALL items), this
+                    # is a sequential loop and every item's own failure must
+                    # stay isolated, expected exception type or not -- so the
+                    # catch itself can't be narrowed to OpenProjectError
+                    # without regressing that isolation. What CAN be
+                    # narrowed is which exceptions' raw str() is safe to
+                    # return to the caller: only the typed OpenProjectError
+                    # hierarchy is guaranteed to carry a sanitized message
+                    # (see app/transport/errors.py) -- an unexpected
+                    # exception type (a real internal bug) could otherwise
+                    # leak an internal detail through this per-item error
+                    # field.
+                    message = str(exc) if isinstance(exc, OpenProjectError) else "Internal error creating this item."
+                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=message, result=None))
         except asyncio.CancelledError:
             _log_bulk_cancellation(
                 "bulk_create_work_packages", confirm=confirm, total=len(items), item_results=item_results
@@ -2064,7 +2078,21 @@ class WorkPackageService:
                     )
                     item_results.append(_bulk_item_result(index=i, result=result))
                 except Exception as exc:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+                    # Broad on purpose: unlike fetch_one's asyncio.gather
+                    # (where one item's failure would abort ALL items), this
+                    # is a sequential loop and every item's own failure must
+                    # stay isolated, expected exception type or not -- so the
+                    # catch itself can't be narrowed to OpenProjectError
+                    # without regressing that isolation. What CAN be
+                    # narrowed is which exceptions' raw str() is safe to
+                    # return to the caller: only the typed OpenProjectError
+                    # hierarchy is guaranteed to carry a sanitized message
+                    # (see app/transport/errors.py) -- an unexpected
+                    # exception type (a real internal bug) could otherwise
+                    # leak an internal detail through this per-item error
+                    # field.
+                    message = str(exc) if isinstance(exc, OpenProjectError) else "Internal error updating this item."
+                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=message, result=None))
         except asyncio.CancelledError:
             _log_bulk_cancellation(
                 "bulk_update_work_packages", confirm=confirm, total=len(items), item_results=item_results

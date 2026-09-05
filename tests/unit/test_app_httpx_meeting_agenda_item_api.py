@@ -46,7 +46,7 @@ def test_normalize_meeting_agenda_item_extracts_all_fields() -> None:
     summary = normalize_meeting_agenda_item(_agenda_item_payload(), text_limit=None)
     assert summary.id == 21
     assert summary.title == "Discuss roadmap"
-    assert summary.notes == "Some notes"
+    assert summary.notes == "<user-content>Some notes</user-content>"
     assert summary.notes_truncated is False
     assert summary.position == 1
     assert summary.duration_in_minutes == 10
