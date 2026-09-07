@@ -10,7 +10,7 @@ The version-specific API behavior that actually matters to this client:
 
 | minor range | why it matters |
 |-------------|-----------------|
-| 16.0–16.5   | classic baseline (no displayId, no semantic); several domains (emoji reactions, reminders, project phase definitions) don't exist as routes at all until 16.1; documents PATCH doesn't exist until 16.6; the `entity` HAL link key (time/cost entries) doesn't exist until 16.6, only `workPackage` does (OPM-466) |
+| 16.0–16.5   | classic baseline (no displayId, no semantic); emoji reactions and project phase definitions don't exist as routes at all until 16.1 (reminders exist since 16.0); documents PATCH doesn't exist until 16.6; the `entity` HAL link key (time/cost entries) doesn't exist until 16.6, only `workPackage` does (OPM-466) |
 | 16.6        | classic baseline with documents PATCH and the `entity` link key now present |
 | 17.0–17.3   | workspaces (17.0); storages' `forbiddenFileNameCharacters` field (17.1); sprints/meetings/user-schedule domains (17.3) |
 | 17.4        | displayId field introduced, semantic identifiers still off |

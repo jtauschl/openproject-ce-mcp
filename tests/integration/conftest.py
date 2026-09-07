@@ -94,10 +94,10 @@ def _resolve_test_project() -> str:
 async def skip_if_unsupported(probe_call):
     """Await `probe_call()`; skip the test if it raises NotFoundError.
 
-    Some domains (emoji reactions, reminders, project phases: all added in
-    16.1) don't exist as routes at all on older supported servers -- a 404
-    there means "not on this version," not a real failure. Returns the
-    probe's result so callers can reuse it instead of a second real call.
+    Some domains (emoji reactions, project phases: added in 16.1) don't
+    exist as routes at all on older supported servers -- a 404 there means
+    "not on this version," not a real failure. Returns the probe's result
+    so callers can reuse it instead of a second real call.
     """
     try:
         return await probe_call()

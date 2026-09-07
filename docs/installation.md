@@ -14,8 +14,13 @@ every environment variable it can set, see [Configuration](configuration.md).
 | | |
 | --- | --- |
 | Python | 3.10 or later |
-| OpenProject | Community Edition 16.1 or later (source-audited through 17.8, runtime-smoke-tested through 17.8), API v3 accessible |
+| OpenProject | Community Edition 16.0 or later (source-audited through 17.8, runtime-smoke-tested through 17.8), API v3 accessible |
 | OS | macOS 12+, Linux, or Windows 10/11 |
+
+On OpenProject 16.0 specifically: emoji reactions and project phase
+definitions aren't available until 16.1, and documents PATCH plus the
+`entity` HAL link key (used by time/cost entries) aren't available until
+16.6. Every other tool works identically down to the 16.0 floor.
 
 ## Prepare your OpenProject instance
 
@@ -122,6 +127,37 @@ pip install --upgrade openproject-ce-mcp
 No config rewrite is usually needed after an update. Re-run `openproject-ce-mcp
 configure` only when you want to change client targets, project scope, write
 access, or advanced settings.
+
+## Rollback
+
+Pin to a specific earlier version, then restart your MCP client:
+
+```bash
+pipx install --force openproject-ce-mcp==X.Y.Z
+openproject-ce-mcp --version
+```
+
+If you installed with another tool:
+
+```bash
+uv tool install openproject-ce-mcp==X.Y.Z
+# or, inside the environment you installed it into:
+pip install openproject-ce-mcp==X.Y.Z
+```
+
+Before downgrading, check the [CHANGELOG](../CHANGELOG.md) between your
+current and target version for entries marked "Breaking" — 0.4.0, for
+example, merges several tool pairs into single boolean-flag tools, renames
+some output fields, and permanently removes legacy environment-variable
+names with no replacement handling. If the version you're downgrading past
+made a breaking config change, re-run `openproject-ce-mcp configure` (or
+manually diff your env vars against the target version's docs) rather than
+assuming your existing config still means the same thing.
+
+A package downgrade does not undo write operations already executed
+against OpenProject. Also note that only the latest release is supported —
+see [Security policy § Supported versions](../SECURITY.md#supported-versions) —
+so a pinned older version won't receive further fixes.
 
 ## Development / from source
 
