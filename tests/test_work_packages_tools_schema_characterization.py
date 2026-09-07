@@ -761,7 +761,7 @@ def test_create_work_package_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_work_package"]
     assert (
         tool.description
-        == "Prepare or create a work package.\n\nThe tool validates the payload first. Set confirm=true to write.\nassignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number to nest the new work package under a parent.\nestimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).\ndue_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the\nnext working day by OpenProject — compare the request and the returned `result.due_date` if\nthe exact calendar date matters. This server does not expose a way to opt out of that shift\n(OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\nIf you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in\nserver completion order, not call order — use bulk_create_work_packages instead when relative\nID/creation order across a batch matters.\n"
+        == "Prepare or create a work package.\n\nThe tool validates the payload first. Set confirm=true to write.\nassignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number to nest the new work package under a parent.\nestimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).\ntarget_versions accepts a list of version names/ids to assign multiple target versions at once\n(OpenProject's multi-version feature); omit it, or pass [], to create with no target version\nassigned. target_versions and version write the same underlying data and cannot be used together\nin one call.\ndue_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the\nnext working day by OpenProject — compare the request and the returned `result.due_date` if\nthe exact calendar date matters. This server does not expose a way to opt out of that shift\n(OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\nIf you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in\nserver completion order, not call order — use bulk_create_work_packages instead when relative\nID/creation order across a batch matters.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -801,6 +801,21 @@ def test_create_work_package_schema() -> None:
                 ],
                 "default": None,
                 "title": "Version",
+            },
+            "target_versions": {
+                "anyOf": [
+                    {
+                        "items": {
+                            "type": "string",
+                        },
+                        "type": "array",
+                    },
+                    {
+                        "type": "null",
+                    },
+                ],
+                "default": None,
+                "title": "Target Versions",
             },
             "project_phase": {
                 "anyOf": [
@@ -953,7 +968,11 @@ def test_create_work_package_schema() -> None:
                 "type": "boolean",
             },
         },
-        "required": ["project", "type", "subject"],
+        "required": [
+            "project",
+            "type",
+            "subject",
+        ],
         "title": "create_work_packageArguments",
         "type": "object",
         "additionalProperties": False,
@@ -965,6 +984,7 @@ def test_create_work_package_schema() -> None:
         "subject",
         "description",
         "version",
+        "target_versions",
         "project_phase",
         "assignee",
         "responsible",
@@ -985,7 +1005,7 @@ def test_update_work_package_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_work_package"]
     assert (
         tool.description
-        == "Prepare or update a work package.\n\nThe tool validates the patch first. Set confirm=true to write.\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\nassignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.\nestimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day); omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.\nSetting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you\ndon't supply them explicitly and OpenProject's schema reports those fields as writable (on instances\nusing status-based progress calculation, OpenProject already derives them itself and this is skipped).\nOn such an instance, explicitly passing percentage_done together with a closing status is rejected\nwith a hard validation error (percentageDone is not writable there) rather than silently ignored —\nomit percentage_done and let OpenProject derive it instead.\ndue_date's non-working-day shift and the confirm/preview contract work exactly as documented\non create_work_package.\n"
+        == "Prepare or update a work package.\n\nThe tool validates the patch first. Set confirm=true to write.\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\nassignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.\ntarget_versions accepts a list of version names/ids to assign multiple target versions at once\n(OpenProject's multi-version feature); pass [] to clear all. target_versions and version write\nthe same underlying data and cannot be used together in one call. If this work package already\nhas more than one target version, version alone is rejected — use target_versions instead.\nestimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day); omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.\nSetting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you\ndon't supply them explicitly and OpenProject's schema reports those fields as writable (on instances\nusing status-based progress calculation, OpenProject already derives them itself and this is skipped).\nOn such an instance, explicitly passing percentage_done together with a closing status is rejected\nwith a hard validation error (percentageDone is not writable there) rather than silently ignored —\nomit percentage_done and let OpenProject derive it instead.\ndue_date's non-working-day shift and the confirm/preview contract work exactly as documented\non create_work_package.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1048,6 +1068,21 @@ def test_update_work_package_schema() -> None:
                 ],
                 "default": None,
                 "title": "Version",
+            },
+            "target_versions": {
+                "anyOf": [
+                    {
+                        "items": {
+                            "type": "string",
+                        },
+                        "type": "array",
+                    },
+                    {
+                        "type": "null",
+                    },
+                ],
+                "default": None,
+                "title": "Target Versions",
             },
             "sprint": {
                 "anyOf": [
@@ -1236,7 +1271,9 @@ def test_update_work_package_schema() -> None:
                 "type": "boolean",
             },
         },
-        "required": ["work_package_id"],
+        "required": [
+            "work_package_id",
+        ],
         "title": "update_work_packageArguments",
         "type": "object",
         "additionalProperties": False,
@@ -1248,6 +1285,7 @@ def test_update_work_package_schema() -> None:
         "description",
         "type",
         "version",
+        "target_versions",
         "sprint",
         "project_phase",
         "status",
@@ -1271,7 +1309,7 @@ def test_bulk_create_work_packages_schema() -> None:
     tool = _tools(create_app(_make_settings()))["bulk_create_work_packages"]
     assert (
         tool.description
-        == "Create multiple work packages in one call.\n\nNew items have no identifier field to set (unlike `bulk_update_work_packages`'s\n`work_package_id`) — each result item is matched back to its input purely by `index`.\n\nEach item in `items` must contain `project`, `type`, and `subject`. Optional fields per item:\n`description`, `version`, `project_phase`, `assignee`, `responsible`, `priority`, `category`,\n`custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching\n`create_work_package`'s naming — do not specify both on the same item), `start_date`\n(YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`\n(ISO8601 duration strings, e.g. 'PT8H' or 'P1D'). An item containing any other key is\nrejected with an indexed validation error rather than silently dropping the unrecognized field.\ndue_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the\nnext working day by OpenProject — compare the request and the returned item's\n`result.result.due_date` if the exact calendar date matters. This server does not expose a\nway to opt out of that shift (OpenProject's own `ignoreNonWorkingDays` flag is not a write\nparameter here).\n\nWith confirm=false (default) all items are validated and a preview is returned.\nWith confirm=true all items are created. Failed items are reported in the result — the operation\ncontinues for remaining items regardless of individual failures. A rejected\nitem's validation is not a tool error; inspect each item's `success`,\n`error`, and nested `result` rather than the MCP error envelope.\n\nselect restricts each item's nested result to the given fields (e.g.\n[\"ready\", \"work_package_id\"]); an invalid name returns the allowed set. The\nindex/success/error fields on each item are always included regardless of\nselect, so you can still tell which items succeeded. For batches with many\nitems or long descriptions, set select proactively — an unconfirmed preview\nechoes each item's full proposed payload, and an unbounded batch can exceed\nthe tool-result size limit and get redirected to a file.\n\nA per-item timeout is reported as that item's failure and does not stop\nthe loop. If this call is cancelled outright (e.g. the host cancels the\nrequest), items already created beforehand remain on the server; items not\nyet attempted are not created. No result summary is returned in that case\n(the call ends via cancellation, not a normal return) — use\nlist_work_packages/get_work_package afterward to determine what was\nactually written. This operation is not atomic; OpenProject CE has no\nbatch/transaction endpoint.\n\nItems are processed strictly sequentially in list order, and each result's index reflects that order —\nuse this tool instead of parallel create_work_package/create_subtask calls whenever the relative order\nof a batch matters.\n"
+        == "Create multiple work packages in one call.\n\nNew items have no identifier field to set (unlike `bulk_update_work_packages`'s\n`work_package_id`) — each result item is matched back to its input purely by `index`.\n\nEach item in `items` must contain `project`, `type`, and `subject`. Optional fields per item:\n`description`, `version`, `target_versions` (a list of version names/ids for OpenProject's\nmulti-version feature; cannot be combined with `version` on the same item), `project_phase`,\n`assignee`, `responsible`, `priority`, `category`,\n`custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching\n`create_work_package`'s naming — do not specify both on the same item), `start_date`\n(YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`\n(ISO8601 duration strings, e.g. 'PT8H' or 'P1D'). An item containing any other key is\nrejected with an indexed validation error rather than silently dropping the unrecognized field.\ndue_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the\nnext working day by OpenProject — compare the request and the returned item's\n`result.result.due_date` if the exact calendar date matters. This server does not expose a\nway to opt out of that shift (OpenProject's own `ignoreNonWorkingDays` flag is not a write\nparameter here).\n\nWith confirm=false (default) all items are validated and a preview is returned.\nWith confirm=true all items are created. Failed items are reported in the result — the operation\ncontinues for remaining items regardless of individual failures. A rejected\nitem's validation is not a tool error; inspect each item's `success`,\n`error`, and nested `result` rather than the MCP error envelope.\n\nselect restricts each item's nested result to the given fields (e.g.\n[\"ready\", \"work_package_id\"]); an invalid name returns the allowed set. The\nindex/success/error fields on each item are always included regardless of\nselect, so you can still tell which items succeeded. For batches with many\nitems or long descriptions, set select proactively — an unconfirmed preview\nechoes each item's full proposed payload, and an unbounded batch can exceed\nthe tool-result size limit and get redirected to a file.\n\nA per-item timeout is reported as that item's failure and does not stop\nthe loop. If this call is cancelled outright (e.g. the host cancels the\nrequest), items already created beforehand remain on the server; items not\nyet attempted are not created. No result summary is returned in that case\n(the call ends via cancellation, not a normal return) — use\nlist_work_packages/get_work_package afterward to determine what was\nactually written. This operation is not atomic; OpenProject CE has no\nbatch/transaction endpoint.\n\nItems are processed strictly sequentially in list order, and each result's index reflects that order —\nuse this tool instead of parallel create_work_package/create_subtask calls whenever the relative order\nof a batch matters.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1318,7 +1356,7 @@ def test_bulk_update_work_packages_schema() -> None:
     tool = _tools(create_app(_make_settings()))["bulk_update_work_packages"]
     assert (
         tool.description
-        == "Update multiple work packages in one call.\n\nEach item's identifier field is `work_package_id`, not `id` — e.g.\n{\"work_package_id\": 952, \"status\": \"Closed\"}.\n\nEach item in `items` must contain `work_package_id`. At least one other field must be present per item.\nOptional fields per item: `subject`, `description`, `type`, `version`, `sprint` (Backlogs sprint\nname/id, requires the Backlogs module and OpenProject 17.3+), `project_phase`, `status`,\n`assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id` (or\n`parent`, an alias for the same field, matching `update_work_package`'s naming — do not specify\nboth on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,\n`remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear\none of these), `percentage_done` (integer 0-100). Pass 'none' to `version`, `sprint`,\n`project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to\nclear that field on the item, same as `update_work_package`. An item containing any other key is\nrejected with an indexed validation error rather than silently dropping the unrecognized field.\nSetting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H\nwhen that item doesn't supply them explicitly and OpenProject's schema reports those fields as\nwritable. On an instance using status-based progress calculation, explicitly passing\npercentage_done together with a closing status on the same item is rejected with a hard,\nindexed validation error (percentageDone is not writable there) rather than silently ignored —\nomit percentage_done on that item and let OpenProject derive it instead.\n\ndue_date's non-working-day shift, the confirm/preview contract, select's item-trimming\nbehavior, and cancellation/atomicity semantics all work exactly as documented on\nbulk_create_work_packages — only the affected result field differs\n(`result.result.due_date` here too).\n"
+        == "Update multiple work packages in one call.\n\nEach item's identifier field is `work_package_id`, not `id` — e.g.\n{\"work_package_id\": 952, \"status\": \"Closed\"}.\n\nEach item in `items` must contain `work_package_id`. At least one other field must be present per item.\nOptional fields per item: `subject`, `description`, `type`, `version`, `target_versions` (a list\nof version names/ids for OpenProject's multi-version feature; pass [] to clear all; cannot be\ncombined with `version` on the same item; rejected if the item's work package already has more\nthan one target version assigned), `sprint` (Backlogs sprint\nname/id, requires the Backlogs module and OpenProject 17.3+), `project_phase`, `status`,\n`assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id` (or\n`parent`, an alias for the same field, matching `update_work_package`'s naming — do not specify\nboth on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,\n`remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear\none of these), `percentage_done` (integer 0-100). Pass 'none' to `version`, `sprint`,\n`project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to\nclear that field on the item, same as `update_work_package`. An item containing any other key is\nrejected with an indexed validation error rather than silently dropping the unrecognized field.\nSetting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H\nwhen that item doesn't supply them explicitly and OpenProject's schema reports those fields as\nwritable. On an instance using status-based progress calculation, explicitly passing\npercentage_done together with a closing status on the same item is rejected with a hard,\nindexed validation error (percentageDone is not writable there) rather than silently ignored —\nomit percentage_done on that item and let OpenProject derive it instead.\n\ndue_date's non-working-day shift, the confirm/preview contract, select's item-trimming\nbehavior, and cancellation/atomicity semantics all work exactly as documented on\nbulk_create_work_packages — only the affected result field differs\n(`result.result.due_date` here too).\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1400,7 +1438,7 @@ def test_create_subtask_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_subtask"]
     assert (
         tool.description
-        == 'Prepare or create a subtask under an existing work package.\n\nThe tool validates the payload first. Set confirm=true to write.\nparent_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"),\nnot UI display number (e.g., 51) — the same value list_work_packages/\nget_work_package return as each row\'s `id` field (and as `parent_id`/\n`parent_display_id` on a child work package).\nConcurrent calls to this tool (or create_work_package) do not preserve call order in the resulting IDs;\nuse bulk_create_work_packages when order across several new items matters.\n'
+        == "Prepare or create a subtask under an existing work package.\n\nThe tool validates the payload first. Set confirm=true to write.\nparent_work_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"),\nnot UI display number (e.g., 51) — the same value list_work_packages/\nget_work_package return as each row's `id` field (and as `parent_id`/\n`parent_display_id` on a child work package).\nConcurrent calls to this tool (or create_work_package) do not preserve call order in the resulting IDs;\nuse bulk_create_work_packages when order across several new items matters.\ntarget_versions accepts a list of version names/ids to assign multiple target versions at once\n(OpenProject's multi-version feature). target_versions and version write the same underlying\ndata and cannot be used together in one call.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1447,6 +1485,21 @@ def test_create_subtask_schema() -> None:
                 ],
                 "default": None,
                 "title": "Version",
+            },
+            "target_versions": {
+                "anyOf": [
+                    {
+                        "items": {
+                            "type": "string",
+                        },
+                        "type": "array",
+                    },
+                    {
+                        "type": "null",
+                    },
+                ],
+                "default": None,
+                "title": "Target Versions",
             },
             "project_phase": {
                 "anyOf": [
@@ -1551,7 +1604,11 @@ def test_create_subtask_schema() -> None:
                 "type": "boolean",
             },
         },
-        "required": ["parent_work_package_id", "type", "subject"],
+        "required": [
+            "parent_work_package_id",
+            "type",
+            "subject",
+        ],
         "title": "create_subtaskArguments",
         "type": "object",
         "additionalProperties": False,
@@ -1563,6 +1620,7 @@ def test_create_subtask_schema() -> None:
         "subject",
         "description",
         "version",
+        "target_versions",
         "project_phase",
         "assignee",
         "responsible",

@@ -24,6 +24,29 @@
 #   docker/test/up.sh 176        # only 17.6
 #   docker/test/up.sh 177        # only 17.7
 #   docker/test/up.sh 178        # only 17.8
+#   SEED_MULTI_VERSIONS=1 docker/test/up.sh 178
+#                                 # only 17.8, with Setting::WorkPackageMultipleVersions
+#                                 # forced on (default: false when unset -- see
+#                                 # seed_and_print()'s own comment for why this
+#                                 # forcing exists rather than trusting the
+#                                 # image's own default). Only meaningful with
+#                                 # the "178" mode above -- SEED_MULTI_VERSIONS
+#                                 # is read from this script's own environment,
+#                                 # not per-ALL_ENTRIES-entry, so setting it
+#                                 # alongside "all"/other single-version modes
+#                                 # passes it to every seeded instance
+#                                 # regardless of version, not a targeted
+#                                 # per-version toggle. Harmless there: the
+#                                 # underlying Setting::WorkPackageMultipleVersions
+#                                 # module already exists on 17.7 too (not
+#                                 # 17.8-exclusive), but 17.7's own .active?
+#                                 # additionally requires an experimental
+#                                 # OpenProject::FeatureDecisions flag this
+#                                 # project doesn't enable -- seed.rb verifies
+#                                 # the setting actually took effect and skips
+#                                 # the multi-version fixture with a warning
+#                                 # if not, rather than seeding data the server
+#                                 # would reject.
 #
 # The Nextcloud storage fixture is now seeded unconditionally alongside every
 # instance this script brings up -- every mode above (including "all" and its
@@ -130,13 +153,22 @@ wait_nextcloud_healthy() {
 
 # Seeds one already-healthy instance and prints its copy-paste env block.
 # Nextcloud is always seeded (see the top-of-file note) -- no on/off switch.
+# SEED_MULTI_VERSIONS is read from up.sh's own environment (default 0, e.g.
+# `SEED_MULTI_VERSIONS=1 docker/test/up.sh 178`) -- OpenProject 17.8.0 ships
+# Setting::WorkPackageMultipleVersions with default: true (verified live,
+# 2026-09-07, against config/constants/settings/definition.rb in the actual
+# image), so seed.rb always forces the setting to a known state rather than
+# trusting the fresh-install default: false unless SEED_MULTI_VERSIONS=1,
+# true when it is. No separate dedicated container is needed for this --
+# both states are exercised on the same op-17-8 service/volume across
+# separate up.sh invocations.
 seed_and_print() {
-    local svc="$1" semantic="$2" port
+    local svc="$1" semantic="$2" port multi_versions="${SEED_MULTI_VERSIONS:-0}"
     port="$(port_for "$svc")"
-    echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=1, SEED_FILE_LINK=1)…"
+    echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=1, SEED_FILE_LINK=1, SEED_MULTI_VERSIONS=$multi_versions)…"
     local seed_output
     seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" -e SEED_NEXTCLOUD_STORAGE=1 \
-        -e SEED_FILE_LINK=1 "$svc" \
+        -e SEED_FILE_LINK=1 -e SEED_MULTI_VERSIONS="$multi_versions" "$svc" \
         bundle exec rails runner - <seed.rb)"
     echo "$seed_output"
     local token restricted_token

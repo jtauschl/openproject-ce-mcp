@@ -655,3 +655,85 @@ async def project_refs(client: OpenProjectClient):
             await unrestricted_client.project.delete(project_ref=project_ref, confirm=True)
         except Exception:
             pass
+
+
+def _set_multi_target_versions(*, enabled: bool) -> bool:
+    """Force Setting::WorkPackageMultipleVersions to a known state via a Rails
+    runner script (OpenProject's REST API has no endpoint for instance-wide
+    settings), then re-read Setting::WorkPackageMultipleVersions.active? and
+    return the value it actually reached. Requires OPENPROJECT_DOCKER_SERVICE;
+    callers must skip on that themselves first, matching every other
+    _run_rails_script caller in this file.
+
+    Setting.work_package_multiple_versions=true is not always sufficient on
+    its own: on OpenProject 17.7 (targetVersions/this setting are not
+    17.8-exclusive -- both already exist there), .active? additionally
+    requires an experimental OpenProject::FeatureDecisions flag this project
+    does not set, so the plain Setting write alone leaves .active? false --
+    verified directly against the pinned 17.7 sources
+    (Setting::WorkPackageMultipleVersions.active? there checks
+    `Setting.work_package_multiple_versions? &&
+    OpenProject::FeatureDecisions.work_package_multiple_versions_active?`).
+    17.8 drops that extra gate. Re-reading .active? rather than trusting the
+    write succeeded is what lets callers (multi_target_versions_enabled)
+    detect and skip cleanly on 17.7 instead of proceeding as if multi-version
+    writes were actually enabled. OpenProject 17.8.0 ships this setting with
+    default: true (verified live, 2026-09-07, against
+    config/constants/settings/definition.rb in the actual image) --
+    docker/test/seed.rb already forces it to a known state on every up.sh
+    run (see that script's own comment), but a test must not rely on
+    whichever state seed.rb happened to leave it in, since another test in
+    the same session may have changed it.
+    """
+    script = f"""
+        Setting.work_package_multiple_versions = {"true" if enabled else "false"}
+        puts "VALUE=#{{Setting::WorkPackageMultipleVersions.active?}}"
+    """
+    return _run_rails_script(script, result_key="VALUE") == "true"
+
+
+@pytest.fixture
+def multi_target_versions_enabled():
+    """Forces Setting::WorkPackageMultipleVersions on for the duration of the
+    test, restoring the prior value afterward. Requires
+    OPENPROJECT_DOCKER_SERVICE; skips cleanly if unset -- the same
+    requirement _run_rails_script itself has, checked here up front so the
+    skip reason names this fixture specifically. Also skips cleanly if the
+    setting could not actually be activated (e.g. OpenProject 17.7 without
+    its experimental FeatureDecisions flag -- see _set_multi_target_versions's
+    docstring) rather than letting the test proceed against a server that
+    will reject its multi-value write.
+    """
+    service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
+    if not service:
+        pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to toggle Setting::WorkPackageMultipleVersions)")
+    script = 'puts "VALUE=#{Setting.work_package_multiple_versions?}"'
+    previous = _run_rails_script(script, result_key="VALUE") == "true"
+    actual = _set_multi_target_versions(enabled=True)
+    if not actual:
+        _set_multi_target_versions(enabled=previous)
+        pytest.skip(
+            "Setting::WorkPackageMultipleVersions.active? stayed false after enabling the setting -- "
+            "on OpenProject 17.7 this also requires an experimental OpenProject::FeatureDecisions flag "
+            "this project does not set."
+        )
+    yield
+    _set_multi_target_versions(enabled=previous)
+
+
+@pytest.fixture
+def multi_target_versions_disabled():
+    """Forces Setting::WorkPackageMultipleVersions off for the duration of
+    the test, restoring the prior value afterward. See
+    multi_target_versions_enabled's docstring for the shared rationale.
+    Disabling never has the 17.7 FeatureDecisions caveat (the AND in
+    .active? means turning the plain Setting off always makes .active?
+    false), so there's nothing to verify or skip on here."""
+    service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
+    if not service:
+        pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to toggle Setting::WorkPackageMultipleVersions)")
+    script = 'puts "VALUE=#{Setting.work_package_multiple_versions?}"'
+    previous = _run_rails_script(script, result_key="VALUE") == "true"
+    _set_multi_target_versions(enabled=False)
+    yield
+    _set_multi_target_versions(enabled=previous)

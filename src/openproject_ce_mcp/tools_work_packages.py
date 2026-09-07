@@ -67,6 +67,7 @@ from .tools_validation import (
     _validate_optional_percentage_done,
     _validate_optional_project_ref,
     _validate_optional_query,
+    _validate_optional_target_versions,
     _validate_optional_text,
     _validate_optional_text_limit,
     _validate_optional_update_text,
@@ -530,6 +531,7 @@ def _validate_work_package_create_fields(
     *,
     description: str | None,
     version: str | None,
+    target_versions: list[str] | None,
     project_phase: str | None,
     assignee: str | None,
     responsible: str | None,
@@ -550,6 +552,9 @@ def _validate_work_package_create_fields(
     return {
         "description": _validate_optional_text(description, field_name=f"{field_prefix}description", max_length=10_000),
         "version": _validate_optional_query(version, field_name=f"{field_prefix}version", max_length=100),
+        "target_versions": _validate_optional_target_versions(
+            target_versions, field_name=f"{field_prefix}target_versions"
+        ),
         "project_phase": _validate_optional_query(
             project_phase, field_name=f"{field_prefix}project_phase", max_length=100
         ),
@@ -574,6 +579,7 @@ async def create_work_package(
     subject: str,
     description: str | None = None,
     version: str | None = None,
+    target_versions: list[str] | None = None,
     project_phase: str | None = None,
     assignee: str | None = None,
     responsible: str | None = None,
@@ -593,6 +599,10 @@ async def create_work_package(
     The tool validates the payload first. Set confirm=true to write.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number to nest the new work package under a parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).
+    target_versions accepts a list of version names/ids to assign multiple target versions at once
+    (OpenProject's multi-version feature); omit it, or pass [], to create with no target version
+    assigned. target_versions and version write the same underlying data and cannot be used together
+    in one call.
     due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
     next working day by OpenProject — compare the request and the returned `result.due_date` if
     the exact calendar date matters. This server does not expose a way to opt out of that shift
@@ -610,6 +620,7 @@ async def create_work_package(
     common = _validate_work_package_create_fields(
         description=description,
         version=version,
+        target_versions=target_versions,
         project_phase=project_phase,
         assignee=assignee,
         responsible=responsible,
@@ -630,6 +641,7 @@ async def create_work_package(
             subject=safe_subject,
             description=common["description"],
             version=common["version"],
+            target_versions=common["target_versions"],
             project_phase=common["project_phase"],
             assignee=common["assignee"],
             responsible=common["responsible"],
@@ -653,6 +665,7 @@ def _validate_work_package_update_fields(
     description: str | None,
     type: str | None,
     version: str | None,
+    target_versions: list[str] | None,
     sprint: str | None,
     project_phase: str | None,
     status: str | None,
@@ -683,6 +696,9 @@ def _validate_work_package_update_fields(
         ),
         "type": _validate_optional_query(type, field_name=f"{field_prefix}type", max_length=100),
         "version": _validate_optional_version(version, field_name=f"{field_prefix}version", sentinel=CLEAR_VERSION),
+        "target_versions": _validate_optional_target_versions(
+            target_versions, field_name=f"{field_prefix}target_versions"
+        ),
         "sprint": _clearable(
             sprint,
             lambda v: _validate_optional_query(v, field_name=f"{field_prefix}sprint", max_length=100),
@@ -737,6 +753,7 @@ async def update_work_package(
     description: str | None = None,
     type: str | None = None,
     version: str | None = None,
+    target_versions: list[str] | None = None,
     sprint: str | None = None,
     project_phase: str | None = None,
     status: str | None = None,
@@ -759,6 +776,10 @@ async def update_work_package(
     The tool validates the patch first. Set confirm=true to write.
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
+    target_versions accepts a list of version names/ids to assign multiple target versions at once
+    (OpenProject's multi-version feature); pass [] to clear all. target_versions and version write
+    the same underlying data and cannot be used together in one call. If this work package already
+    has more than one target version, version alone is rejected — use target_versions instead.
     estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day); omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.
     Setting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you
     don't supply them explicitly and OpenProject's schema reports those fields as writable (on instances
@@ -776,6 +797,7 @@ async def update_work_package(
         description=description,
         type=type,
         version=version,
+        target_versions=target_versions,
         sprint=sprint,
         project_phase=project_phase,
         status=status,
@@ -803,6 +825,7 @@ async def update_work_package(
             description=common["description"],
             type=common["type"],
             version=common["version"],
+            target_versions=common["target_versions"],
             sprint=common["sprint"],
             project_phase=common["project_phase"],
             status=common["status"],
@@ -841,6 +864,7 @@ _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
         "subject",
         "description",
         "version",
+        "target_versions",
         "project_phase",
         "assignee",
         "responsible",
@@ -871,7 +895,9 @@ async def bulk_create_work_packages(
     `work_package_id`) — each result item is matched back to its input purely by `index`.
 
     Each item in `items` must contain `project`, `type`, and `subject`. Optional fields per item:
-    `description`, `version`, `project_phase`, `assignee`, `responsible`, `priority`, `category`,
+    `description`, `version`, `target_versions` (a list of version names/ids for OpenProject's
+    multi-version feature; cannot be combined with `version` on the same item), `project_phase`,
+    `assignee`, `responsible`, `priority`, `category`,
     `custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching
     `create_work_package`'s naming — do not specify both on the same item), `start_date`
     (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
@@ -935,6 +961,7 @@ async def bulk_create_work_packages(
         common = _validate_work_package_create_fields(
             description=item.get("description"),
             version=item.get("version"),
+            target_versions=item.get("target_versions"),
             project_phase=item.get("project_phase"),
             assignee=item.get("assignee"),
             responsible=item.get("responsible"),
@@ -955,6 +982,7 @@ async def bulk_create_work_packages(
                 "subject": _validate_required_query(str(subject), field_name=f"items[{i}].subject", max_length=255),
                 "description": common["description"],
                 "version": common["version"],
+                "target_versions": common["target_versions"],
                 "project_phase": common["project_phase"],
                 "assignee": common["assignee"],
                 "responsible": common["responsible"],
@@ -979,6 +1007,7 @@ _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
         "description",
         "type",
         "version",
+        "target_versions",
         "sprint",
         "project_phase",
         "status",
@@ -1012,7 +1041,10 @@ async def bulk_update_work_packages(
     {"work_package_id": 952, "status": "Closed"}.
 
     Each item in `items` must contain `work_package_id`. At least one other field must be present per item.
-    Optional fields per item: `subject`, `description`, `type`, `version`, `sprint` (Backlogs sprint
+    Optional fields per item: `subject`, `description`, `type`, `version`, `target_versions` (a list
+    of version names/ids for OpenProject's multi-version feature; pass [] to clear all; cannot be
+    combined with `version` on the same item; rejected if the item's work package already has more
+    than one target version assigned), `sprint` (Backlogs sprint
     name/id, requires the Backlogs module and OpenProject 17.3+), `project_phase`, `status`,
     `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id` (or
     `parent`, an alias for the same field, matching `update_work_package`'s naming — do not specify
@@ -1055,6 +1087,7 @@ async def bulk_update_work_packages(
             description=item.get("description"),
             type=item.get("type"),
             version=item.get("version"),
+            target_versions=item.get("target_versions"),
             sprint=item.get("sprint"),
             project_phase=item.get("project_phase"),
             status=item.get("status"),
@@ -1084,6 +1117,7 @@ async def bulk_update_work_packages(
                 "description": common["description"],
                 "type": common["type"],
                 "version": common["version"],
+                "target_versions": common["target_versions"],
                 "sprint": common["sprint"],
                 "project_phase": common["project_phase"],
                 "status": common["status"],
@@ -1128,6 +1162,7 @@ async def create_subtask(
     subject: str,
     description: str | None = None,
     version: str | None = None,
+    target_versions: list[str] | None = None,
     project_phase: str | None = None,
     assignee: str | None = None,
     responsible: str | None = None,
@@ -1147,6 +1182,9 @@ async def create_subtask(
     `parent_display_id` on a child work package).
     Concurrent calls to this tool (or create_work_package) do not preserve call order in the resulting IDs;
     use bulk_create_work_packages when order across several new items matters.
+    target_versions accepts a list of version names/ids to assign multiple target versions at once
+    (OpenProject's multi-version feature). target_versions and version write the same underlying
+    data and cannot be used together in one call.
     """
     client = _client_from_context(ctx)
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
@@ -1155,6 +1193,7 @@ async def create_subtask(
     common = _validate_work_package_create_fields(
         description=description,
         version=version,
+        target_versions=target_versions,
         project_phase=project_phase,
         assignee=assignee,
         responsible=responsible,
@@ -1171,6 +1210,7 @@ async def create_subtask(
             subject=safe_subject,
             description=common["description"],
             version=common["version"],
+            target_versions=common["target_versions"],
             project_phase=common["project_phase"],
             assignee=common["assignee"],
             responsible=common["responsible"],

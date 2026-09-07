@@ -19,7 +19,31 @@ Clearing a field: on `update_work_package` and `update_project`, pass the string
 work-package `assignee`, `responsible`, `version`, `sprint`, `parent`,
 `category`, `project_phase`, and project `parent`. Omitting a field leaves it
 unchanged; `"none"` clears it. Required fields (type, status, subject, project)
-cannot be cleared.
+cannot be cleared. `target_versions` is the one exception to the `"none"`
+convention: it's a list, so it already disambiguates unchanged (omit it) from
+cleared (pass `[]`) without needing a sentinel string.
+
+`version`/`target_versions`: `target_versions` is the canonical field — a list
+of version names/ids, supporting OpenProject's multi-version assignment
+feature. `version` is a derived, backward-compatible single-value convenience:
+it mirrors the one assigned version when exactly one is assigned, and is `None`
+both when no version is assigned and when more than one is — this second case
+is a lossy collapse, not a distinguishable "no version" state, so check
+`target_versions` directly if that distinction matters. On write,
+`create_work_package`/`create_subtask`/`update_work_package` (and both bulk
+tools' per-item fields) accept `version` or `target_versions` but never both in
+the same call — they write the same underlying data. Writing more than one
+target version is only accepted by OpenProject when its
+`Setting::WorkPackageMultipleVersions` instance setting is active (an
+admin-controlled toggle; the request is rejected server-side otherwise,
+surfaced as a normal validation error). A fresh OpenProject 17.8 installation
+ships with this setting active by default — check the instance's own admin
+settings rather than assuming either state.
+`update_work_package`'s legacy `version` parameter (including clearing it via
+`"none"`) is rejected client-side against a work package that already has more
+than one target version — use `target_versions` explicitly instead, so a
+multi-version assignment is never silently collapsed to one or wiped by a call
+that only meant to touch the single-value field.
 
 All list tools are bounded and paginated. They return compact summaries — not
 raw OpenProject HAL payloads.

@@ -44,6 +44,12 @@ support.
 - `list_work_packages`/`search_work_packages`/`get_work_package`/
   `get_work_packages`/`list_my_open_work_packages` now expose custom field
   values.
+- `create_work_package`/`create_subtask`/`update_work_package` (and both
+  bulk tools' per-item fields) gain `target_versions`, OpenProject 17.7+'s
+  multi-value successor to `version` — cannot be combined with `version`
+  in the same call. Every work package result now also carries
+  `target_versions`; `version` stays as a derived single-value field,
+  `None` when more than one target version is assigned.
 - New tools: wiki-link CRUD (`list_work_package_wiki_links`,
   `create_work_package_wiki_link`, `delete_work_package_wiki_link`,
   OpenProject 17.6+); `execute_query`; external storage management

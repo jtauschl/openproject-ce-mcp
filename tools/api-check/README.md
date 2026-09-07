@@ -84,12 +84,12 @@ different refresh cases:
 ## Pinned versions
 
 `fetch-sources.sh` clones the latest patch of every minor release from 16.0 to
-17.7 (`VERSIONS` array), so the check runs as a **version matrix**: each symbol's
-presence is shown across all 15 columns, pinpointing exactly which release
+17.8 (`VERSIONS` array), so the check runs as a **version matrix**: each symbol's
+presence is shown across all 16 columns, pinpointing exactly which release
 introduced or dropped it. As of this writing:
 
 ```
-16.0  16.1  16.2  16.3  16.4  16.5  16.6  17.0  17.1  17.2  17.3  17.4  17.5  17.6  17.7
+16.0  16.1  16.2  16.3  16.4  16.5  16.6  17.0  17.1  17.2  17.3  17.4  17.5  17.6  17.7  17.8
 ```
 
 The matrix confirms that of every API symbol the client uses, only `displayId`

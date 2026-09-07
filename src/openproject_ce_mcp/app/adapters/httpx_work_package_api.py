@@ -123,6 +123,17 @@ def _link_title_with_meta(link: dict[str, Any]) -> tuple[str | None, bool]:
     return title, truncated
 
 
+def _link_titles(links: Any) -> list[str]:
+    """List of HAL link objects (e.g. `_links.targetVersions`) -> list of
+    non-null title strings, in order. No truncation cap -- target_versions
+    has no comparable unbounded-growth risk to custom_fields (a work
+    package realistically never has more than a handful of target
+    versions)."""
+    if not isinstance(links, list):
+        return []
+    return [title for item in links if isinstance(item, dict) and (title := _link_title(item)) is not None]
+
+
 def _is_custom_field_key(key: str) -> bool:
     """True for a raw `customField<N>` key -- and ONLY that shape.
 
@@ -395,6 +406,19 @@ def normalize_work_package_summary(payload: dict[str, Any], *, text_limit: int |
     start_date, due_date = _work_package_dates(payload)
     custom_fields, custom_fields_truncated = _extract_custom_fields(payload, links, text_limit=text_limit)
     custom_comments, custom_comments_truncated = _extract_custom_comments(payload)
+    target_version_links = links.get("targetVersions")
+    if isinstance(target_version_links, list):
+        target_versions = _link_titles(target_version_links)
+        version = target_versions[0] if len(target_versions) == 1 else None
+    else:
+        # Real fallback, not just defensive: targetVersions genuinely doesn't
+        # exist on this client's older supported servers (absent in the 17.2
+        # representer, present by 17.7). Keep target_versions consistent with
+        # the legacy value rather than reporting an empty list while version
+        # shows a real one.
+        legacy_version = _link_title(links.get("version"))
+        target_versions = [legacy_version] if legacy_version is not None else []
+        version = legacy_version
     return WorkPackageSummary(
         id=int(payload["id"]),
         display_id=payload.get("displayId"),
@@ -406,7 +430,8 @@ def normalize_work_package_summary(payload: dict[str, Any], *, text_limit: int |
         assignee=_link_title(links.get("assignee")),
         responsible=_link_title(links.get("responsible")),
         project=_link_title(links.get("project")),
-        version=_link_title(links.get("version")),
+        version=version,
+        target_versions=target_versions,
         sprint=_link_title(links.get("sprint")),
         start_date=start_date,
         due_date=due_date,
@@ -515,6 +540,7 @@ def normalize_work_package_detail(
         responsible=summary.responsible,
         project=summary.project,
         version=summary.version,
+        target_versions=summary.target_versions,
         sprint=summary.sprint,
         parent_id=summary.parent_id,
         parent_display_id=summary.parent_display_id,

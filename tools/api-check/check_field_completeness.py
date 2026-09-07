@@ -316,26 +316,6 @@ EXCLUSIONS: list[FieldExclusion] = [
         "(TimestampedRepresenter, property :attributes_by_timestamp, "
         "timestamps_active? gated).",
     ),
-    FieldExclusion(
-        "work_package",
-        "targetVersions",
-        ExclusionCategory.INTERNAL_OTHER,
-        "Upstream's intended successor to the single-version model (multi-version "
-        "assignment, associated_resources :target_versions); this client deliberately "
-        "keeps the compatible single-version model instead, and strips the form's "
-        "own echoed value from write payloads so it never collides with an "
-        "intentional version change (see _strip_unrequested_target_versions). "
-        "Known limitation, not a harmless echo: Setting::WorkPackageMultipleVersions "
-        "(app/models/setting/work_package_multiple_versions.rb) gates this feature "
-        "behind an ordinary Setting plus an experimental FeatureDecisions flag -- "
-        "not an Enterprise token -- so it is available, if off by default, on this "
-        "CE-only server too. If ever active, a write through the single `version` "
-        "field can collapse an existing multi-version assignment down to that one "
-        "version, since upstream syncs a version_id change back into "
-        "target_versions and this client never reads or preserves the pre-write "
-        "list. Accepted as a known modeling gap unless multi-version assignment "
-        "is ever surfaced as a feature in its own right here.",
-    ),
 ]
 _EXCLUSION_INDEX: dict[tuple[str, str], FieldExclusion] = {(e.resource, e.wire_name): e for e in EXCLUSIONS}
 

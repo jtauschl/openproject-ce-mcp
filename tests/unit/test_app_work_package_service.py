@@ -39,6 +39,8 @@ def _summary(
     description: str | None = "Some description",
     description_truncated: bool = False,
     description_length: int | None = None,
+    version: str | None = None,
+    target_versions: list[str] | None = None,
 ) -> WorkPackageSummary:
     return WorkPackageSummary(
         id=wp_id,
@@ -51,7 +53,8 @@ def _summary(
         assignee=None,
         responsible=None,
         project=project,
-        version=None,
+        version=version,
+        target_versions=target_versions if target_versions is not None else [],
         sprint=None,
         start_date=None,
         due_date=None,
@@ -62,7 +65,14 @@ def _summary(
     )
 
 
-def _detail(wp_id: int = 6, *, children=None, ancestors=None) -> WorkPackageDetail:
+def _detail(
+    wp_id: int = 6,
+    *,
+    children=None,
+    ancestors=None,
+    version: str | None = None,
+    target_versions: list[str] | None = None,
+) -> WorkPackageDetail:
     return WorkPackageDetail(
         id=wp_id,
         display_id=None,
@@ -74,7 +84,8 @@ def _detail(wp_id: int = 6, *, children=None, ancestors=None) -> WorkPackageDeta
         assignee=None,
         responsible=None,
         project="Demo",
-        version=None,
+        version=version,
+        target_versions=target_versions if target_versions is not None else [],
         sprint=None,
         parent_id=None,
         parent_display_id=None,
@@ -864,6 +875,39 @@ async def test_get_all_custom_comments_hidden_via_whole_field_hide_resets_trunca
 
 
 @pytest.mark.asyncio
+async def test_get_hiding_version_also_masks_target_versions() -> None:
+    # version/target_versions are a coupled alias pair -- hiding just one of
+    # them via OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS must hide both, or the
+    # other trivially leaks the "hidden" one back out.
+    detail_with_versions = dataclasses.replace(_detail(6), version="1.0", target_versions=["1.0"])
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_versions)
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("version",)})
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert detail.version is None
+    assert detail.target_versions == []
+    assert detail._hidden_keys >= {"version", "target_versions"}  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_hiding_target_versions_also_masks_version() -> None:
+    detail_with_versions = dataclasses.replace(_detail(6), version="1.0", target_versions=["1.0"])
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_versions)
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("target_versions",)})
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert detail.version is None
+    assert detail.target_versions == []
+    assert detail._hidden_keys >= {"version", "target_versions"}  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
 async def test_get_partial_key_only_hide_leaves_truncated_flag_as_originally_computed() -> None:
     """When only SOME keys are masked via the key-only custom-field hide
     (not the whole field), custom_fields_truncated is left as originally
@@ -1513,6 +1557,46 @@ async def test_create_rejects_write_to_hidden_field() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_legacy_version_write_rejected_when_only_target_versions_hidden() -> None:
+    # version/target_versions write the same underlying data -- hiding just
+    # target_versions must also block a legacy version=... write, not only a
+    # target_versions=[...] write, or the coupled-alias write-side gate would
+    # be trivially bypassable via the other field's name.
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("target_versions",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.create(project="demo", type="Task", subject="New WP", version="1.0", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_create_legacy_version_clear_rejected_when_only_target_versions_hidden() -> None:
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION
+
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("target_versions",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.create(project="demo", type="Task", subject="New WP", version=CLEAR_VERSION, confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_create_target_versions_write_rejected_when_only_version_hidden() -> None:
+    # The reverse direction: hiding just version must also block a
+    # target_versions=[...] write (already covered implicitly by the
+    # existing ensure_field_writable("version", ...) call in the
+    # target_versions branch, but asserted explicitly here for symmetry).
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("version",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.create(project="demo", type="Task", subject="New WP", target_versions=["1.0"], confirm=False)
+
+
+@pytest.mark.asyncio
 async def test_create_reports_validation_errors_as_not_ready() -> None:
     api = _FakeWorkPackageApi()
     api.validation_errors_queue.append({"subject": "can't be blank"})
@@ -1596,6 +1680,83 @@ async def test_create_resolves_parent_with_write_true() -> None:
     await service.create(project="demo", type="Task", subject="Child", parent_work_package_id=6, confirm=False)
 
     assert seen_write == [True]
+
+
+@pytest.mark.asyncio
+async def test_create_target_versions_resolves_each_ref_once() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+    resolved_refs: list[str] = []
+
+    async def resolve_version_id(version_ref, *, project=None, context=None):
+        resolved_refs.append(version_ref)
+        return {"1.0": "10", "2.0": "20"}[version_ref]
+
+    service._resolve_version_id = resolve_version_id  # type: ignore[method-assign]
+
+    result = await service.create(
+        project="demo", type="Task", subject="New WP", target_versions=["1.0", "2.0"], confirm=False
+    )
+
+    assert resolved_refs == ["1.0", "2.0"]
+    assert result.payload["_links"]["targetVersions"] == [
+        {"href": "/api/v3/versions/10"},
+        {"href": "/api/v3/versions/20"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_create_target_versions_dedupes_repeated_refs() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.create(
+        project="demo", type="Task", subject="New WP", target_versions=["1.0", "1.0"], confirm=False
+    )
+
+    assert result.payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
+
+
+@pytest.mark.asyncio
+async def test_create_target_versions_empty_list_sets_empty_links() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.create(project="demo", type="Task", subject="New WP", target_versions=[], confirm=False)
+
+    assert result.payload["_links"]["targetVersions"] == []
+
+
+@pytest.mark.asyncio
+async def test_create_version_and_target_versions_together_rejected() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    with pytest.raises(InvalidInputError, match="cannot both be"):
+        await service.create(
+            project="demo", type="Task", subject="New WP", version="1.0", target_versions=["2.0"], confirm=False
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_target_versions_not_stripped_by_echo_workaround() -> None:
+    # The single most important new test: the strip-workaround (triggered by
+    # version is not None) exists for a genuinely different bug (an
+    # unrequested targetVersions echoed back on a legacy version= write) and
+    # must never strip a real target_versions=[...] write. Uses the plain
+    # fake (echoes the payload actually sent) rather than
+    # _TargetVersionsEchoingWorkPackageApi, which always overwrites
+    # targetVersions with [] regardless of what was sent -- that fixture
+    # simulates the echo bug itself, not a genuine write's round-trip, so it
+    # cannot distinguish "stripped" from "server always returns []" here.
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.create(project="demo", type="Task", subject="New WP", target_versions=["1.0"], confirm=True)
+
+    assert result.state == "confirmed"
+    committed_payload = api.commit_create_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
 
 
 # ----------------------------------------------------------------------
@@ -1902,6 +2063,151 @@ async def test_update_rejected_target_versions_conflict_reports_validation_error
     assert api.commit_update_calls == []
 
 
+@pytest.mark.asyncio
+async def test_update_target_versions_clear_via_empty_list() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, target_versions=[], confirm=True)
+
+    assert result.state == "confirmed"
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == []
+
+
+@pytest.mark.asyncio
+async def test_update_target_versions_not_stripped_by_echo_workaround() -> None:
+    # See test_create_target_versions_not_stripped_by_echo_workaround for why
+    # the plain fake is used here rather than _TargetVersionsEchoingWorkPackageApi.
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, target_versions=["1.0"], confirm=True)
+
+    assert result.state == "confirmed"
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
+
+
+@pytest.mark.asyncio
+async def test_update_version_and_target_versions_together_rejected() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    with pytest.raises(InvalidInputError, match="cannot both be"):
+        await service.update(work_package_id=6, version="1.0", target_versions=["2.0"], confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_update_version_rejected_against_multi_target_version_work_package() -> None:
+    # The data-loss guard: a legacy version= write against a work package
+    # that already has more than one target version must be rejected, not
+    # silently collapsed down to one.
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(
+        6,
+        payload={
+            **_payload(6),
+            "_links": {
+                **_payload(6)["_links"],
+                "targetVersions": [
+                    {"href": "/api/v3/versions/10", "title": "1.0"},
+                    {"href": "/api/v3/versions/20", "title": "2.0"},
+                ],
+            },
+        },
+    )
+    service, _ = _service(api)
+
+    with pytest.raises(InvalidInputError, match="multiple target versions"):
+        await service.update(work_package_id=6, version="1.0", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_update_version_clear_rejected_against_multi_target_version_work_package() -> None:
+    # Correction from Codex's review: CLEAR_VERSION must NOT be excluded from
+    # the guard -- clearing to zero via the legacy field is exactly as
+    # destructive as collapsing to one.
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION
+
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(
+        6,
+        payload={
+            **_payload(6),
+            "_links": {
+                **_payload(6)["_links"],
+                "targetVersions": [
+                    {"href": "/api/v3/versions/10", "title": "1.0"},
+                    {"href": "/api/v3/versions/20", "title": "2.0"},
+                ],
+            },
+        },
+    )
+    service, _ = _service(api)
+
+    with pytest.raises(InvalidInputError, match="multiple target versions"):
+        await service.update(work_package_id=6, version=CLEAR_VERSION, confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_update_version_allowed_against_single_target_version_work_package() -> None:
+    # Guards against the check being too broad: 0 or 1 existing target
+    # versions must not trigger the guard.
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(
+        6,
+        payload={
+            **_payload(6),
+            "_links": {
+                **_payload(6)["_links"],
+                "targetVersions": [{"href": "/api/v3/versions/10", "title": "1.0"}],
+            },
+        },
+    )
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, version="2.0", confirm=False)
+
+    assert result.ready is True
+
+
+@pytest.mark.asyncio
+async def test_update_version_allowed_against_no_target_version_work_package() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, version="2.0", confirm=False)
+
+    assert result.ready is True
+
+
+@pytest.mark.asyncio
+async def test_update_target_versions_itself_not_blocked_by_data_loss_guard() -> None:
+    # The guard only fires for the legacy version= parameter -- a caller
+    # using target_versions explicitly against a multi-version work package
+    # must succeed normally.
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(
+        6,
+        payload={
+            **_payload(6),
+            "_links": {
+                **_payload(6)["_links"],
+                "targetVersions": [
+                    {"href": "/api/v3/versions/10", "title": "1.0"},
+                    {"href": "/api/v3/versions/20", "title": "2.0"},
+                ],
+            },
+        },
+    )
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, target_versions=["1.0"], confirm=False)
+
+    assert result.ready is True
+
+
 def test_strip_unrequested_target_versions_does_not_mutate_input() -> None:
     from openproject_ce_mcp.app.services.work_package_service import _strip_unrequested_target_versions
 
@@ -2107,6 +2413,36 @@ async def test_update_read_disabled_but_write_enabled_still_autofills() -> None:
 # ----------------------------------------------------------------------
 # bulk_update()
 # ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_item_with_target_versions_reaches_write_payload() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.bulk_update(
+        items=[{"work_package_id": 6, "target_versions": ["1.0"]}],
+        confirm=True,
+    )
+
+    assert result.succeeded == 1
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_item_with_target_versions_reaches_write_payload() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.bulk_create(
+        items=[{"project": "demo", "type": "Task", "subject": "New WP", "target_versions": ["1.0", "2.0"]}],
+        confirm=False,
+    )
+
+    assert result.succeeded == 1
+    _, payload = api.validate_create_calls[0]
+    assert payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,33 @@ The version-specific API behavior that actually matters to this client:
 | 16.6        | classic baseline with documents PATCH and the `entity` link key now present |
 | 17.0–17.3   | workspaces (17.0); storages' `forbiddenFileNameCharacters` field (17.1); sprints/meetings/user-schedule domains (17.3) |
 | 17.4        | displayId field introduced, semantic identifiers still off |
-| 17.5–17.8   | project-based semantic identifiers active + workspaces (favorites); 17.7 makes user working-times generally available (no longer feature-flag-gated); 17.8 is the latest release as of this pin |
+| 17.5–17.8   | project-based semantic identifiers active + workspaces (favorites); 17.7 makes user working-times generally available (no longer feature-flag-gated) |
+
+`targetVersions` (multi-value successor to `version`, OPM-468) and
+`Setting::WorkPackageMultipleVersions` (which gates whether more than one
+`target_versions` entry can be written; reading is never gated) already exist
+in 17.7, not first in 17.8 — verified directly against the pinned 17.7
+sources (`associated_resources :target_versions` in
+`work_package_representer.rb`, `Setting::WorkPackageMultipleVersions` in its
+own model file). What IS 17.8-specific: on 17.7 the setting's own `.active?`
+additionally requires an experimental `OpenProject::FeatureDecisions` flag
+this project does not enable, so setting `Setting.work_package_multiple_versions`
+alone does not actually activate multi-value writes there; 17.8 drops that
+extra gate. `op-17-8` is still the only container this project seeds a
+target_versions fixture against — `seed.rb` verifies the setting actually
+reached the requested state after writing it (not just that the write call
+succeeded) and skips the multi-version fixture with a clear warning if not,
+rather than seeding data the server would reject.
+
+Verified live (2026-09-07) against the actual `openproject/openproject:17.8.0`
+image: `Setting::WorkPackageMultipleVersions` ships with `default: true`
+(`config/constants/settings/definition.rb`) there, not off by default as
+might be assumed. `seed.rb` always forces it to a known state (`false` unless
+`SEED_MULTI_VERSIONS=1`, `true` when it is) rather than trusting the image's
+default, so `op-17-8` can exercise both the setting-disabled and
+setting-enabled write paths across separate `up.sh` invocations — no separate
+dedicated container needed. See `SEED_MULTI_VERSIONS=1 docker/test/up.sh 178`
+below.
 
 Exact per-minor patch pins live in `compose.yml` and `tools/api-check/fetch-sources.sh`'s
 `VERSIONS` array — check those directly rather than trusting a copy of the pin
@@ -31,6 +57,8 @@ docker/test/up.sh 16        # only 16.6.x
 docker/test/up.sh 176       # only 17.6.x
 docker/test/up.sh 177       # only 17.7.x
 docker/test/up.sh 178       # only 17.8.x
+SEED_MULTI_VERSIONS=1 docker/test/up.sh 178
+                             # only 17.8.x with Setting::WorkPackageMultipleVersions forced on
 # ... and 160-165/170-173 for every other pinned minor -- see up.sh's own
 # usage comment for the full list.
 

@@ -46,6 +46,17 @@ To hide a custom field from both reads and writes reliably, use its raw key
 (e.g. `OPENPROJECT_HIDE_CUSTOM_FIELDS=customField12`) rather than its friendly
 name.
 
+## Work package `version`/`target_versions`: a coupled field pair
+
+`version` and `target_versions` read from and write to the same underlying
+OpenProject data (`version` is a derived single-value projection of
+`target_versions` — see [Tool reference](tools.md) for the full semantics).
+Hiding either one via `OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS` hides both:
+listing only `version` (or only `target_versions`) in the pattern still
+removes both fields from every response and rejects writes to either — the
+other field would otherwise trivially leak the "hidden" one back out under a
+different name.
+
 Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `membership`, `role`, `principal`, `user`, `group`, `project_access`,
 `project_admin_context`, `project_configuration`, `action`, `capability`,

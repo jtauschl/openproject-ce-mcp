@@ -486,13 +486,28 @@ class WorkPackageService:
                 summary, description_truncated=False, description_length=None, has_description=False
             )
         summary = self._mask_custom_field_values(summary)
-        return hidden_fields.apply_hidden_fields("work_package", summary, settings=self._settings)
+        return self._apply_work_package_hidden_fields(summary)
 
     def _stamp_detail(self, detail: WorkPackageDetail) -> WorkPackageDetail:
         if hidden_fields.field_hidden("work_package", "description", settings=self._settings):
             detail = dataclasses.replace(detail, description_truncated=False, description_length=None)
         detail = self._mask_custom_field_values(detail)
-        return hidden_fields.apply_hidden_fields("work_package", detail, settings=self._settings)
+        return self._apply_work_package_hidden_fields(detail)
+
+    def _apply_work_package_hidden_fields(self, value: Any) -> Any:
+        """Single entry point for version/target_versions coupled-alias masking
+        AND the generic per-field apply_hidden_fields stamp, in the correct
+        order. version/target_versions read from and write to the same
+        underlying OpenProject data -- hiding either via
+        OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS must hide both, or the other
+        field trivially leaks the "hidden" one back out under a different
+        name. See `hidden_fields.apply_hidden_fields_with_aliases`, shared
+        with QueryExecutionService's own execute() masking so the alias-pair
+        knowledge lives in one place, not duplicated across both call sites.
+        """
+        return hidden_fields.apply_hidden_fields_with_aliases(
+            "work_package", value, settings=self._settings, aliases={"version": None, "target_versions": []}
+        )
 
     def _mask_custom_field_values(self, value: Any) -> Any:
         """Key-only hide-on-read masking for `custom_fields`/`custom_comments`,
@@ -1403,6 +1418,7 @@ class WorkPackageService:
         subject: str | None = None,
         description: str | None = None,
         version: Any = None,
+        target_versions: builtins.list[str] | None = None,
         sprint: Any = None,
         project_phase: Any = None,
         status: str | None = None,
@@ -1479,9 +1495,11 @@ class WorkPackageService:
             links["type"] = {"href": _api_href(f"types/{type_id}", api_prefix=self._api_prefix)}
         if version is CLEAR_VERSION:
             hidden_fields.ensure_field_writable("work_package", "version", settings=self._settings)
+            hidden_fields.ensure_field_writable("work_package", "target_versions", settings=self._settings)
             links["version"] = {"href": None}
         elif version is not None:
             hidden_fields.ensure_field_writable("work_package", "version", settings=self._settings)
+            hidden_fields.ensure_field_writable("work_package", "target_versions", settings=self._settings)
             version_ref = _narrow_cleared(version, sentinel=CLEAR_VERSION)
             version_id = await resolve_wp_ref_id(
                 "version",
@@ -1491,6 +1509,35 @@ class WorkPackageService:
                 resolve=lambda: self._resolve_version_id(version_ref, project=project, context=project_context),
             )
             links["version"] = {"href": _api_href(f"versions/{version_id}", api_prefix=self._api_prefix)}
+
+        if version is not None and target_versions is not None:
+            raise InvalidInputError(
+                "OpenProject work package fields 'version' and 'target_versions' cannot both be "
+                "set in the same call -- they write the same underlying data; pass only one."
+            )
+        elif target_versions is not None:
+            hidden_fields.ensure_field_writable("work_package", "version", settings=self._settings)
+            hidden_fields.ensure_field_writable("work_package", "target_versions", settings=self._settings)
+            if not target_versions:
+                links["targetVersions"] = []
+            else:
+                resolved_ids: list[str] = []
+                for ref in target_versions:
+                    resolved_id = await resolve_wp_ref_id(
+                        "version",
+                        str(ref),
+                        project=project,
+                        cache=resolution_context,
+                        resolve=lambda ref=ref: self._resolve_version_id(
+                            str(ref), project=project, context=project_context
+                        ),
+                    )
+                    resolved_ids.append(resolved_id)
+                deduped_ids = list(dict.fromkeys(resolved_ids))
+                links["targetVersions"] = [
+                    {"href": _api_href(f"versions/{vid}", api_prefix=self._api_prefix)} for vid in deduped_ids
+                ]
+
         if sprint is CLEAR:
             hidden_fields.ensure_field_writable("work_package", "sprint", settings=self._settings)
             links["sprint"] = {"href": None}
@@ -1613,6 +1660,7 @@ class WorkPackageService:
         subject: str,
         description: str | None = None,
         version: Any = None,
+        target_versions: builtins.list[str] | None = None,
         project_phase: Any = None,
         assignee: Any = None,
         responsible: Any = None,
@@ -1664,6 +1712,7 @@ class WorkPackageService:
             subject=subject,
             description=description,
             version=version,
+            target_versions=target_versions,
             project_phase=project_phase,
             assignee=assignee,
             responsible=responsible,
@@ -1687,7 +1736,8 @@ class WorkPackageService:
             identity={"work_package_id": None, "project": project_payload.get("name")},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
             commit=lambda p: self._api.commit_create(
-                _strip_unrequested_target_versions(p) if version is not None else p, text_limit=FORMATTABLE_LIMIT
+                _strip_unrequested_target_versions(p) if version is not None and target_versions is None else p,
+                text_limit=FORMATTABLE_LIMIT,
             ),
             committed_identity=lambda record: {
                 "work_package_id": record.summary.id,
@@ -1707,6 +1757,7 @@ class WorkPackageService:
         subject: str,
         description: str | None = None,
         version: Any = None,
+        target_versions: builtins.list[str] | None = None,
         project_phase: Any = None,
         assignee: Any = None,
         responsible: Any = None,
@@ -1743,6 +1794,7 @@ class WorkPackageService:
             subject=subject,
             description=description,
             version=version,
+            target_versions=target_versions,
             project_phase=project_phase,
             assignee=assignee,
             responsible=responsible,
@@ -1764,7 +1816,8 @@ class WorkPackageService:
             identity={"work_package_id": None, "project": parent_title},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
             commit=lambda p: self._api.commit_create(
-                _strip_unrequested_target_versions(p) if version is not None else p, text_limit=FORMATTABLE_LIMIT
+                _strip_unrequested_target_versions(p) if version is not None and target_versions is None else p,
+                text_limit=FORMATTABLE_LIMIT,
             ),
             committed_identity=lambda record: {
                 "work_package_id": record.summary.id,
@@ -1795,6 +1848,7 @@ class WorkPackageService:
                         subject=item["subject"],
                         description=item.get("description"),
                         version=item.get("version"),
+                        target_versions=item.get("target_versions"),
                         project_phase=item.get("project_phase"),
                         assignee=item.get("assignee"),
                         responsible=item.get("responsible"),
@@ -1904,6 +1958,7 @@ class WorkPackageService:
         description: str | None = None,
         type: str | None = None,
         version: Any = None,
+        target_versions: builtins.list[str] | None = None,
         sprint: Any = None,
         project_phase: Any = None,
         status: str | None = None,
@@ -1939,6 +1994,14 @@ class WorkPackageService:
             )
         current_record = await self._api.get(ref)
         current = current_record.payload
+        if version is not None and target_versions is None:
+            existing_target_version_links = current.get("_links", {}).get("targetVersions", [])
+            if isinstance(existing_target_version_links, list) and len(existing_target_version_links) > 1:
+                raise InvalidInputError(
+                    f"Work package {ref} already has multiple target versions assigned; the legacy "
+                    "'version' parameter (including clearing it) can only be used on a single-valued "
+                    "assignment. Use 'target_versions' instead to explicitly set or clear the full list."
+                )
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
             # A server-data anomaly (an unexpected/malformed OpenProject
@@ -1962,6 +2025,7 @@ class WorkPackageService:
             subject=subject,
             description=description,
             version=version,
+            target_versions=target_versions,
             sprint=sprint,
             project_phase=project_phase,
             status=status,
@@ -2015,7 +2079,7 @@ class WorkPackageService:
                 payload["lockVersion"] = lock_version
                 form = await self._api.validate_update(ref, payload)
 
-        version_was_requested = "version" in payload.get("_links", {})
+        version_was_requested = "version" in payload.get("_links", {}) and target_versions is None
         parsed = await self._api.parse_form(form)
         project_name = _trim_text(current.get("_links", {}).get("project", {}).get("title"))
         outcome = await _finalize_write(
@@ -2058,6 +2122,7 @@ class WorkPackageService:
                         description=item.get("description"),
                         type=item.get("type"),
                         version=item.get("version"),
+                        target_versions=item.get("target_versions"),
                         sprint=item.get("sprint"),
                         project_phase=item.get("project_phase"),
                         status=item.get("status"),

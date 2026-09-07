@@ -14,6 +14,27 @@
 #   - a project with identifier "TST" plus one work package
 #   - on 17.5+ only, when SEED_SEMANTIC=1: switches the instance to project-based
 #     (semantic) identifiers so displayId becomes "TST-<n>"
+#   - on 17.7+ only, when target_versions/targetVersions support exists
+#     (target_version_ids=, backed by the `has_many :target_versions,
+#     through: :work_package_versions` association): forces
+#     Setting::WorkPackageMultipleVersions to a known state (false unless
+#     SEED_MULTI_VERSIONS=1, true when it is -- 17.8+ images ship this with
+#     default: true, so this is a real force, not just a conditional
+#     enable), then re-verifies Setting::WorkPackageMultipleVersions.active?
+#     actually reached the requested state before seeding a second work
+#     package with exactly one target version assigned. On 17.7,
+#     .active? additionally requires an experimental
+#     OpenProject::FeatureDecisions flag this seed does not set, so
+#     SEED_MULTI_VERSIONS=1 there logs a WARNING and the multi-version
+#     fixture below is skipped rather than seeded against a state the
+#     server will reject; on 17.8+ (no such extra gate) SEED_MULTI_VERSIONS=1
+#     also seeds a THIRD work package with two target versions assigned.
+#     Both fixtures are seeded via a direct model write, which runs Rails
+#     model-level validations/callbacks but does NOT run
+#     WorkPackages::BaseContract (OpenProject's own service-layer contract,
+#     invoked only via the real API/service call chain) -- a genuine,
+#     deliberate contract bypass, not "the same validated path a real API
+#     write would take".
 #
 # Output lines are prefixed "SEED:" so up.sh can parse them.
 
@@ -372,6 +393,127 @@ if defined?(Project::Phase) && Project::Phase.where(project_id: project.id).empt
   end
 else
   log("project TST already has a project phase (or Project::Phase model unavailable)")
+end
+
+# --- target_versions fixtures (17.7+, OPM-468) ---------------------------------
+# Both fixtures below write via a direct ActiveRecord model save, which runs
+# Rails model-level validations/callbacks (including the
+# persist_version_associations after_save hook) but does NOT run
+# WorkPackages::BaseContract -- OpenProject's own service-layer contract,
+# invoked only via the real API/service call chain (WorkPackages::CreateService/
+# UpdateService), never by a bare ActiveRecord save!. This is a genuine,
+# deliberate contract bypass, common for seed data, but described honestly as
+# one here rather than as "the same validated path a real API write would take".
+#
+# Setting::WorkPackageMultipleVersions gates whether writing MORE THAN ONE
+# target version is accepted server-side (base_contract.rb's
+# validate_target_versions_length); reading targetVersions is never gated.
+# targetVersions/this setting are NOT new in 17.8 -- both already exist in the
+# 17.7 sources this project pins (associated_resources :target_versions in
+# 17.7's work_package_representer.rb; Setting::WorkPackageMultipleVersions in
+# 17.7's own model file). What IS 17.8-specific: on 17.7,
+# Setting::WorkPackageMultipleVersions.active? additionally requires
+# OpenProject::FeatureDecisions.work_package_multiple_versions_active? (an
+# experimental feature flag, separate from the plain Setting) -- 17.8 drops
+# that second gate, so setting Setting.work_package_multiple_versions alone
+# is sufficient there. Verified live (2026-09-07) against
+# openproject/openproject:17.8.0: the setting ships with default: true there
+# (config/constants/settings/definition.rb), NOT off by default as an
+# earlier version of this seed assumed. The setting is explicitly FORCED to a
+# known state below (not just conditionally enabled) so op-17-8 gives
+# deterministic, repeatable behavior regardless of what the image happened to
+# ship with -- forced to false unless SEED_MULTI_VERSIONS=1, forced to true
+# when it is. This also means both states are exercisable on the SAME
+# op-17-8 service/volume across separate up.sh invocations; no second
+# dedicated container is needed. Because of the 17.7 feature-flag gate above,
+# this whole block verifies the setting actually reached the requested state
+# after writing it, rather than assuming Setting.work_package_multiple_versions=
+# alone is sufficient on every version that defines the module.
+if project.respond_to?(:versions) && WorkPackage.new.respond_to?(:target_version_ids=) &&
+   defined?(Setting::WorkPackageMultipleVersions)
+  want_multi = ENV["SEED_MULTI_VERSIONS"] == "1"
+  if Setting::WorkPackageMultipleVersions.active? == want_multi
+    log("Setting::WorkPackageMultipleVersions already #{want_multi ? "enabled" : "disabled"}")
+  else
+    Setting.work_package_multiple_versions = want_multi
+    log("#{want_multi ? "enabled" : "disabled"} Setting::WorkPackageMultipleVersions")
+  end
+  actual_multi = Setting::WorkPackageMultipleVersions.active?
+  if want_multi && !actual_multi
+    log("WARNING: SEED_MULTI_VERSIONS=1 requested but Setting::WorkPackageMultipleVersions.active? " \
+        "is still false after setting Setting.work_package_multiple_versions=true -- on OpenProject " \
+        "17.7 this additionally requires OpenProject::FeatureDecisions." \
+        "work_package_multiple_versions_active?, an experimental flag this seed does not set. " \
+        "Skipping the multi-target-version fixture rather than seeding one the server will reject.")
+  end
+
+  # Single-target-version fixture: exercises the read path and the
+  # single-value write path, both valid regardless of the setting's state --
+  # seeded unconditionally whenever this version supports target_versions.
+  single_version = Version.find_by(project: project, name: "Seed Version 1.0") || Version.create!(
+    project: project,
+    name: "Seed Version 1.0",
+    status: "open"
+  )
+  log("version '#{single_version.name}' present (id=#{single_version.id})")
+
+  if WorkPackage.where(project: project, subject: "Seed work package (single target version)").empty?
+    type = project.types.first || Type.first
+    status = Status.respond_to?(:default) && Status.default ? Status.default : Status.first
+    priority = (IssuePriority.respond_to?(:default) && IssuePriority.default) || IssuePriority.active.first || IssuePriority.first
+    single_version_wp = WorkPackage.new(
+      project: project,
+      type: type,
+      status: status,
+      priority: priority,
+      author: admin,
+      subject: "Seed work package (single target version)"
+    )
+    single_version_wp.target_version_ids = [single_version.id]
+    single_version_wp.save!
+    log("created work package id=#{single_version_wp.id} with 1 target version")
+  else
+    log("project TST already has a single-target-version seed work package")
+  end
+
+  # Multi-target-version fixture, opt-in -- gated on actual_multi (whether
+  # the setting is REALLY active after the force above), not just the
+  # ENV request, since a 17.7 instance without the FeatureDecisions flag
+  # would otherwise get a fixture the server rejects (see the WARNING above).
+  if want_multi && actual_multi
+    second_version = Version.find_by(project: project, name: "Seed Version 2.0") || Version.create!(
+      project: project,
+      name: "Seed Version 2.0",
+      status: "open"
+    )
+    log("version '#{second_version.name}' present (id=#{second_version.id})")
+
+    if WorkPackage.where(project: project, subject: "Seed work package (multi target version)").empty?
+      type = project.types.first || Type.first
+      status = Status.respond_to?(:default) && Status.default ? Status.default : Status.first
+      priority = (IssuePriority.respond_to?(:default) && IssuePriority.default) || IssuePriority.active.first || IssuePriority.first
+      multi_version_wp = WorkPackage.new(
+        project: project,
+        type: type,
+        status: status,
+        priority: priority,
+        author: admin,
+        subject: "Seed work package (multi target version)"
+      )
+      multi_version_wp.target_version_ids = [single_version.id, second_version.id]
+      multi_version_wp.save!
+      log("created work package id=#{multi_version_wp.id} with 2 target versions")
+    else
+      log("project TST already has a multi-target-version seed work package")
+    end
+  elsif want_multi
+    log("multi-version seed skipped -- setting could not be activated on this version (see WARNING above)")
+  else
+    log("multi-version seed not requested (SEED_MULTI_VERSIONS unset)")
+  end
+else
+  log("target_version_ids=/Setting::WorkPackageMultipleVersions not both present on this version " \
+      "(expected together on 17.7+) -- skipping target_versions seed")
 end
 
 # --- Semantic identifiers (17.5+, opt-in) -------------------------------------

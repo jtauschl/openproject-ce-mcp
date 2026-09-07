@@ -79,7 +79,16 @@ class QueryExecutionService:
 
         def _normalize(raw: dict) -> WorkPackageSummary:
             record = self._work_package_api.to_record(raw, text_limit=self._settings.text_limit)
-            return hidden_fields.apply_hidden_fields("work_package", record.summary, settings=self._settings)
+            # version/target_versions are coupled aliases of the same
+            # underlying data -- see WorkPackageService's own
+            # _apply_work_package_hidden_fields for the full rationale, this
+            # call site needs the same treatment, not just apply_hidden_fields.
+            return hidden_fields.apply_hidden_fields_with_aliases(
+                "work_package",
+                record.summary,
+                settings=self._settings,
+                aliases={"version": None, "target_versions": []},
+            )
 
         results, total, next_offset, truncated = await fetch_bounded_and_paginate(
             fetch_page=_fetch_page,

@@ -24,6 +24,7 @@ from openproject_ce_mcp.tools_validation import (
     _validate_optional_duration,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
+    _validate_optional_target_versions,
     _validate_optional_text,
     _validate_optional_update_text,
     _validate_optional_user_ref,
@@ -44,6 +45,39 @@ def test_validate_optional_user_ref_reports_the_given_field_name() -> None:
     with pytest.raises(ValueError, match="responsible must be at least 1"):
         _validate_optional_user_ref("0", field_name="responsible")
     assert _validate_optional_user_ref("me", field_name="responsible") == "me"
+
+
+def test_validate_optional_target_versions_none_passes_through() -> None:
+    assert _validate_optional_target_versions(None) is None
+
+
+def test_validate_optional_target_versions_valid_list() -> None:
+    assert _validate_optional_target_versions(["1.0", "2.0"]) == ["1.0", "2.0"]
+
+
+def test_validate_optional_target_versions_empty_list_passes_through() -> None:
+    # [] is a meaningful, distinct signal (clear all), not an error.
+    assert _validate_optional_target_versions([]) == []
+
+
+def test_validate_optional_target_versions_rejects_non_list() -> None:
+    with pytest.raises(ValueError, match="must be a list of strings"):
+        _validate_optional_target_versions("1.0")  # type: ignore[arg-type]
+
+
+def test_validate_optional_target_versions_rejects_empty_string_item() -> None:
+    with pytest.raises(ValueError, match=r"target_versions\[1\] must not be empty"):
+        _validate_optional_target_versions(["1.0", "  "])
+
+
+def test_validate_optional_target_versions_rejects_over_length_cap() -> None:
+    with pytest.raises(ValueError, match="must not exceed 20 entries"):
+        _validate_optional_target_versions([str(i) for i in range(21)])
+
+
+def test_validate_optional_target_versions_uses_given_field_name() -> None:
+    with pytest.raises(ValueError, match="items\\[0\\].target_versions must be a list of strings"):
+        _validate_optional_target_versions("1.0", field_name="items[0].target_versions")  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

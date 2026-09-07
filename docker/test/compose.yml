@@ -1,5 +1,5 @@
 # Local OpenProject instances for runtime verification of the MCP client
-# across the full supported minor-version range (16.0-17.7). We run the
+# across the full supported minor-version range (16.0-17.8). We run the
 # LATEST patch of every minor (what users actually run), using the all-in-one
 # images (NOT -slim, which have no bundled database and crash on boot).
 #
@@ -20,9 +20,32 @@
 #   17.5.1  project-based semantic identifiers active + workspaces favorites
 #   17.6.0  same semantic-identifier generation as 17.5; backlog_buckets,
 #           meeting_outcomes introduced
-#   17.7.2  latest release as of this pin; same semantic-identifier
-#           generation as 17.5/17.6; user working-times generally available
-#           (no longer feature-flag-gated)
+#   17.7.2  same semantic-identifier generation as 17.5/17.6; user
+#           working-times generally available (no longer feature-flag-gated).
+#           targetVersions (multi-value successor to version) and
+#           Setting::WorkPackageMultipleVersions already exist here, but on
+#           17.7 the setting's own .active? additionally requires an
+#           experimental OpenProject::FeatureDecisions flag this project does
+#           not enable -- see 17.8's entry below and seed.rb's own comment.
+#   17.8.0  latest release as of this pin. Drops 17.7's extra
+#           FeatureDecisions gate on Setting::WorkPackageMultipleVersions --
+#           setting the plain Setting alone is now sufficient to enable
+#           multi-value target_versions writes. Reading targetVersions has no
+#           gate on any pinned version -- always present, independent of the
+#           setting. Writing more than one target version IS rejected
+#           server-side unless the setting is active (on this version).
+#           Verified live (2026-09-07) against this exact image: the setting
+#           ships with default: true (config/constants/settings/
+#           definition.rb) -- NOT off by default as an earlier draft of this
+#           comment assumed. seed.rb explicitly forces it to false before
+#           seeding op-17-8's single-target-version fixture (so this
+#           container still exercises the setting-disabled path as a real
+#           reference state, e.g. an upgraded-from-17.7 instance where an
+#           admin turned it off), then flips it to true when
+#           SEED_MULTI_VERSIONS=1 is passed, to also exercise the
+#           setting-enabled multi-value write path on the SAME container/
+#           volume -- no separate dedicated container needed, since a fresh
+#           17.8 instance already defaults to the enabled state.
 #
 # Driven by up.sh / down.sh. SECRET_KEY_BASE comes from a generated .env
 # (gitignored); never hardcode it here.

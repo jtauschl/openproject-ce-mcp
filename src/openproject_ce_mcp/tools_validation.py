@@ -818,6 +818,30 @@ def _validate_optional_version(
     )
 
 
+def _validate_optional_target_versions(
+    value: list[str] | None, *, field_name: str = "target_versions"
+) -> list[str] | None:
+    """None leaves the field unchanged. [] clears all target versions --
+    already a distinct, unambiguous signal from None, no sentinel needed.
+    Length-capped: each distinct ref costs a real network round-trip to
+    resolve (no per-project collection cache), so an unbounded list is a
+    real request-amplification risk, not just a style preference.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list of strings")
+    if len(value) > 20:
+        raise ValueError(f"{field_name} must not exceed 20 entries")
+    validated: list[str] = []
+    for i, item in enumerate(value):
+        validated_item = _validate_optional_query(item, field_name=f"{field_name}[{i}]", max_length=100)
+        if validated_item is None:
+            raise ValueError(f"{field_name}[{i}] must not be empty")
+        validated.append(validated_item)
+    return validated
+
+
 def _clearable(value: str | None, validate: Callable[[str], Any], *, sentinel: object) -> str | object | None:
     """Map a nullable optional argument to a clear sentinel or a validated value.
 

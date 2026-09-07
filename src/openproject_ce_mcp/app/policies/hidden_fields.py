@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from fnmatch import fnmatchcase
-from typing import Any
+from typing import Any, cast
 
 from ...config import HIDE_FIELD_ENV_BY_ENTITY, Settings
 from ..errors import InvalidInputError
@@ -86,6 +87,35 @@ def ensure_custom_field_writable(field_name: str, key: str, *, settings: Setting
     raise InvalidInputError(
         f"OpenProject custom field '{field_name}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS and cannot be written."
     )
+
+
+def apply_hidden_fields_with_aliases(entity: str, value: Any, *, settings: Settings, aliases: dict[str, Any]) -> Any:
+    """Like `apply_hidden_fields`, but for a set of field names that are
+    coupled aliases of each other -- they read from and write to the same
+    underlying server data (e.g. work package `version`/`target_versions`).
+    Hiding any ONE of the aliased fields must hide all of them, or the
+    others trivially leak the "hidden" one back out under a different name.
+
+    `aliases` maps each coupled field's name to the value it should be reset
+    to when the group is hidden (e.g. `{"version": None, "target_versions": []}`).
+    If any field in `aliases` is hidden, every field in the group is zeroed
+    to its given reset value AND tagged into `_hidden_keys` -- not just
+    whichever one was actually configured, which is what plain
+    `apply_hidden_fields` alone would do.
+    """
+    if not is_dataclass(value):
+        return value
+    if any(field_hidden(entity, name, settings=settings) for name in aliases):
+        for name, reset_value in aliases.items():
+            # is_dataclass() narrows value to DataclassInstance | type[...],
+            # which dataclasses.replace()'s _DataclassT TypeVar can't accept
+            # -- go through Any explicitly rather than suppressing the
+            # narrowing with a broader ignore.
+            value = dataclasses.replace(cast(Any, value), **{name: reset_value})
+    value = apply_hidden_fields(entity, value, settings=settings)
+    if any(field_hidden(entity, name, settings=settings) for name in aliases):
+        value._hidden_keys = getattr(value, "_hidden_keys", frozenset()) | frozenset(aliases)  # type: ignore[union-attr]
+    return value
 
 
 def apply_hidden_fields(entity: str, value: Any, *, settings: Settings) -> Any:

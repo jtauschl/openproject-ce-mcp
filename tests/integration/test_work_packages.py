@@ -12,7 +12,7 @@ import pytest
 from openproject_ce_mcp import tools
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
-from .conftest import disposable_project_identifier
+from .conftest import disposable_project_identifier, skip_if_unsupported
 
 pytestmark = pytest.mark.integration
 
@@ -950,3 +950,190 @@ async def test_list_work_packages_rejects_hidden_custom_field_filter(
             project=test_project,
             custom_field_filters={"cf_1": {"operator": "=", "values": ["x"]}},
         )
+
+
+# ---------------------------------------------------------------------------
+# target_versions (OPM-468) -- see docker/test/seed.rb for the fixtures this
+# section reads, and conftest.py's multi_target_versions_enabled/_disabled
+# fixtures for how Setting::WorkPackageMultipleVersions is forced for the
+# duration of each test (OpenProject 17.8.0 ships this setting with
+# default: true, verified live 2026-09-07, so nothing here may assume either
+# starting state).
+# ---------------------------------------------------------------------------
+
+
+async def test_get_single_target_version_work_package(
+    multi_target_versions_disabled, client: OpenProjectClient, test_project: str
+) -> None:
+    """With the setting off, the seeded single-target-version work package's
+    target_versions has exactly one entry and version mirrors it (the
+    setting-disabled read/single-value-write reference behavior)."""
+    result = await skip_if_unsupported(lambda: client.work_package.list(project=test_project))
+    seed_wp_summary = next(
+        (wp for wp in result.results if wp.subject == "Seed work package (single target version)"), None
+    )
+    if seed_wp_summary is None:
+        pytest.skip("seeded single-target-version work package not present (check docker/test/seed.rb ran)")
+
+    wp = await client.work_package.get(seed_wp_summary.id)
+
+    assert wp.target_versions == ["Seed Version 1.0"]
+    assert wp.version == "Seed Version 1.0"
+
+
+async def test_round_trip_single_value_target_versions_write(
+    multi_target_versions_disabled, client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """With the setting off, writing target_versions=["..."] (a single ref)
+    round-trips correctly -- confirms the client's own payload shape is
+    accepted by a real server even when target_versions is nominally the
+    "new" field on an instance that has the multi-value setting off."""
+    result = await skip_if_unsupported(lambda: client.work_package.list(project=test_project))
+    seed_wp_summary = next(
+        (wp for wp in result.results if wp.subject == "Seed work package (single target version)"), None
+    )
+    if seed_wp_summary is None:
+        pytest.skip("seeded single-target-version work package not present (check docker/test/seed.rb ran)")
+
+    created = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} target_versions single", confirm=True
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
+    update_result = await client.work_package.update(
+        work_package_id=created.work_package_id,
+        target_versions=["Seed Version 1.0"],
+        confirm=True,
+    )
+    assert update_result.ready, update_result.validation_errors
+
+    wp = await client.work_package.get(created.work_package_id)
+    assert wp.target_versions == ["Seed Version 1.0"]
+    assert wp.version == "Seed Version 1.0"
+
+    clear_result = await client.work_package.update(
+        work_package_id=created.work_package_id,
+        target_versions=[],
+        confirm=True,
+    )
+    assert clear_result.ready, clear_result.validation_errors
+
+    cleared = await client.work_package.get(created.work_package_id)
+    assert cleared.target_versions == []
+    assert cleared.version is None
+
+
+async def test_get_multi_target_version_work_package(
+    multi_target_versions_enabled, client: OpenProjectClient, test_project: str
+) -> None:
+    """With the setting on, the seeded multi-target-version work package's
+    target_versions has both entries and version collapses to None (the
+    documented lossy single-value projection when more than one target
+    version is assigned)."""
+    result = await skip_if_unsupported(lambda: client.work_package.list(project=test_project))
+    seed_wp_summary = next(
+        (wp for wp in result.results if wp.subject == "Seed work package (multi target version)"), None
+    )
+    if seed_wp_summary is None:
+        pytest.skip(
+            "seeded multi-target-version work package not present "
+            "(run docker/test/up.sh with SEED_MULTI_VERSIONS=1 first)"
+        )
+
+    wp = await client.work_package.get(seed_wp_summary.id)
+
+    assert set(wp.target_versions) == {"Seed Version 1.0", "Seed Version 2.0"}
+    assert wp.version is None
+
+
+async def test_round_trip_multi_value_target_versions_write(
+    multi_target_versions_enabled, client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """With the setting on, writing target_versions=["v1", "v2"] against a
+    fresh work package actually persists as two entries server-side --
+    proves the real multi-value write path works end-to-end, not just that
+    the client sends the right payload shape."""
+    created = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} target_versions multi", confirm=True
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
+    update_result = await client.work_package.update(
+        work_package_id=created.work_package_id,
+        target_versions=["Seed Version 1.0", "Seed Version 2.0"],
+        confirm=True,
+    )
+    assert update_result.ready, update_result.validation_errors
+
+    wp = await client.work_package.get(created.work_package_id)
+    assert set(wp.target_versions) == {"Seed Version 1.0", "Seed Version 2.0"}
+    assert wp.version is None
+
+
+async def test_legacy_version_update_rejected_against_multi_target_version_work_package(
+    multi_target_versions_enabled, client: OpenProjectClient, test_project: str
+) -> None:
+    """The client-side data-loss guard, end-to-end: this scenario can only be
+    exercised against a genuinely multi-version work package, which requires
+    the setting to be on -- the guard's own logic is client-side and
+    setting-agnostic, but a fixture that triggers it needs this state."""
+    result = await skip_if_unsupported(lambda: client.work_package.list(project=test_project))
+    seed_wp_summary = next(
+        (wp for wp in result.results if wp.subject == "Seed work package (multi target version)"), None
+    )
+    if seed_wp_summary is None:
+        pytest.skip(
+            "seeded multi-target-version work package not present "
+            "(run docker/test/up.sh with SEED_MULTI_VERSIONS=1 first)"
+        )
+
+    with pytest.raises(InvalidInputError, match="multiple target versions"):
+        await client.work_package.update(
+            work_package_id=seed_wp_summary.id,
+            version="Seed Version 1.0",
+            confirm=False,
+        )
+
+
+async def test_version_and_target_versions_together_rejected_live(
+    multi_target_versions_disabled, client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    created = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} target_versions conflict", confirm=True
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
+    with pytest.raises(InvalidInputError, match="cannot both be"):
+        await client.work_package.update(
+            work_package_id=created.work_package_id,
+            version="Seed Version 1.0",
+            target_versions=["Seed Version 1.0"],
+            confirm=False,
+        )
+
+
+async def test_target_versions_write_not_stripped_by_echo_workaround_live(
+    multi_target_versions_disabled, client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """The one thing unit-level fake-API tests cannot fully verify: whether
+    OpenProject's real form-echo response shape interacts with a genuine
+    target_versions write the way _build_write_payload's strip-workaround
+    condition (version is not None and target_versions is None) assumes."""
+    created = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} target_versions echo", confirm=True
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
+    update_result = await client.work_package.update(
+        work_package_id=created.work_package_id,
+        target_versions=["Seed Version 1.0"],
+        confirm=True,
+    )
+    assert update_result.ready, update_result.validation_errors
+
+    wp = await client.work_package.get(created.work_package_id)
+    assert wp.target_versions == ["Seed Version 1.0"]

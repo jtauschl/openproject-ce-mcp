@@ -1013,6 +1013,80 @@ def test_has_project_attributes_is_none_when_absent_from_payload() -> None:
     assert detail.has_project_attributes is None
 
 
+def test_target_versions_empty_list_leaves_version_none() -> None:
+    payload = _wp_payload()
+    payload["_links"]["targetVersions"] = []
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.target_versions == []
+    assert summary.version is None
+
+
+def test_target_versions_single_entry_derives_version() -> None:
+    payload = _wp_payload()
+    payload["_links"]["targetVersions"] = [{"href": "/api/v3/versions/2", "title": "1.0"}]
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.target_versions == ["1.0"]
+    assert summary.version == "1.0"
+
+
+def test_target_versions_multiple_entries_collapses_version_to_none() -> None:
+    """version is a derived, backward-compatible single-value projection --
+    lossy on purpose when more than one target version is assigned (this
+    client's own decision, documented on WorkPackageSummary/WorkPackageDetail
+    and in docs/tools.md)."""
+    payload = _wp_payload()
+    payload["_links"]["targetVersions"] = [
+        {"href": "/api/v3/versions/2", "title": "1.0"},
+        {"href": "/api/v3/versions/3", "title": "2.0"},
+    ]
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.target_versions == ["1.0", "2.0"]
+    assert summary.version is None
+
+
+def test_target_versions_absent_falls_back_to_legacy_version_link() -> None:
+    """Real fallback, not just defensive: targetVersions genuinely doesn't
+    exist on this client's older supported servers (confirmed absent from
+    the 17.2 representer, present by 17.7). target_versions stays
+    consistent with the legacy single value rather than reporting an
+    empty list while version shows a real one."""
+    payload = _wp_payload()
+    payload["_links"]["version"] = {"href": "/api/v3/versions/2", "title": "1.0"}
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.target_versions == ["1.0"]
+    assert summary.version == "1.0"
+
+
+def test_target_versions_and_version_both_absent() -> None:
+    payload = _wp_payload()
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.target_versions == []
+    assert summary.version is None
+
+
+def test_target_versions_copied_verbatim_in_detail_from_summary() -> None:
+    payload = _wp_payload()
+    payload["_links"]["targetVersions"] = [
+        {"href": "/api/v3/versions/2", "title": "1.0"},
+        {"href": "/api/v3/versions/3", "title": "2.0"},
+    ]
+
+    detail = normalize_work_package_detail(payload, text_limit=None)
+
+    assert detail.target_versions == ["1.0", "2.0"]
+    assert detail.version is None
+
+
 @pytest.mark.asyncio
 async def test_get_work_package_exposes_custom_fields_end_to_end() -> None:
     payload = _wp_payload(customField1="Acme Corp")
