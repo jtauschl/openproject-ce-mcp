@@ -7,13 +7,14 @@
 ## Where to send a pull request
 
 `main` is not the active development branch — it stays frozen at the last
-finalized release. Active work happens on two parallel release branches:
-`release/0.3.7` (the original flat-`client.py` architecture, maintenance
-only) and `release/0.4.0` (the layered `app/` architecture, active
-development). Clone and base your PR on whichever of these matches the code
-you're touching, not `main` — a checkout of `main` (or a PR against it)
-leaves you on a frozen snapshot and needing manual re-application onto the
-correct release branch.
+finalized release. Active work happens on two parallel release branches: the
+current `release/0.3.x` maintenance branch (the original flat-`client.py`
+architecture; check the repo's branch list for the exact version, it drifts)
+and `release/0.4.0` (the layered `app/` architecture, active development).
+Clone and base your PR on whichever of these matches the code you're
+touching, not `main` — a checkout of `main` (or a PR against it) leaves you
+on a frozen snapshot and needing manual re-application onto the correct
+release branch.
 
 ## Set up
 
@@ -52,7 +53,7 @@ uv run pytest -m integration -v
 
 `OPENPROJECT_TEST_PROJECT` is the project identifier used for write tests (default: `mcp-test`). Integration tests are excluded from the default run (`-m 'not integration'`) and must be opted in explicitly.
 
-For local, throwaway instances across the OpenProject versions where the API changed (16.6 classic + 17.4 displayId + 17.5 semantic/workspaces), see [`docker/test/`](https://github.com/jtauschl/openproject-ce-mcp/tree/main/docker/test) — `docker/test/up.sh` boots and seeds them and prints the env block to run the integration tests against each. To verify the client's API assumptions against the OpenProject source across releases, see [`tools/api-check/`](https://github.com/jtauschl/openproject-ce-mcp/tree/main/tools/api-check).
+For local, throwaway instances across every supported OpenProject minor (16.0 through the latest — see [`docker/test/README.md`](docker/test/README.md) for exactly which versions and why each one matters), see [`docker/test/`](https://github.com/jtauschl/openproject-ce-mcp/tree/main/docker/test) — `docker/test/up.sh` boots and seeds them and prints the env block to run the integration tests against each. To verify the client's API assumptions against the OpenProject source across releases, see [`tools/api-check/`](https://github.com/jtauschl/openproject-ce-mcp/tree/main/tools/api-check).
 
 ## After code changes
 
