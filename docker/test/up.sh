@@ -228,7 +228,7 @@ if [ "$MODE" = "all" ] || [ -z "$MODE" ]; then
         exit 2
         ;;
     esac
-    echo "Running all ${#ALL_ENTRIES[@]} versions in batches of $BATCH_SIZE…"
+    echo "Running all ${#ALL_ENTRIES[@]} versions in batches of $BATCH_SIZE..."
     total=${#ALL_ENTRIES[@]}
     i=0
     while [ "$i" -lt "$total" ]; do
