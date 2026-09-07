@@ -68,19 +68,19 @@ flag skips the connection test and preview and writes directly.
 
 ## Tool Groups
 
-Each of the 8 tool groups below has its own `OPENPROJECT_ENABLE_<GROUP>_READ`
+Each of the 9 tool groups below has its own `OPENPROJECT_ENABLE_<GROUP>_READ`
 boolean controlling whether that group's tools are registered at all — this
 governs tool *visibility* (and context-token budget), not data access; the
 actual security boundary is `OPENPROJECT_READ_PROJECTS` /
 `OPENPROJECT_WRITE_PROJECTS` plus the write flags below.
 
-The 5 core groups default `true` (a fresh setup gets the full read surface for
+The 6 core groups default `true` (a fresh setup gets the full read surface for
 them). `personal`, `extended`, and `admin` default `false` — they are opt-in
-because they surface data with a different exposure profile than the core-5:
+because they surface data with a different exposure profile than the core-6:
 `personal` your own preferences/notifications, `extended` rarely-needed metadata
 tools, and `admin` the instance-wide user/group list (names, logins, emails) via
 `list_users`/`get_user`/`list_groups`/`get_group`/`list_principals` — none of
-that is bounded by a project scope the way the core-5 are, so it stays out of
+that is bounded by a project scope the way the core-6 are, so it stays out of
 the tool set until explicitly requested.
 
 | Variable | Required | Default | Description |
@@ -90,6 +90,7 @@ the tool set until explicitly requested.
 | `OPENPROJECT_ENABLE_MEMBERSHIP_READ` | no | `true` | Project memberships, roles, current user, actions, capabilities |
 | `OPENPROJECT_ENABLE_VERSION_READ` | no | `true` | Versions |
 | `OPENPROJECT_ENABLE_BOARD_READ` | no | `true` | Boards |
+| `OPENPROJECT_ENABLE_MEETING_READ` | no | `true` | Meetings, agenda items, sections, outcomes, recurring meetings |
 | `OPENPROJECT_ENABLE_PERSONAL_READ` | no | `false` | Your own preferences and notifications (`get_my_preferences`, `list_notifications`) |
 | `OPENPROJECT_ENABLE_ADMIN_READ` | no | `false` | Instance-wide user/group listing (`list_users`, `get_user`, `list_groups`, `get_group`, `list_principals`) plus external file storage connections (`list_storages`, `get_storage`) — PII / admin-only, not project-scoped. `list_project_storages`/`get_project_storage` are NOT gated here — they are project-scoped, see `OPENPROJECT_ENABLE_PROJECT_READ` |
 | `OPENPROJECT_ENABLE_USER_SCHEDULE_READ` | no | `false` | Per-user schedule overrides — vacation date ranges and working-hours schedules (`list_user_non_working_times`, `list_user_working_hours`, `get_user_working_hours`; requires OpenProject 17.3+). Its own dedicated scope: not bounded by a project allowlist, but also not `_ADMIN_READ` (would block ordinary self-service) or `_PERSONAL_READ` (its tools take no `user_id`) |
@@ -97,7 +98,7 @@ the tool set until explicitly requested.
 
 Each write flag below requires its matching read boolean to be `true` — e.g.
 `OPENPROJECT_ENABLE_BOARD_WRITE=true` with `OPENPROJECT_ENABLE_BOARD_READ=false`
-fails at startup with a clear error. The 5 project-scoped write flags default
+fails at startup with a clear error. The 6 project-scoped write flags default
 `true`, since the real gate for them is the project allowlists above (a write
 flag alone does nothing without a project in `OPENPROJECT_WRITE_PROJECTS`, and
 the corresponding write tools aren't even registered unless both
@@ -114,6 +115,7 @@ safety net for them.
 | `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE` | no | `true` | Project membership create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
 | `OPENPROJECT_ENABLE_VERSION_WRITE` | no | `true` | Version create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `true` | Board create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
+| `OPENPROJECT_ENABLE_MEETING_WRITE` | no | `true` | Meeting/agenda-item/section/outcome/recurring-meeting create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
 | `OPENPROJECT_ENABLE_PERSONAL_WRITE` | no | `false` | Personal-data mutations (update your own preferences, mark notifications read). Personal read tools require only `OPENPROJECT_ENABLE_PERSONAL_READ=true`; personal mutations require both the read and write flags together |
 | `OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE` | no | `false` | Create/update/delete a user's non-working times and working-hours schedule (requires `OPENPROJECT_ENABLE_USER_SCHEDULE_READ=true` too, like every other write flag requires its matching read) |
 

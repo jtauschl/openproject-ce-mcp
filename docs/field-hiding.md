@@ -62,14 +62,17 @@ Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `project_admin_context`, `project_configuration`, `action`, `capability`,
 `job_status`, `project_phase_definition`, `project_phase`, `view`,
 `query_filter`, `query_column`, `query_operator`, `query_sort_by`,
-`query_filter_instance_schema`, `document`, `news`, `wiki_page`, `category`,
-`attachment`, `time_entry_activity`, `time_entry`, `work_package`, `relation`,
-`activity`, `reminder`, `version`, `sprint`, `board`, `grid`, `current_user`,
-`instance_configuration`, `status`, `priority`, `type`, `watcher`,
-`notification`, `file_link`, `emoji_reaction`, `wiki_page_link`,
+`query_filter_instance_schema`, `document`, `news`, `wiki_page`, `post`,
+`category`, `attachment`, `time_entry_activity`, `time_entry`, `cost_entry`,
+`cost_type`, `work_package_costs_by_type_element`, `github_pull_request`,
+`gitlab_issue`, `gitlab_merge_request`, `work_package`, `relation`, `activity`,
+`reminder`, `version`, `sprint`, `backlog_bucket`, `board`, `grid`,
+`current_user`, `instance_configuration`, `status`, `priority`, `type`,
+`watcher`, `notification`, `file_link`, `emoji_reaction`, `wiki_page_link`,
 `user_preferences`, `rendered_text`, `help_text`, `working_day`,
 `non_working_day`, `custom_option`, `user_non_working_time`,
-`user_working_hours`, `storage`, `project_storage`.
+`user_working_hours`, `meeting`, `meeting_agenda_item`, `meeting_outcome`,
+`meeting_section`, `recurring_meeting`, `storage`, `project_storage`.
 
 See [Configuration](configuration.md) for the two variables' required/default
 values.

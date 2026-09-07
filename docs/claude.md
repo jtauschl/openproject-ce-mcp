@@ -165,7 +165,7 @@ across every project the way this User-scope option does.
   Windows/Linux)
 - `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or
   glob patterns: `project-one,team-*`. Use `*` for all visible projects
-- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core
+- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 6 core
   write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by
   default and do nothing until a project is listed here; set one to `false` to
   exclude that category instead

@@ -496,7 +496,7 @@ The model has two independent layers:
 
 **Layer 1 — MCP server gates** (env var flags, checked before any HTTP call):
 
-- the 8 individual `OPENPROJECT_ENABLE_<GROUP>_READ` flags (which read scopes
+- the 9 individual `OPENPROJECT_ENABLE_<GROUP>_READ` flags (which read scopes
   are exposed at all; `OPENPROJECT_ENABLE_EXTENDED_READ` opt-in exposes a
   rarely-used subset of metadata tools, `OPENPROJECT_ENABLE_ADMIN_READ` opt-in
   exposes the instance-wide user/group list)

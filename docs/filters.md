@@ -30,6 +30,8 @@ keys, supported operators, and implementation details.
 | updated_between | updated_at | :datetime_past | <>d | >t-, <t-, t-, t, w, =d, <>d | Date range |
 | due_on | due_date | :date | =d | <t+, >t+, t+, t, w, >t-, <t-, t-, =d, <>d, !* | Single date exact match |
 | due_between | due_date | :date | <>d | <t+, >t+, t+, t, w, >t-, <t-, t-, =d, <>d, !* | Date range |
+| overdue_only | due_date + status_id | :date + :list (custom) | <t-, o | <t+, >t+, t+, t, w, >t-, <t-, t-, =d, <>d, !* | Boolean; due_date < today AND status open. Cannot combine with due_on/due_between/due_within_days |
+| due_within_days | due_date | :date | <t+ | <t+, >t+, t+, t, w, >t-, <t-, t-, =d, <>d, !* | Integer days ahead (>= 0); due_date within N days from today. Cannot combine with due_on/due_between |
 | custom_field_filters | cf_\<N\> (per entry) | varies by field format | varies by field format | varies by field format | Filters by custom field value(s) — a dict of many, not a single named parameter; see "Custom-Field Filters" below |
 
 ## Filter Type Strategies
