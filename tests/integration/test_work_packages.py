@@ -1024,6 +1024,39 @@ async def test_round_trip_single_value_target_versions_write(
     assert cleared.version is None
 
 
+async def test_round_trip_target_versions_write_on_create_live(
+    multi_target_versions_disabled, client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """target_versions=[...] set directly on create() (not via a follow-up
+    update()) also round-trips correctly. The other target_versions tests in
+    this section only exercise create() with no version-related args, so the
+    create-path's own echo-restore logic (OPM-468 follow-up fix,
+    2026-09-08) is only indirectly covered elsewhere -- this closes that
+    gap against a real OpenProject 17.7/17.8 instance, where the work-package
+    form response echoes a stale targetVersions that must be overwritten by
+    the client with the caller's actual request before commit."""
+    result = await skip_if_unsupported(lambda: client.work_package.list(project=test_project))
+    seed_wp_summary = next(
+        (wp for wp in result.results if wp.subject == "Seed work package (single target version)"), None
+    )
+    if seed_wp_summary is None:
+        pytest.skip("seeded single-target-version work package not present (check docker/test/seed.rb ran)")
+
+    created = await client.work_package.create(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} target_versions on create",
+        target_versions=["Seed Version 1.0"],
+        confirm=True,
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
+    wp = await client.work_package.get(created.work_package_id)
+    assert wp.target_versions == ["Seed Version 1.0"]
+    assert wp.version == "Seed Version 1.0"
+
+
 async def test_get_multi_target_version_work_package(
     multi_target_versions_enabled, client: OpenProjectClient, test_project: str
 ) -> None:

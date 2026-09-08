@@ -221,11 +221,27 @@ class _FakeWorkPackageApi:
 
 
 class _TargetVersionsEchoingWorkPackageApi(_FakeWorkPackageApi):
+    """Simulates OpenProject 17.7/17.8's real form-echo bug: the work-package
+    form response's `_embedded.payload._links.targetVersions` doesn't
+    reflect the request -- it echoes `echoed_target_versions` regardless of
+    what was actually sent. Defaults to `[]` (the observed live behavior for
+    a fresh work package), but a test can override it to a stale non-empty
+    value to prove a repair actually overwrites the echo rather than merely
+    happening to already match it.
+    """
+
+    def __init__(self, *, echoed_target_versions: list[dict] | None = None) -> None:
+        super().__init__()
+        self.echoed_target_versions = echoed_target_versions if echoed_target_versions is not None else []
+
     async def validate_create(self, project_id: str, payload: dict) -> dict:
         form = await super().validate_create(project_id, payload)
         form["_embedded"]["payload"] = {
             **form["_embedded"]["payload"],
-            "_links": {**form["_embedded"]["payload"].get("_links", {}), "targetVersions": []},
+            "_links": {
+                **form["_embedded"]["payload"].get("_links", {}),
+                "targetVersions": self.echoed_target_versions,
+            },
         }
         return form
 
@@ -233,7 +249,10 @@ class _TargetVersionsEchoingWorkPackageApi(_FakeWorkPackageApi):
         form = await super().validate_update(work_package_ref, payload)
         form["_embedded"]["payload"] = {
             **form["_embedded"]["payload"],
-            "_links": {**form["_embedded"]["payload"].get("_links", {}), "targetVersions": []},
+            "_links": {
+                **form["_embedded"]["payload"].get("_links", {}),
+                "targetVersions": self.echoed_target_versions,
+            },
         }
         return form
 
@@ -1533,6 +1552,29 @@ async def test_create_strips_unrequested_target_versions_on_commit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_target_versions_restores_echoed_empty_list_on_commit() -> None:
+    # Mirror-image regression of the strip test above: OpenProject's form
+    # response also echoes a wrong targetVersions when target_versions
+    # itself was the field requested -- the caller's actual write must win
+    # over the broken echo, not be silently discarded by it.
+    api = _TargetVersionsEchoingWorkPackageApi()
+    service, _ = _service(api)
+
+    preview = await service.create(
+        project="demo", type="Task", subject="New WP", target_versions=["1.0"], confirm=False
+    )
+    # Proves the fake really does simulate the broken echo.
+    assert preview.payload["_links"]["targetVersions"] == []
+
+    result = await service.create(project="demo", type="Task", subject="New WP", target_versions=["1.0"], confirm=True)
+
+    assert result.state == "confirmed"
+    assert len(api.commit_create_calls) == 1
+    committed_payload = api.commit_create_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
+
+
+@pytest.mark.asyncio
 async def test_create_rejects_when_write_scope_denies_project() -> None:
     api = _FakeWorkPackageApi()
 
@@ -1791,6 +1833,21 @@ async def test_create_subtask_strips_unrequested_target_versions_on_commit() -> 
     assert result.state == "confirmed"
     committed_payload = api.commit_create_calls[0]
     assert "targetVersions" not in committed_payload["_links"]
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_target_versions_restores_echoed_empty_list_on_commit() -> None:
+    api = _TargetVersionsEchoingWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/api/v3/projects/1", project_title="Demo"))
+    service, _ = _service(api)
+
+    result = await service.create_subtask(
+        parent_work_package_id=6, type="Task", subject="Child task", target_versions=["1.0"], confirm=True
+    )
+
+    assert result.state == "confirmed"
+    committed_payload = api.commit_create_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
 
 
 @pytest.mark.asyncio
@@ -2090,6 +2147,85 @@ async def test_update_target_versions_not_stripped_by_echo_workaround() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_target_versions_restores_echoed_empty_list_on_commit() -> None:
+    # Mirror-image regression of test_update_strips_unrequested_target_versions_on_commit:
+    # when target_versions itself is requested, the broken form echo must be
+    # overwritten by the caller's actual write, not committed verbatim.
+    api = _TargetVersionsEchoingWorkPackageApi()
+    service, _ = _service(api)
+
+    preview = await service.update(work_package_id=6, target_versions=["1.0"], confirm=False)
+    assert preview.payload["_links"]["targetVersions"] == []
+
+    result = await service.update(work_package_id=6, target_versions=["1.0"], confirm=True)
+
+    assert result.state == "confirmed"
+    assert len(api.commit_update_calls) == 1
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == [{"href": "/api/v3/versions/4"}]
+
+
+@pytest.mark.asyncio
+async def test_update_multi_value_target_versions_restores_echoed_empty_list_on_commit() -> None:
+    api = _TargetVersionsEchoingWorkPackageApi()
+    service, _ = _service(api)
+    resolved_refs: list[str] = []
+
+    async def resolve_version_id(version_ref, *, project=None, context=None):
+        resolved_refs.append(version_ref)
+        return {"1.0": "10", "2.0": "20"}[version_ref]
+
+    service._resolve_version_id = resolve_version_id  # type: ignore[method-assign]
+
+    result = await service.update(work_package_id=6, target_versions=["1.0", "2.0"], confirm=True)
+
+    assert result.state == "confirmed"
+    assert resolved_refs == ["1.0", "2.0"]
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == [
+        {"href": "/api/v3/versions/10"},
+        {"href": "/api/v3/versions/20"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_target_versions_clear_via_empty_list_restores_through_echo() -> None:
+    # A stale NON-empty echo is deliberately used here (not the default []):
+    # if the echo were also [], this test couldn't distinguish "the fix
+    # actually restored the requested value" from "the echo happened to
+    # already match" -- both the buggy and fixed code would commit [] in
+    # that case. A stale non-empty echo makes the repair unambiguous.
+    api = _TargetVersionsEchoingWorkPackageApi(echoed_target_versions=[{"href": "/api/v3/versions/99"}])
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, target_versions=[], confirm=True)
+
+    assert result.state == "confirmed"
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == []
+
+
+@pytest.mark.asyncio
+async def test_update_target_versions_rejected_never_commits() -> None:
+    # Proves the restore logic never even runs on a rejected write --
+    # _finalize_write itself never calls the commit closure when
+    # validation_errors is non-empty, so this is a confirmation of that
+    # existing guarantee for the target_versions direction specifically
+    # (test_update_rejected_target_versions_conflict_reports_validation_errors
+    # above only covers the strip/version direction).
+    api = _TargetVersionsEchoingWorkPackageApi()
+    api.validation_errors_queue.append({"targetVersions": "Version is not assignable."})
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, target_versions=["1.0"], confirm=True)
+
+    assert result.state == "invalid"
+    assert result.ready is False
+    assert result.payload["_links"]["targetVersions"] == []
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
 async def test_update_version_and_target_versions_together_rejected() -> None:
     api = _FakeWorkPackageApi()
     service, _ = _service(api)
@@ -2222,6 +2358,48 @@ def test_strip_unrequested_target_versions_does_not_mutate_input() -> None:
     assert stripped["_links"] is not original_links
     assert payload == original_payload
     assert payload["_links"] is original_links
+
+
+def test_restore_requested_target_versions_does_not_mutate_input() -> None:
+    from openproject_ce_mcp.app.services.work_package_service import _restore_requested_target_versions
+
+    original_links = {"subject": {"href": None}, "targetVersions": []}
+    payload = {"subject": "WP", "_links": original_links}
+    original_payload = {"subject": "WP", "_links": {"subject": {"href": None}, "targetVersions": []}}
+    requested = [{"href": "/api/v3/versions/10"}]
+
+    restored = _restore_requested_target_versions(payload, requested)
+
+    assert restored["_links"]["targetVersions"] == requested
+    assert restored is not payload
+    assert restored["_links"] is not original_links
+    assert payload == original_payload
+    assert payload["_links"] is original_links
+
+
+def test_restore_requested_target_versions_inserts_links_when_missing() -> None:
+    # A missing _links key must NOT be passed through unchanged -- that
+    # would silently reproduce the exact write-loss bug this helper exists
+    # to prevent.
+    from openproject_ce_mcp.app.services.work_package_service import _restore_requested_target_versions
+
+    payload = {"subject": "WP"}
+    requested = [{"href": "/api/v3/versions/10"}]
+
+    restored = _restore_requested_target_versions(payload, requested)
+
+    assert restored["_links"]["targetVersions"] == requested
+    assert payload == {"subject": "WP"}
+
+
+def test_restore_requested_target_versions_raises_on_malformed_links() -> None:
+    from openproject_ce_mcp.app.errors import OpenProjectServerError
+    from openproject_ce_mcp.app.services.work_package_service import _restore_requested_target_versions
+
+    payload = {"subject": "WP", "_links": "not-a-dict"}
+
+    with pytest.raises(OpenProjectServerError, match="malformed"):
+        _restore_requested_target_versions(payload, [{"href": "/api/v3/versions/10"}])
 
 
 @pytest.mark.asyncio

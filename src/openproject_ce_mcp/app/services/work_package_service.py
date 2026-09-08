@@ -273,6 +273,41 @@ def _strip_unrequested_target_versions(payload: dict[str, Any]) -> dict[str, Any
     return {**payload, "_links": new_links}
 
 
+def _restore_requested_target_versions(
+    payload: dict[str, Any], requested_links: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Overwrite an echoed `_links.targetVersions` OpenProject's work-package
+    form response gets wrong (see `_strip_unrequested_target_versions`'s
+    docstring for the shared root cause) with the caller's own actually-
+    requested value, so committing the form's own payload back verbatim --
+    this client's normal write pattern -- doesn't silently discard a
+    target_versions=[...] write the caller explicitly asked for. Upstream
+    bug, same as entry 11 in openproject-ce-mcp-int's
+    upstream-openproject-bugs.md, opposite direction -- remove this once
+    that entry marks the upstream form-echo fixed.
+
+    Call only when the caller's own request set `target_versions` (not
+    `None`) -- a create/update that never touches target_versions passes
+    its payload through unaffected, and version/target_versions are already
+    mutually exclusive by `_build_write_payload`'s own validation, so this
+    and `_strip_unrequested_target_versions` never both apply to the same
+    call.
+
+    Note: only the payload actually committed to the server is repaired
+    here -- the preview/result payload returned to the caller
+    (`WorkPackageWriteResult.payload`) still reflects the original broken
+    echo, matching `_strip_unrequested_target_versions`'s same pre-existing
+    behavior. What matters (the server's persisted state, and what a
+    subsequent read returns) is correct either way.
+    """
+    links = payload.get("_links")
+    if links is None:
+        links = {}
+    elif not isinstance(links, dict):
+        raise OpenProjectServerError("OpenProject work-package form payload has malformed _links.")
+    return {**payload, "_links": {**links, "targetVersions": list(requested_links)}}
+
+
 SUBJECT_LIMIT = 255
 
 
@@ -1736,7 +1771,9 @@ class WorkPackageService:
             identity={"work_package_id": None, "project": project_payload.get("name")},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
             commit=lambda p: self._api.commit_create(
-                _strip_unrequested_target_versions(p) if version is not None and target_versions is None else p,
+                _restore_requested_target_versions(p, payload["_links"]["targetVersions"])
+                if target_versions is not None
+                else (_strip_unrequested_target_versions(p) if version is not None else p),
                 text_limit=FORMATTABLE_LIMIT,
             ),
             committed_identity=lambda record: {
@@ -1816,7 +1853,9 @@ class WorkPackageService:
             identity={"work_package_id": None, "project": parent_title},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
             commit=lambda p: self._api.commit_create(
-                _strip_unrequested_target_versions(p) if version is not None and target_versions is None else p,
+                _restore_requested_target_versions(p, payload["_links"]["targetVersions"])
+                if target_versions is not None
+                else (_strip_unrequested_target_versions(p) if version is not None else p),
                 text_limit=FORMATTABLE_LIMIT,
             ),
             committed_identity=lambda record: {
@@ -2090,7 +2129,9 @@ class WorkPackageService:
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
             commit=lambda p: self._api.commit_update(
                 ref,
-                _strip_unrequested_target_versions(p) if version_was_requested else p,
+                _restore_requested_target_versions(p, payload["_links"]["targetVersions"])
+                if target_versions is not None
+                else (_strip_unrequested_target_versions(p) if version_was_requested else p),
                 text_limit=FORMATTABLE_LIMIT,
             ),
             committed_identity=lambda record: {
