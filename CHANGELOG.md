@@ -108,30 +108,12 @@ support.
 
 ### Fixed
 
-- `tools/api-check/check_coverage.py` missed almost all client resource
-  usage; `COVERAGE.md` regenerated to reflect actual coverage.
-- `list_work_package_wiki_links` failed whenever at least one link existed
-  on a work package — an upstream OpenProject bug, fix submitted
-  ([opf/openproject#24770](https://github.com/opf/openproject/pull/24770)).
 - Some write rejections showed a generic message instead of the actual
   reason (e.g. a rejected storage connection on Community Edition). The
   specific reason is now surfaced.
 - A permission-denied response could be misreported as an authentication
   failure if OpenProject's rejection bundled an unrelated detail message
   mentioning "token" or "authenticate".
-- `create_meeting_outcome`/`update_meeting_outcome` rejected the correct
-  `kind` values, and could fail against a freshly created meeting.
-- `init_recurring_meeting_occurrence` failed on every call — an upstream
-  OpenProject bug, fix merged
-  ([#24772](https://github.com/opf/openproject/pull/24772)), pending
-  release.
-- `update_user_non_working_time`/`delete_user_non_working_time` could
-  falsely report "not found" for a record whose date range fell outside
-  the current calendar year.
-- `create_user_working_hours` failed with an opaque server error whenever
-  any weekday was left unspecified, instead of treating it as "not a
-  working day" — an upstream OpenProject bug, fix submitted
-  ([#24773](https://github.com/opf/openproject/pull/24773)).
 - `list_projects` and `list_work_packages`/`search_work_packages` no
   longer report a false `truncated: true` when exactly the requested
   `limit` of allowed results exists and nothing else does.
@@ -142,12 +124,6 @@ support.
   resolved.
 - Time entry `activity` resolution now also handles the same linked
   (rather than embedded) allowed-values shape as the fix above.
-- Setting `target_versions` on a work package (create or update) silently
-  had no effect on OpenProject 17.7/17.8 — the write reported success, but
-  the value was never actually saved. An upstream OpenProject bug (the
-  form-validation response echoes back a stale value regardless of what
-  was requested); this client now overwrites that stale echo with the
-  actual requested value before committing.
 
 ### Docs
 
