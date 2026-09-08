@@ -142,6 +142,12 @@ support.
   resolved.
 - Time entry `activity` resolution now also handles the same linked
   (rather than embedded) allowed-values shape as the fix above.
+- Setting `target_versions` on a work package (create or update) silently
+  had no effect on OpenProject 17.7/17.8 — the write reported success, but
+  the value was never actually saved. An upstream OpenProject bug (the
+  form-validation response echoes back a stale value regardless of what
+  was requested); this client now overwrites that stale echo with the
+  actual requested value before committing.
 
 ### Docs
 
