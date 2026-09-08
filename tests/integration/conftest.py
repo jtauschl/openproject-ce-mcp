@@ -35,7 +35,26 @@ from openproject_ce_mcp.config import Settings
 _DOCKER_TEST_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "docker", "test")
 
 
-def _run_rails_script(script: str, *, result_key: str, env: dict[str, str] | None = None) -> str:
+class RailsCapabilityUnavailable(RuntimeError):
+    """Raised by `_run_rails_script` when `capability_check` was given and
+    evaluated false -- signals "this Ruby capability doesn't exist on this
+    OpenProject version," distinguishable from a real script failure.
+    Callers that are version-gated (multi_target_versions_enabled/_disabled)
+    catch this and skip; callers that don't pass `capability_check` never
+    see it.
+    """
+
+
+_RAILS_CAPABILITY_UNAVAILABLE_SENTINEL = "__RAILS_CAPABILITY_UNAVAILABLE__"
+
+
+def _run_rails_script(
+    script: str,
+    *,
+    result_key: str,
+    env: dict[str, str] | None = None,
+    capability_check: str | None = None,
+) -> str:
     """Run a Ruby script via `docker compose exec ... rails runner` and return
     the value of a `puts "<result_key>=<value>"` line it's expected to print.
 
@@ -52,12 +71,35 @@ def _run_rails_script(script: str, *, result_key: str, env: dict[str, str] | Non
     real code-injection risk (a value containing a single quote can make
     repr() emit a double-quoted Ruby literal, enabling "#{...}" interpolation
     inside the runner), not just a style preference.
+
+    `capability_check`, when given, is a Ruby boolean expression (e.g.
+    "Setting.respond_to?(:work_package_multiple_versions=)") checked
+    structurally BEFORE `script` runs -- not by parsing stderr text for
+    "NoMethodError," which would be fragile (message wording isn't a stable
+    contract, and could false-positive on an unrelated NoMethodError from
+    inside the script's own body). If it evaluates false, the real script
+    body never runs and this function raises RailsCapabilityUnavailable
+    instead of its normal return -- callers that are version-gated catch
+    this and skip; callers that don't pass capability_check never see it
+    (their contract is unchanged: fail loudly on any real error).
+
+    TRUST BOUNDARY: `capability_check` is embedded as raw, unescaped Ruby
+    source -- every caller must pass a fixed literal string (a hardcoded
+    Ruby expression naming a method/setting to probe), never a value built
+    from external input (env vars, fixture parameters, anything
+    caller-controlled). Doing so would be real Ruby code injection, the
+    same class of risk this function's own `env` parameter already exists
+    specifically to avoid for script *values* -- this parameter has no
+    equivalent safety net, so its literal-only contract must hold.
     """
     service = os.environ["OPENPROJECT_DOCKER_SERVICE"]
     env_args = [arg for key, value in (env or {}).items() for arg in ("-e", f"{key}={value}")]
+    full_script = script
+    if capability_check is not None:
+        full_script = f'if {capability_check}\n{script}\nelse\n  puts "{_RAILS_CAPABILITY_UNAVAILABLE_SENTINEL}"\nend\n'
     proc = subprocess.run(
         ["docker", "compose", "exec", "-T", *env_args, service, "bundle", "exec", "rails", "runner", "-"],
-        input=script,
+        input=full_script,
         cwd=_DOCKER_TEST_DIR,
         capture_output=True,
         text=True,
@@ -65,6 +107,8 @@ def _run_rails_script(script: str, *, result_key: str, env: dict[str, str] | Non
     )
     if proc.returncode != 0:
         pytest.fail(f"Rails runner script failed:\n{proc.stderr}")
+    if capability_check is not None and _RAILS_CAPABILITY_UNAVAILABLE_SENTINEL in proc.stdout.splitlines():
+        raise RailsCapabilityUnavailable(f"capability check failed: {capability_check}")
     prefix = f"{result_key}="
     line = next((line for line in proc.stdout.splitlines() if line.startswith(prefix)), None)
     if line is None:
@@ -657,6 +701,9 @@ async def project_refs(client: OpenProjectClient):
             pass
 
 
+_WP_MULTI_VERSIONS_CAPABILITY_CHECK = "Setting.respond_to?(:work_package_multiple_versions=)"
+
+
 def _set_multi_target_versions(*, enabled: bool) -> bool:
     """Force Setting::WorkPackageMultipleVersions to a known state via a Rails
     runner script (OpenProject's REST API has no endpoint for instance-wide
@@ -664,6 +711,11 @@ def _set_multi_target_versions(*, enabled: bool) -> bool:
     return the value it actually reached. Requires OPENPROJECT_DOCKER_SERVICE;
     callers must skip on that themselves first, matching every other
     _run_rails_script caller in this file.
+
+    Raises RailsCapabilityUnavailable if Setting.work_package_multiple_versions=
+    doesn't exist on this OpenProject version (16.0-17.6) -- callers
+    (multi_target_versions_enabled/_disabled) catch this and skip instead of
+    crashing on a live NoMethodError.
 
     Setting.work_package_multiple_versions=true is not always sufficient on
     its own: on OpenProject 17.7 (targetVersions/this setting are not
@@ -689,7 +741,12 @@ def _set_multi_target_versions(*, enabled: bool) -> bool:
         Setting.work_package_multiple_versions = {"true" if enabled else "false"}
         puts "VALUE=#{{Setting::WorkPackageMultipleVersions.active?}}"
     """
-    return _run_rails_script(script, result_key="VALUE") == "true"
+    return _run_rails_script(script, result_key="VALUE", capability_check=_WP_MULTI_VERSIONS_CAPABILITY_CHECK) == "true"
+
+
+_MULTI_VERSIONS_UNSUPPORTED_SKIP = (
+    "Setting::WorkPackageMultipleVersions does not exist on this OpenProject version (requires 17.7+)"
+)
 
 
 @pytest.fixture
@@ -699,17 +756,25 @@ def multi_target_versions_enabled():
     OPENPROJECT_DOCKER_SERVICE; skips cleanly if unset -- the same
     requirement _run_rails_script itself has, checked here up front so the
     skip reason names this fixture specifically. Also skips cleanly if the
-    setting could not actually be activated (e.g. OpenProject 17.7 without
-    its experimental FeatureDecisions flag -- see _set_multi_target_versions's
-    docstring) rather than letting the test proceed against a server that
-    will reject its multi-value write.
+    setting doesn't exist on this OpenProject version at all (16.0-17.6,
+    see RailsCapabilityUnavailable), or if the setting could not actually be
+    activated (e.g. OpenProject 17.7 without its experimental
+    FeatureDecisions flag -- see _set_multi_target_versions's docstring)
+    rather than letting the test proceed against a server that will reject
+    its multi-value write.
     """
     service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
     if not service:
         pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to toggle Setting::WorkPackageMultipleVersions)")
-    script = 'puts "VALUE=#{Setting.work_package_multiple_versions?}"'
-    previous = _run_rails_script(script, result_key="VALUE") == "true"
-    actual = _set_multi_target_versions(enabled=True)
+    try:
+        script = 'puts "VALUE=#{Setting.work_package_multiple_versions?}"'
+        previous = (
+            _run_rails_script(script, result_key="VALUE", capability_check=_WP_MULTI_VERSIONS_CAPABILITY_CHECK)
+            == "true"
+        )
+        actual = _set_multi_target_versions(enabled=True)
+    except RailsCapabilityUnavailable:
+        pytest.skip(_MULTI_VERSIONS_UNSUPPORTED_SKIP)
     if not actual:
         _set_multi_target_versions(enabled=previous)
         pytest.skip(
@@ -728,12 +793,20 @@ def multi_target_versions_disabled():
     multi_target_versions_enabled's docstring for the shared rationale.
     Disabling never has the 17.7 FeatureDecisions caveat (the AND in
     .active? means turning the plain Setting off always makes .active?
-    false), so there's nothing to verify or skip on here."""
+    false), so there's nothing to verify or skip on for that reason -- but
+    the setting can still not exist at all on this OpenProject version
+    (16.0-17.6), which is what RailsCapabilityUnavailable catches below."""
     service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
     if not service:
         pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to toggle Setting::WorkPackageMultipleVersions)")
-    script = 'puts "VALUE=#{Setting.work_package_multiple_versions?}"'
-    previous = _run_rails_script(script, result_key="VALUE") == "true"
-    _set_multi_target_versions(enabled=False)
+    try:
+        script = 'puts "VALUE=#{Setting.work_package_multiple_versions?}"'
+        previous = (
+            _run_rails_script(script, result_key="VALUE", capability_check=_WP_MULTI_VERSIONS_CAPABILITY_CHECK)
+            == "true"
+        )
+        _set_multi_target_versions(enabled=False)
+    except RailsCapabilityUnavailable:
+        pytest.skip(_MULTI_VERSIONS_UNSUPPORTED_SKIP)
     yield
     _set_multi_target_versions(enabled=previous)
