@@ -127,7 +127,19 @@ async def update_document(
     description: str | None = None,
     confirm: bool = False,
 ) -> DocumentWriteResult:
-    """Prepare or update a document."""
+    """Prepare or update a document.
+
+    WARNING -- known OpenProject server bug (reported upstream, not fixed as
+    of this writing: community.openproject.org/wp/19876,
+    github.com/opf/openproject/pull/24769): setting description corrupts the
+    stored value into a literal, unusable string on every currently
+    supported OpenProject version. The description you see echoed back
+    immediately after a confirmed update looks correct, but the value
+    actually persisted server-side is broken -- this is a server-side
+    parsing defect, not something this client can work around. Avoid using
+    description here until the upstream fix ships; title alone is
+    unaffected.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)

@@ -258,7 +258,19 @@ def test_get_document_schema() -> None:
 
 def test_update_document_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_document"]
-    assert tool.description == "Prepare or update a document."
+    assert tool.description == (
+        "Prepare or update a document.\n\n"
+        "WARNING -- known OpenProject server bug (reported upstream, not fixed as\n"
+        "of this writing: community.openproject.org/wp/19876,\n"
+        "github.com/opf/openproject/pull/24769): setting description corrupts the\n"
+        "stored value into a literal, unusable string on every currently\n"
+        "supported OpenProject version. The description you see echoed back\n"
+        "immediately after a confirmed update looks correct, but the value\n"
+        "actually persisted server-side is broken -- this is a server-side\n"
+        "parsing defect, not something this client can work around. Avoid using\n"
+        "description here until the upstream fix ships; title alone is\n"
+        "unaffected.\n"
+    )
     assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {

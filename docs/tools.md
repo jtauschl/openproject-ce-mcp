@@ -259,7 +259,7 @@ user exists.
 | --- | --- |
 | `list_documents` | List documents globally or filtered to a specific project, with an optional title search filter |
 | `get_document` | Fetch a single document by id |
-| `update_document` | Validate and then update a document title or description; only writes when called again with `confirm=true`. On OpenProject 16.6, the server rejects every update with a generic permission error unless the instance's "Block note editor" experimental feature flag is enabled (`/admin/settings/experimental`) — this flag is on by default from 17.x onward, so this only affects older instances. |
+| `update_document` | Validate and then update a document title or description; only writes when called again with `confirm=true`. On OpenProject 16.6, the server rejects every update with a generic permission error unless the instance's "Block note editor" experimental feature flag is enabled (`/admin/settings/experimental`) — this flag is on by default from 17.x onward, so this only affects older instances. **Known server bug, all supported versions:** setting `description` corrupts the stored value into a literal, unusable string — reported upstream, not yet fixed ([community.openproject.org/wp/19876](https://community.openproject.org/wp/19876), [opf/openproject#24769](https://github.com/opf/openproject/pull/24769)). Avoid `description` here until fixed; `title` alone is unaffected. |
 
 ## News
 
