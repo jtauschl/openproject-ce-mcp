@@ -1,4 +1,4 @@
-"""Characterization test: freezes the 6 Attachments/File Links MCP tool schemas.
+"""Characterization test: freezes the 7 Attachments/File Links MCP tool schemas.
 
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
@@ -48,7 +48,7 @@ def test_list_work_package_attachments_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_work_package_attachments"]
     assert (
         tool.description
-        == "List attachments on a work package.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\n\nselect fields: id, title, file_name, description (see server instructions\nfor select's general semantics).\n\nlimit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned\nnext_offset as the next call's offset to page past the cap.\n\ninclude_total_size=true sums file_size_bytes across every attachment\n(independent of limit/offset) — OpenProject's attachments endpoint\nalways returns the full list in one response, so this costs no extra\nrequest in the common case. Null if file_size_bytes is hidden by\nserver configuration, rather than leaking it indirectly through a sum.\n"
+        == "List attachments on a work package.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\n\nselect fields: id, title, file_name, description (see server instructions\nfor select's general semantics).\n\nlimit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned\nnext_offset as the next call's offset to page past the cap.\n\ninclude_total_size=true sums file_size_bytes across every attachment\n(independent of limit/offset) — OpenProject's attachments endpoint\nalways returns the full list in one response, so this costs no extra\nrequest in the common case. Null if file_size_bytes is hidden by\nserver configuration, rather than leaking it indirectly through a sum.\n\ninclude_images=true also reads the listed PNG/JPEG/GIF/WebP attachments\nand returns them as images the model can see, appended after the list.\nOne shared byte budget covers the whole call\n(OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES, 5 MB by default), taken in\nlisting order; every attachment that was not inlined is reported in\n`images` with its reason. Use get_attachment_content for one specific\nattachment, or for text content.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -101,6 +101,11 @@ def test_list_work_package_attachments_schema() -> None:
                 "title": "Include Total Size",
                 "type": "boolean",
             },
+            "include_images": {
+                "default": False,
+                "title": "Include Images",
+                "type": "boolean",
+            },
         },
         "required": ["work_package_id"],
         "title": "list_work_package_attachmentsArguments",
@@ -108,7 +113,37 @@ def test_list_work_package_attachments_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "offset", "limit", "select", "include_total_size"]
+    assert list(tool.parameters["properties"]) == [
+        "work_package_id",
+        "offset",
+        "limit",
+        "select",
+        "include_total_size",
+        "include_images",
+    ]
+
+
+def test_get_attachment_content_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["get_attachment_content"]
+    assert (
+        tool.description
+        == 'Read an attachment\'s actual content, not just its metadata.\n\nReturns a JSON block describing the outcome, followed by the content\nitself as a native block when it can be inlined:\n\n- PNG/JPEG/GIF/WebP come back as an image the model can see\n- text-like content (text/*, JSON, XML) comes back as text, cut at the\n  byte limit if it is long (outcome "text", truncated=true)\n- an image over the byte limit is refused whole rather than returned\n  partially (outcome "too_large")\n- anything else returns metadata only (outcome "not_inline_supported") —\n  no bytes, since no MCP client could display them\n\nmax_bytes may only LOWER the server\'s configured limit\n(OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES, 5 MB by default), never raise it.\n\nNothing is written to disk. Use get_attachment for metadata alone.\n'
+    )
+    # Returns a ContentBundle (native content blocks after a JSON block), so it
+    # is registered through the trimming wrapper with structured_output=False
+    # and carries no output schema -- see presentation.ContentBundle.
+    assert tool.output_schema is None
+    assert tool.parameters == {
+        "properties": {
+            "attachment_id": {"title": "Attachment Id", "type": "integer"},
+            "max_bytes": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Max Bytes"},
+        },
+        "required": ["attachment_id"],
+        "title": "get_attachment_contentArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    assert list(tool.parameters["properties"]) == ["attachment_id", "max_bytes"]
 
 
 def test_get_attachment_schema() -> None:

@@ -924,9 +924,86 @@ class AttachmentSummary:
 
 
 @dataclass
+class AttachmentContentResult:
+    """What happened when an attachment's content was fetched for inlining.
+
+    The metadata half of `get_attachment_content` (and of each entry in
+    `list_work_package_attachments`' `include_images`): the bytes themselves,
+    when there are any, travel as a native MCP content block alongside this,
+    never inside it. `outcome` says which:
+
+    - ``"image"``      an inlineable image; an ImageContent block follows
+    - ``"text"``       text-like content; a TextContent block follows,
+                       cut at the byte cap when ``truncated`` is true
+    - ``"too_large"``  over the byte cap and not truncatable (an image is
+                       never returned partially); no content block
+    - ``"not_inline_supported"``  a content type no MCP client can use as a
+                       block (an arbitrary binary blob); no content block,
+                       no bytes -- ``reason`` says why
+
+    ``content_type`` is the type the outcome was decided on: the served
+    response's own, except for text-like content that the server labelled
+    ``application/octet-stream``, where it is the stored metadata's type (the
+    only case the stored type is consulted).
+    ``size_bytes`` is the size of the content block that follows (so, the cap
+    itself when ``truncated``) -- not the attachment's stored size, and None
+    when no content block was included.
+    """
+
+    attachment_id: int
+    file_name: str | None
+    outcome: str
+    content_type: str | None
+    size_bytes: int | None
+    truncated: bool
+    reason: str | None
+
+
+@dataclass
 class AttachmentListResult(PageResult):
     results: list[AttachmentSummary]
     total_size_bytes: int | None = None
+    # Only populated by include_images=true: one entry per attachment that was
+    # considered for inlining, including the ones that were skipped (an
+    # entry with outcome != "image" is a skip and carries its reason). The
+    # ImageContent blocks for the successful ones follow this result's own
+    # JSON, in the same order as their entries here.
+    images: list[AttachmentContentResult] | None = None
+
+
+@dataclass(frozen=True)
+class AttachmentContentOutcome:
+    """One attachment's inlining result: the metadata the caller gets back
+    (`metadata`, serialized as the leading JSON block), plus the payload for
+    the native content block the tool layer builds from it.
+
+    Never serialized itself -- it crosses the Service -> tool boundary, and
+    lives here rather than in the Service module because that boundary is
+    also the `app/` -> tool-layer boundary: the tool layer may not import from
+    `app/`, and `app/` may not import the `mcp` SDK, so the shared shape has
+    to sit at the package root and the block construction on the tool side.
+    `image_bytes` is populated only when `metadata.outcome == "image"`, `text`
+    only when it is `"text"`, and neither for a skip.
+    """
+
+    metadata: AttachmentContentResult
+    image_bytes: bytes | None = None
+    text: str | None = None
+
+
+@dataclass(frozen=True)
+class AttachmentListWithImages:
+    """`list_work_package_attachments`' result when `include_images` is set.
+
+    `list_result.images` already describes every attachment that was
+    considered (including the skipped ones and why); `included` carries only
+    the ones that actually produced bytes, in the same order, so the tool
+    layer can append their blocks without re-filtering. Not a `*ListResult`
+    itself (deliberately: it wraps one) and never serialized directly.
+    """
+
+    list_result: AttachmentListResult
+    included: tuple[AttachmentContentOutcome, ...]
 
 
 @dataclass

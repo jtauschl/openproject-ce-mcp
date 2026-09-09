@@ -890,3 +890,31 @@ def test_single_entity_read_keeps_other_null_fields_when_hide_config_active() ->
     assert "lock_version" not in out
     assert out["priority"] is None
     assert out["category"] is None
+
+
+# ── ContentBundle: native content blocks alongside a trimmed body ─────────────
+
+
+def test_returns_trimmable_true_for_content_bundle_tools() -> None:
+    from openproject_ce_mcp.tools import get_attachment_content, list_work_package_attachments
+
+    assert _returns_trimmable(get_attachment_content) is True  # -> ContentBundle
+    assert _returns_trimmable(list_work_package_attachments) is True  # -> AttachmentListResult | ContentBundle
+
+
+def test_returns_content_bundle_reads_string_and_union_annotations() -> None:
+    from openproject_ce_mcp.presentation import ContentBundle
+    from openproject_ce_mcp.tools_runtime import _returns_content_bundle
+
+    async def bare() -> ContentBundle:  # string annotation (from __future__ import annotations)
+        raise NotImplementedError
+
+    async def union() -> m.AttachmentListResult | ContentBundle:
+        raise NotImplementedError
+
+    async def plain() -> m.AttachmentListResult:
+        raise NotImplementedError
+
+    assert _returns_content_bundle(bare) is True
+    assert _returns_content_bundle(union) is True
+    assert _returns_content_bundle(plain) is False

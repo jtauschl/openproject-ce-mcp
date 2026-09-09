@@ -562,3 +562,43 @@ def test_core_five_legacy_names_now_take_effect() -> None:
     assert settings.read_enabled("membership") is False
     assert settings.read_enabled("version") is False
     assert settings.read_enabled("board") is False
+
+
+def test_attachment_content_max_bytes_defaults_to_5_mib() -> None:
+    settings = Settings.from_env(
+        {"OPENPROJECT_BASE_URL": "https://op.example.com", "OPENPROJECT_API_TOKEN": "token-value"}
+    )
+    assert settings.attachment_content_max_bytes == 5 * 1024 * 1024
+
+
+def test_attachment_content_max_bytes_is_configurable() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES": "1048576",
+        }
+    )
+    assert settings.attachment_content_max_bytes == 1_048_576
+
+
+def test_attachment_content_max_bytes_exceeds_ceiling() -> None:
+    with pytest.raises(ConfigError, match="OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES must not exceed 26214400"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES": str(25 * 1024 * 1024 + 1),
+            }
+        )
+
+
+def test_attachment_content_max_bytes_rejects_zero() -> None:
+    with pytest.raises(ConfigError):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES": "0",
+            }
+        )

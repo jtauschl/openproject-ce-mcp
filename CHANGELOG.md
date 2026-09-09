@@ -22,6 +22,17 @@ support.
 
 ### Added
 
+- `get_attachment_content` reads an attachment's actual content instead of
+  just its metadata: PNG/JPEG/GIF/WebP come back as a native image block the
+  model can see, text-like files (`text/*`, JSON, XML) as text, and anything
+  else as metadata explaining why it was not inlined. Inlined text is
+  `<user-content>`-delimited like every other user-authored field. Content
+  is bounded by the new `OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES` (5 MB
+  default, 25 MB ceiling) while streaming; an oversized image is refused
+  whole, oversized text is truncated. Nothing is written to disk. (#31)
+- `list_work_package_attachments` gains `include_images`, inlining the listed
+  images under one aggregate byte budget and reporting per-attachment skip
+  reasons in `images`.
 - `list_work_packages`/`search_work_packages` gain `include_sums` (server-
   computed group aggregates), `overdue_only`/`due_within_days` (due-date
   filtering), and `custom_field_filters` (filter by custom field value).

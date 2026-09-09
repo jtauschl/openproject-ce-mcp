@@ -10,11 +10,38 @@ and this is needed by tools_runtime.py's registration wrapper.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, is_dataclass
 from dataclasses import fields as dataclass_fields
-from dataclasses import is_dataclass
 from typing import Any
 
 from .models import BatchWorkPackageReadItemResult, BulkWorkPackageItemResult
+
+
+@dataclass
+class ContentBundle:
+    """A tool result that is a normal dataclass PLUS native MCP content blocks.
+
+    The one shape in this codebase whose response is not exhausted by JSON:
+    an attachment's image or text has to reach the model as an ImageContent/
+    TextContent block, or the model cannot see it at all — a base64 string
+    inside a JSON field is just tokens.
+
+    Rather than letting such a tool bypass the trimming seam entirely (no
+    ``select``, no hidden-field masking, no confirmed-payload drop), the
+    bundle keeps ``body`` on exactly the normal path: ``tools_runtime``'s
+    wrapper trims it with ``_to_payload`` like any other result, serializes
+    that to one leading JSON text block, and appends ``blocks`` after it. A
+    tool returning a bundle therefore still honours every presentation policy;
+    only the extra blocks travel outside it, which is the part JSON cannot
+    carry.
+
+    ``blocks`` is typed ``Any`` on purpose: the blocks are ``mcp`` SDK objects,
+    and this module — like everything under ``app/`` — stays free of an ``mcp``
+    import. They are built in the tool layer, which already depends on the SDK.
+    """
+
+    body: Any
+    blocks: tuple[Any, ...] = ()
 
 
 def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none: bool = True) -> Any:

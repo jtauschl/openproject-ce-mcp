@@ -26,9 +26,13 @@ here, not the gating metadata.
 
 from __future__ import annotations
 
+import base64
+
 from mcp.server.mcpserver import Context
+from mcp.types import ImageContent, TextContent
 
 from .models import (
+    AttachmentContentOutcome,
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
@@ -36,6 +40,7 @@ from .models import (
     FileLinkSummary,
     FileLinkWriteResult,
 )
+from .presentation import ContentBundle
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _validate_limit,
@@ -48,6 +53,67 @@ from .tools_validation import (
 )
 
 
+def _content_blocks(outcome: AttachmentContentOutcome) -> tuple[ImageContent | TextContent, ...]:
+    """The native MCP block(s) for one AttachmentContentOutcome, or none.
+
+    An image becomes an ImageContent block — base64 is how the MCP wire format
+    carries image bytes, and the client turns it back into something the model
+    can actually look at, which a base64 string in a JSON field would not be.
+    Text goes back as text, never re-encoded.
+    """
+    if outcome.image_bytes is not None:
+        return (
+            ImageContent(
+                type="image",
+                data=base64.b64encode(outcome.image_bytes).decode("ascii"),
+                # Guaranteed to be one of the four inlineable image types:
+                # the Service only populates image_bytes after classifying it
+                # as one of them.
+                mime_type=outcome.metadata.content_type or "application/octet-stream",
+            ),
+        )
+    if outcome.text is not None:
+        # Same <user-content> delimiting every long-form user-authored field
+        # (descriptions, comments, wiki text) gets: an attached .md or .json
+        # is user-authored text handed straight to the model, so it is the
+        # prompt-injection surface SECURITY.md describes. Inlined here rather
+        # than via app/adapters/_text.delimit_user_content because the tool
+        # layer may not import from app/.
+        return (TextContent(type="text", text=f"<user-content>{outcome.text}</user-content>"),)
+    return ()
+
+
+@register_tool
+async def get_attachment_content(
+    ctx: Context,
+    attachment_id: int,
+    max_bytes: int | None = None,
+) -> ContentBundle:
+    """Read an attachment's actual content, not just its metadata.
+
+    Returns a JSON block describing the outcome, followed by the content
+    itself as a native block when it can be inlined:
+
+    - PNG/JPEG/GIF/WebP come back as an image the model can see
+    - text-like content (text/*, JSON, XML) comes back as text, cut at the
+      byte limit if it is long (outcome "text", truncated=true)
+    - an image over the byte limit is refused whole rather than returned
+      partially (outcome "too_large")
+    - anything else returns metadata only (outcome "not_inline_supported") —
+      no bytes, since no MCP client could display them
+
+    max_bytes may only LOWER the server's configured limit
+    (OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES, 5 MB by default), never raise it.
+
+    Nothing is written to disk. Use get_attachment for metadata alone.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(attachment_id, field_name="attachment_id")
+    safe_max_bytes = None if max_bytes is None else _validate_positive_int(max_bytes, field_name="max_bytes")
+    outcome = await _run_tool(client.attachment.get_content(safe_id, max_bytes=safe_max_bytes))
+    return ContentBundle(body=outcome.metadata, blocks=_content_blocks(outcome))
+
+
 @register_tool
 async def list_work_package_attachments(
     ctx: Context,
@@ -56,7 +122,8 @@ async def list_work_package_attachments(
     limit: int | None = None,
     select: list[str] | None = None,
     include_total_size: bool = False,
-) -> AttachmentListResult:
+    include_images: bool = False,
+) -> AttachmentListResult | ContentBundle:
     """List attachments on a work package.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
@@ -72,17 +139,33 @@ async def list_work_package_attachments(
     always returns the full list in one response, so this costs no extra
     request in the common case. Null if file_size_bytes is hidden by
     server configuration, rather than leaking it indirectly through a sum.
+
+    include_images=true also reads the listed PNG/JPEG/GIF/WebP attachments
+    and returns them as images the model can see, appended after the list.
+    One shared byte budget covers the whole call
+    (OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES, 5 MB by default), taken in
+    listing order; every attachment that was not inlined is reported in
+    `images` with its reason. Use get_attachment_content for one specific
+    attachment, or for text content.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=AttachmentSummary)
-    return await _run_tool(
-        client.attachment.list_for_work_package(
+    if not include_images:
+        return await _run_tool(
+            client.attachment.list_for_work_package(
+                safe_id, offset=safe_offset, limit=safe_limit, include_total_size=include_total_size
+            )
+        )
+    listing = await _run_tool(
+        client.attachment.list_for_work_package_with_images(
             safe_id, offset=safe_offset, limit=safe_limit, include_total_size=include_total_size
         )
     )
+    blocks = tuple(block for outcome in listing.included for block in _content_blocks(outcome))
+    return ContentBundle(body=listing.list_result, blocks=blocks)
 
 
 @register_tool

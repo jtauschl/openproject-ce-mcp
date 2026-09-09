@@ -40,6 +40,7 @@ EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
         "truncated",
         "results",
         "total_size_bytes",
+        "images",
     ],
     "BacklogBucketListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "BoardListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],

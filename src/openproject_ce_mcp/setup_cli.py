@@ -1413,6 +1413,10 @@ def _collect_credentials(
         text_limit = existing.get("OPENPROJECT_TEXT_LIMIT", "500")
         log_level = existing.get("OPENPROJECT_LOG_LEVEL", "WARNING")
         attachment_root = existing.get("OPENPROJECT_ATTACHMENT_ROOT", "")
+        # Carried over, never prompted for: an operator-tuned context-window cap
+        # is an edit-the-file setting, and dropping it on a re-run would silently
+        # reset it to the 5 MB default.
+        attachment_content_max_bytes = existing.get("OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES", "")
         max_retries = existing.get("OPENPROJECT_MAX_RETRIES", "3")
         retry_base_delay = existing.get("OPENPROJECT_RETRY_BASE_DELAY", "1.0")
         retry_max_delay = existing.get("OPENPROJECT_RETRY_MAX_DELAY", "60.0")
@@ -1558,6 +1562,7 @@ def _collect_credentials(
             "OPENPROJECT_HIDE_ACTIVITY_FIELDS": hide_activity,
             "OPENPROJECT_HIDE_CUSTOM_FIELDS": hide_custom,
             "OPENPROJECT_ATTACHMENT_ROOT": attachment_root,
+            "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES": attachment_content_max_bytes,
             "OPENPROJECT_TIMEOUT": timeout,
             "OPENPROJECT_VERIFY_SSL": verify_ssl,
             "OPENPROJECT_DEFAULT_PAGE_SIZE": default_page_size,
@@ -1766,6 +1771,7 @@ _MINIMAL_ENV_FIELD_MAP: tuple[tuple[str, str], ...] = (
     ("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "hide_activity_fields"),
     ("OPENPROJECT_HIDE_CUSTOM_FIELDS", "hide_custom_fields"),
     ("OPENPROJECT_ATTACHMENT_ROOT", "attachment_root"),
+    ("OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES", "attachment_content_max_bytes"),
     ("OPENPROJECT_TIMEOUT", "timeout"),
     ("OPENPROJECT_VERIFY_SSL", "verify_ssl"),
     ("OPENPROJECT_DEFAULT_PAGE_SIZE", "default_page_size"),

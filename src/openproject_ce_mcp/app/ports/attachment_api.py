@@ -38,6 +38,33 @@ from ...models import AttachmentSummary
 
 
 @dataclass(frozen=True)
+class AttachmentContent:
+    """One attachment's downloaded bytes, bounded by the caller's `max_bytes`.
+
+    Deliberately NOT `app/transport/protocol.py`'s `BinaryContent`, which it
+    otherwise mirrors: `ports` may not import from `transport` (the layer rule
+    the architecture-boundary test enforces), and the Port's contract is not
+    the transport's -- the Adapter translates one into the other, exactly as it
+    translates a HAL payload into an `AttachmentSummary`.
+
+    `served_content_type` is the Content-Type of the RESPONSE that actually
+    served the bytes, which is not interchangeable with the stored metadata's
+    `AttachmentSummary.content_type`: OpenProject serves anything it will not
+    inline -- JSON included -- as `application/octet-stream`, and an
+    external-storage redirect can lose the type altogether. The Service needs
+    both to classify correctly, so the Port keeps them distinct rather than
+    collapsing them here.
+
+    `truncated` means the body was longer than `max_bytes` and `data` holds
+    only its first `max_bytes` bytes.
+    """
+
+    data: bytes
+    served_content_type: str | None
+    truncated: bool
+
+
+@dataclass(frozen=True)
 class AttachmentRecord:
     """One attachment as read from the API: the normalized `summary`, plus
     the raw `_links.container` link dict -- see module docstring for why the
@@ -58,6 +85,7 @@ class AttachmentApi(Protocol):
         self, work_package_id: int, *, offset: int, page_size: int
     ) -> tuple[list[AttachmentRecord], int]: ...
     async def get(self, attachment_id: int) -> AttachmentRecord: ...
+    async def get_content(self, attachment_id: int, *, max_bytes: int) -> AttachmentContent: ...
     async def create(
         self,
         work_package_id: int,

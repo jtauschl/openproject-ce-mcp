@@ -36,7 +36,7 @@ The server runs as a local subprocess of your MCP client over stdio. It wraps Op
 **Work packages**
 - List and search work packages with structured filters
 - Create, update, and delete work packages; create subtasks; create, update, and delete relations; add comments (no edit or delete)
-- Upload and delete attachments; add and remove watchers; read activity logs
+- Upload, read (images and text inlined for the model), and delete attachments; add and remove watchers; read activity logs
 - Log, update, and delete time entries
 
 **Boards and views**
