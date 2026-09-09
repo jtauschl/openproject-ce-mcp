@@ -127,19 +127,7 @@ async def update_document(
     description: str | None = None,
     confirm: bool = False,
 ) -> DocumentWriteResult:
-    """Prepare or update a document.
-
-    Note: OpenProject's PATCH /documents/{id} has a known server-side bug
-    (community.openproject.org/wp/19876,
-    github.com/opf/openproject/pull/24769) that corrupts description when
-    it's sent as the normal HAL {format, raw, html} shape every other
-    formattable-property write uses. This client works around it by sending
-    description as a plain string instead -- description is safe to use
-    here. The workaround is forward-compatible with the eventual upstream
-    fix (its own diff only transforms a Hash-shaped description, leaving a
-    plain string unchanged), so no further client change will be needed
-    once that fix ships.
-    """
+    """Prepare or update a document."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
