@@ -119,11 +119,23 @@ async def test_update_document_description_round_trips(client: OpenProjectClient
     document_id = existing.results[0].id
     new_description = "A plain, unmangled description"
 
-    update_result = await client.document.update(
-        document_id=document_id,
-        description=new_description,
-        confirm=True,
-    )
+    try:
+        update_result = await client.document.update(
+            document_id=document_id,
+            description=new_description,
+            confirm=True,
+        )
+    except PermissionDeniedError:
+        # See test_get_and_update_document's identical guard: OpenProject
+        # 16.6 gates PATCH /documents/{id} behind the "Block note editor"
+        # feature flag, off by default.
+        pytest.skip(
+            "update_document is gated behind the 'Block note editor' feature flag on this "
+            "OpenProject version, and it's off by default -- not a client-side permission gap"
+        )
+    except NotFoundError:
+        # No PATCH route at all before 16.6 -- see test_get_and_update_document.
+        pytest.skip("update_document has no PATCH route on this OpenProject version (added in 16.6)")
     assert update_result.ready, update_result.validation_errors
     assert update_result.result is not None
     # This server wraps free text in <user-content> delimiters as its own
