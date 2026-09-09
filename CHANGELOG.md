@@ -124,6 +124,9 @@ support.
   resolved.
 - Time entry `activity` resolution now also handles the same linked
   (rather than embedded) allowed-values shape as the fix above.
+- `update_document`'s `description` field no longer corrupts the stored
+  value into an unusable string — an OpenProject server bug, worked around
+  client-side.
 
 ### Docs
 
