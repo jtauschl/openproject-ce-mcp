@@ -142,7 +142,17 @@ class DocumentService:
             payload["title"] = title
         if description is not None:
             hidden_fields.ensure_field_writable("document", "description", settings=self._settings)
-            payload["description"] = {"format": "markdown", "raw": description}
+            # Plain string, NOT the HAL {format, raw, html} shape every other
+            # formattable-property write uses -- OpenProject's own PATCH
+            # /documents/{id} handler parses the raw JSON body itself and
+            # hands `description` straight to Documents::UpdateService
+            # without extracting `.raw` first, so the HAL shape gets stored
+            # verbatim (stringified) instead of just the text. Confirmed via
+            # the upstream fix's own diff (opf/openproject#24769) that a
+            # plain string passes through unchanged both before and after
+            # that fix ships, so this isn't a workaround with an expiration
+            # date -- see community.openproject.org/wp/19876 for the report.
+            payload["description"] = description
 
         if not confirm:
             return DocumentWriteResult(

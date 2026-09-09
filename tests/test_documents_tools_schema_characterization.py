@@ -260,16 +260,16 @@ def test_update_document_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_document"]
     assert tool.description == (
         "Prepare or update a document.\n\n"
-        "WARNING -- known OpenProject server bug (reported upstream, not fixed as\n"
-        "of this writing: community.openproject.org/wp/19876,\n"
-        "github.com/opf/openproject/pull/24769): setting description corrupts the\n"
-        "stored value into a literal, unusable string on every currently\n"
-        "supported OpenProject version. The description you see echoed back\n"
-        "immediately after a confirmed update looks correct, but the value\n"
-        "actually persisted server-side is broken -- this is a server-side\n"
-        "parsing defect, not something this client can work around. Avoid using\n"
-        "description here until the upstream fix ships; title alone is\n"
-        "unaffected.\n"
+        "Note: OpenProject's PATCH /documents/{id} has a known server-side bug\n"
+        "(community.openproject.org/wp/19876,\n"
+        "github.com/opf/openproject/pull/24769) that corrupts description when\n"
+        "it's sent as the normal HAL {format, raw, html} shape every other\n"
+        "formattable-property write uses. This client works around it by sending\n"
+        "description as a plain string instead -- description is safe to use\n"
+        "here. The workaround is forward-compatible with the eventual upstream\n"
+        "fix (its own diff only transforms a Hash-shaped description, leaving a\n"
+        "plain string unchanged), so no further client change will be needed\n"
+        "once that fix ships.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

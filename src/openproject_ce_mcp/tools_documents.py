@@ -129,16 +129,16 @@ async def update_document(
 ) -> DocumentWriteResult:
     """Prepare or update a document.
 
-    WARNING -- known OpenProject server bug (reported upstream, not fixed as
-    of this writing: community.openproject.org/wp/19876,
-    github.com/opf/openproject/pull/24769): setting description corrupts the
-    stored value into a literal, unusable string on every currently
-    supported OpenProject version. The description you see echoed back
-    immediately after a confirmed update looks correct, but the value
-    actually persisted server-side is broken -- this is a server-side
-    parsing defect, not something this client can work around. Avoid using
-    description here until the upstream fix ships; title alone is
-    unaffected.
+    Note: OpenProject's PATCH /documents/{id} has a known server-side bug
+    (community.openproject.org/wp/19876,
+    github.com/opf/openproject/pull/24769) that corrupts description when
+    it's sent as the normal HAL {format, raw, html} shape every other
+    formattable-property write uses. This client works around it by sending
+    description as a plain string instead -- description is safe to use
+    here. The workaround is forward-compatible with the eventual upstream
+    fix (its own diff only transforms a Hash-shaped description, leaving a
+    plain string unchanged), so no further client change will be needed
+    once that fix ships.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")

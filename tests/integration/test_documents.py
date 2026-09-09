@@ -7,23 +7,30 @@ against a pre-existing document in the test project, sourced via
 list_documents -- if the test project has none, that test is skipped rather
 than failed, since there's no API to seed one.
 
-KNOWN SERVER BUG (reported upstream, not a client issue): OpenProject's
-`PATCH /api/v3/documents/{id}` (modules/documents/lib/api/v3/documents/
-documents_api.rb) parses the request body itself (`JSON.parse(request.body
-.read)`) and passes the RAW, still-nested `description` hash straight to
-`Documents::UpdateService`, instead of extracting `description.raw` first
-the way every other formattable-property-backed domain does (via
-API::Decorators::FormattableProperty's setter). Every confirmed
-update_document call therefore corrupts the stored description into a
-literal Ruby-hash-shaped string -- confirmed via raw curl (no client
-involved), confirmed this is not an encoding issue (Document#description=
-and JSON.parse both always yield UTF-8 strings on their own; a pure-ASCII
-payload additionally 500s via Commonmarker only as a downstream
-consequence of the corrupted hash-shaped string, not a genuine encoding
-bug), and confirmed identical against Puma directly (bypassing the bundled
-Apache). test_get_and_update_document below therefore cannot assert a
-clean round-trip until this is fixed upstream -- it documents the actual
-(broken) behavior instead of asserting an untrue contract.
+KNOWN SERVER BUG, WORKED AROUND CLIENT-SIDE (community.openproject.org/wp/
+19876, opf/openproject#24769, still open upstream as of this writing):
+OpenProject's `PATCH /api/v3/documents/{id}` (modules/documents/lib/api/v3/
+documents/documents_api.rb) parses the request body itself (`JSON.parse(
+request.body.read)`) and passes `description` straight to
+`Documents::UpdateService` unmodified -- when a caller sends description as
+the normal HAL `{format, raw, html}` shape every other formattable-
+property-backed domain uses (via API::Decorators::FormattableProperty's
+setter), the server stores the entire hash, stringified, instead of
+extracting `.raw` first. Confirmed via raw curl (no client involved) on a
+live 17.8.0 instance, confirmed this is not an encoding issue
+(Document#description= and JSON.parse both always yield UTF-8 strings on
+their own; a pure-ASCII payload additionally 500s via Commonmarker only as
+a downstream consequence of the corrupted hash-shaped string, not a
+genuine encoding bug), and confirmed identical against Puma directly
+(bypassing the bundled Apache).
+
+This client works around the bug by sending description as a plain string
+instead of the HAL shape (see DocumentService.update) -- confirmed
+forward-compatible by reading the upstream fix's own diff, which only
+transforms description when it arrives as a Hash, leaving a plain string
+unchanged either way. test_update_document_description_round_trips below
+therefore asserts a real, working round-trip, not documented-broken
+behavior.
 """
 
 from __future__ import annotations
@@ -96,16 +103,15 @@ async def test_update_document_denied_outside_write_allowlist(
         await denied_client.document.update(document_id=document_id, title="denied update", confirm=True)
 
 
-@pytest.mark.xfail(
-    reason="Upstream OpenProject bug: PATCH /documents/{id} corrupts description "
-    "into a literal hash-shaped string instead of extracting description.raw "
-    "(see module docstring). Reported upstream; un-xfail once fixed.",
-    strict=True,
-)
 async def test_update_document_description_round_trips(client: OpenProjectClient, test_project: str) -> None:
-    """Documents this MCP server's own client code is correct -- it sends
-    the well-formed {"format": ..., "raw": ...} payload OpenProject's API
-    documents -- the round-trip failure is entirely server-side."""
+    """Documents this MCP server's own workaround for the known upstream
+    description-corruption bug: it sends description as a plain string
+    (not the HAL {format, raw, html} shape) specifically to route around
+    OpenProject's PATCH /documents/{id} bug (see module docstring). Asserts
+    both the update response and a freshly fetched read afterward, not just
+    the PATCH echo -- a corrupted write could still echo a plausible-looking
+    value back without actually persisting correctly, so a separate GET is
+    the real proof."""
     existing = await client.document.list(project=test_project)
     if existing.count == 0:
         pytest.skip("no existing document in the test project to read/update (no create_document API to seed one)")
@@ -120,7 +126,13 @@ async def test_update_document_description_round_trips(client: OpenProjectClient
     )
     assert update_result.ready, update_result.validation_errors
     assert update_result.result is not None
-    assert update_result.result.description == new_description
+    # This server wraps free text in <user-content> delimiters as its own
+    # prompt-injection boundary marker -- expected, not a sign of corruption.
+    expected = f"<user-content>{new_description}</user-content>"
+    assert update_result.result.description == expected
+
+    refetched = await client.document.get(document_id)
+    assert refetched.description == expected
 
 
 async def test_list_documents_paginates_beyond_a_single_page(client: OpenProjectClient, test_project: str) -> None:

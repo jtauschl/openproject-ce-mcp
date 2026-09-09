@@ -315,6 +315,23 @@ async def test_update_commits_and_stamps_hidden_fields_when_confirmed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_sends_description_as_plain_string_not_hal_shape() -> None:
+    # Regression: OpenProject's PATCH /documents/{id} corrupts description
+    # when sent as the normal HAL {format, raw, html} shape (server-side
+    # bug, community.openproject.org/wp/19876) -- the client must send a
+    # plain string instead. Guards against ever reintroducing the wrapped
+    # shape.
+    api = _FakeDocumentApi()
+    service = _service(api)
+
+    result = await service.update(document_id=1, description="New description", confirm=True)
+
+    assert result.state == "confirmed"
+    assert api.commit_update_calls == [(1, {"description": "New description"})]
+    assert result.payload == {"description": "New description"}
+
+
+@pytest.mark.asyncio
 async def test_update_checks_project_write_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
     api = _FakeDocumentApi()
