@@ -100,10 +100,16 @@ async def get_attachment_content(
     - an image over the byte limit is refused whole rather than returned
       partially (outcome "too_large")
     - anything else returns metadata only (outcome "not_inline_supported") —
-      no bytes, since no MCP client could display them
+      no bytes, since no MCP client could display them; content_type there is
+      the attachment's stored type, which names the file where the served
+      header only says "not inlineable"
 
     max_bytes may only LOWER the server's configured limit
     (OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES, 5 MB by default), never raise it.
+
+    size_bytes is the size of the returned content block, and is null if
+    file_size_bytes is hidden by server configuration, rather than leaking it
+    indirectly under another name.
 
     Nothing is written to disk. Use get_attachment for metadata alone.
     """

@@ -445,7 +445,11 @@ in `images` with its reason, never silently dropped. The type decision uses the
 served response's `Content-Type`; for text-like types only, it falls back to the
 stored metadata's type when the server answers with a generic
 `application/octet-stream` (which OpenProject does for JSON). Images are decided
-on the served header alone. Nothing is
+on the served header alone. The `content_type` **reported** for
+`not_inline_supported` is the stored type instead, which names the file where
+the served header only repeats that it was not inlineable; `size_bytes` (the
+size of the returned block, not the stored size) is null when
+`file_size_bytes` is hidden by `OPENPROJECT_HIDE_ATTACHMENT_FIELDS`. Nothing is
 written to disk, and the content is read from OpenProject's own
 `/attachments/{id}/content` endpoint rather than from `download_url`, which
 needs credentials the MCP client does not carry.

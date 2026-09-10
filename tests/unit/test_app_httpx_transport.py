@@ -5,6 +5,7 @@ import pytest
 
 from openproject_ce_mcp.app.errors import NotFoundError, OpenProjectServerError, TransportError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
+from openproject_ce_mcp.retry_transport import RetryTransport
 
 BASE_URL = "https://op.example.com"
 
@@ -291,3 +292,94 @@ async def test_get_binary_wraps_timeout_as_transport_error() -> None:
     async with _client(handler) as http_client:
         with pytest.raises(TransportError):
             await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+
+
+# --- get_binary through RetryTransport -----------------------------------------
+#
+# The production client wraps its httpx transport in RetryTransport whenever
+# OPENPROJECT_MAX_RETRIES > 0 (the default), so every get_binary above really
+# runs one layer higher than it is tested. get_binary is the only method that
+# streams its response and walks its own redirect chain, and RetryTransport
+# closes and re-sends a response underneath it -- these tests pin that the two
+# compose. Still httpx.MockTransport: no Docker, no live instance.
+
+
+def _retry_client(handler, **kwargs) -> httpx.AsyncClient:
+    """`_client`, with a RetryTransport between the client and the mock. The
+    tiny base_delay keeps the backoff out of the test's runtime."""
+    return httpx.AsyncClient(
+        base_url=f"{BASE_URL}/api/v3/",
+        transport=RetryTransport(httpx.MockTransport(handler), max_retries=3, base_delay=0.001),
+        follow_redirects=True,
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_binary_through_retry_transport_retries_a_transient_status() -> None:
+    """A 503 on the download is retried by the layer below and get_binary sees
+    only the successful attempt -- it must not report the 503 as an error, nor
+    read the abandoned response's body."""
+    attempts: list[int] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        if len(attempts) < 3:
+            return httpx.Response(503, content=b"try again", request=request)
+        return httpx.Response(200, content=_PNG, headers={"Content-Type": "image/png"}, request=request)
+
+    async with _retry_client(handler) as http_client:
+        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+
+    assert result.data == _PNG
+    assert result.content_type == "image/png"
+    assert result.truncated is False
+    assert len(attempts) == 3
+
+
+@pytest.mark.asyncio
+async def test_get_binary_through_retry_transport_keeps_the_byte_limit_on_a_retried_redirect() -> None:
+    """The full chain in one call: a redirect get_binary follows itself, a
+    transient failure on the target that the retry layer absorbs, and the byte
+    cap still enforced on the body that finally arrives."""
+    seen: list[tuple[str, str | None]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.headers.get("authorization")))
+        if request.url.host == "op.example.com":
+            return httpx.Response(
+                302, headers={"Location": "https://bucket.example.net/signed/report.png"}, request=request
+            )
+        if len([host for host, _ in seen if host == "bucket.example.net"]) == 1:
+            return httpx.Response(503, content=b"try again", request=request)
+        return httpx.Response(200, content=b"abcdefghijklmnop", request=request)
+
+    async with _retry_client(handler, headers={"Authorization": _AUTH}) as http_client:
+        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=10)
+
+    assert result.data == b"abcdefghij"
+    assert result.truncated is True
+    # The retried hop is the cross-origin one: it must not regain the
+    # credentials the redirect stripped just because it is sent twice.
+    assert seen == [
+        ("op.example.com", _AUTH),
+        ("bucket.example.net", None),
+        ("bucket.example.net", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_binary_through_retry_transport_maps_a_persistent_transient_status() -> None:
+    """Retries exhausted: the last response is handed up as-is, so get_binary
+    maps its status the same way it maps any error status."""
+    attempts: list[int] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        return httpx.Response(503, json={"message": "unavailable"}, request=request)
+
+    async with _retry_client(handler) as http_client:
+        with pytest.raises(OpenProjectServerError):
+            await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+
+    assert len(attempts) == 4

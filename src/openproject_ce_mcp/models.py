@@ -941,13 +941,18 @@ class AttachmentContentResult:
                        block (an arbitrary binary blob); no content block,
                        no bytes -- ``reason`` says why
 
-    ``content_type`` is the type the outcome was decided on: the served
-    response's own, except for text-like content that the server labelled
-    ``application/octet-stream``, where it is the stored metadata's type (the
-    only case the stored type is consulted).
+    ``content_type`` is the served response's own type for content that was
+    inlined (``image``/``text``/``too_large``), except for text-like content
+    the server labelled ``application/octet-stream``, where it is the stored
+    metadata's type. For ``not_inline_supported`` it is the stored metadata's
+    type throughout: the served header for a blob OpenProject will not inline
+    is a generic ``application/octet-stream`` that says nothing about the
+    file. Either way, only the reported value follows the stored type -- the
+    classification itself is made on the served header.
     ``size_bytes`` is the size of the content block that follows (so, the cap
     itself when ``truncated``) -- not the attachment's stored size, and None
-    when no content block was included.
+    when no content block was included or when ``file_size_bytes`` is hidden
+    by server configuration.
     """
 
     attachment_id: int

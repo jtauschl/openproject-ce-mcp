@@ -662,12 +662,14 @@ async def test_get_content_json_served_as_octet_stream_uses_stored_type() -> Non
 async def test_get_content_image_served_generically_is_not_inlined(served: str | None) -> None:
     """The stored-type fallback is for the text allowlist only: an image is
     classified off the served header alone, so a PNG the server labels as
-    octet-stream (or not at all) is reported, never guessed."""
+    octet-stream (or not at all) is reported, never guessed. The reported type
+    is the stored one either way -- what the file is, not what the download
+    endpoint called it."""
     api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", served, False)})
     outcome = await _service(api=api).get_content(5)
 
     assert outcome.metadata.outcome == "not_inline_supported"
-    assert outcome.metadata.content_type == (served or "image/png")
+    assert outcome.metadata.content_type == "image/png"
     assert outcome.image_bytes is None
     assert api.get_content_calls == [(5, make_settings().attachment_content_max_bytes)]
 
@@ -717,6 +719,41 @@ async def test_get_content_unusable_binary_returns_metadata_only() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_content_unusable_blob_reports_the_stored_type_not_the_generic_served_one() -> None:
+    """OpenProject serves anything it will not inline as
+    application/octet-stream, so the served header on this outcome says only
+    "not inlineable" -- the stored type is the one that names the file."""
+    api = _FakeAttachmentApi(
+        [_record(content_type="application/zip")],
+        contents={5: AttachmentContent(b"PK\x03\x04", "application/octet-stream", False)},
+    )
+    outcome = await _service(api=api).get_content(5)
+
+    assert outcome.metadata.outcome == "not_inline_supported"
+    assert outcome.metadata.content_type == "application/zip"
+    assert "application/zip" in (outcome.metadata.reason or "")
+    assert outcome.image_bytes is None
+    assert outcome.text is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_unusable_blob_reports_no_type_when_content_type_is_hidden() -> None:
+    """`reason` is prose: with content_type hidden, the key is dropped from the
+    payload and the sentence must not spell the same value back out."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("content_type",)})
+    api = _FakeAttachmentApi(
+        [_record(content_type="application/zip")],
+        contents={5: AttachmentContent(b"PK\x03\x04", "application/octet-stream", False)},
+    )
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    assert outcome.metadata.outcome == "not_inline_supported"
+    assert outcome.metadata.content_type is None
+    assert "application/zip" not in (outcome.metadata.reason or "")
+    assert "Content type unknown" in (outcome.metadata.reason or "")
+
+
+@pytest.mark.asyncio
 async def test_get_content_max_bytes_may_only_lower_the_configured_cap() -> None:
     settings = dataclasses.replace(make_settings(), attachment_content_max_bytes=100)
     api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
@@ -750,6 +787,54 @@ async def test_get_content_metadata_honours_hidden_attachment_fields() -> None:
     # The image itself is still inlined: hiding is exposure control on the
     # metadata, not a second authorization layer on the content.
     assert outcome.image_bytes == b"PNG"
+
+
+@pytest.mark.asyncio
+async def test_get_content_size_bytes_is_none_when_file_size_hidden() -> None:
+    """`size_bytes` is the returned block's size, but for content returned
+    whole it is exactly the hidden `file_size_bytes` -- so it gets the same
+    treatment `total_size_bytes` does, rather than leaking the number back
+    under another field name. The content itself is still returned."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("file_size_bytes",)})
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    assert outcome.metadata.outcome == "image"
+    assert outcome.metadata.size_bytes is None
+    assert outcome.image_bytes == b"PNG"
+    assert _to_payload(outcome.metadata, elide_none=False)["size_bytes"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_truncated_text_size_bytes_is_none_when_file_size_hidden() -> None:
+    """Even a truncated block's size is withheld: it is the byte cap here, but
+    a caller cannot tell that from a size that happens to equal the cap."""
+    settings = dataclasses.replace(
+        make_settings(), attachment_content_max_bytes=5, hidden_fields={"attachment": ("file_size_bytes",)}
+    )
+    api = _FakeAttachmentApi(
+        [_record(content_type="text/plain")],
+        contents={5: AttachmentContent(b"hello world", "text/plain", False)},
+    )
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    assert outcome.metadata.outcome == "text"
+    assert outcome.metadata.truncated is True
+    assert outcome.metadata.size_bytes is None
+    assert outcome.text == "hello"
+
+
+@pytest.mark.asyncio
+async def test_list_with_images_size_bytes_is_none_when_file_size_hidden() -> None:
+    """The include_images entries go through the same metadata funnel."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("file_size_bytes",)})
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    result = await _service(api=api, settings=settings).list_for_work_package_with_images(9)
+
+    assert result.list_result.images is not None
+    assert [entry.outcome for entry in result.list_result.images] == ["image"]
+    assert result.list_result.images[0].size_bytes is None
+    assert [outcome.image_bytes for outcome in result.included] == [b"PNG"]
 
 
 # --- list_for_work_package_with_images ------------------------------------------

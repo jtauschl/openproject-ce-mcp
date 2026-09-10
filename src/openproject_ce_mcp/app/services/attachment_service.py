@@ -139,15 +139,17 @@ def _text_type_from_metadata_fallback(served: str | None, stored: str | None) ->
     """The stored metadata's type, if -- and only if -- the served header said
     nothing usable and the stored type is on the text allowlist.
 
-    This is the one place the stored type is consulted at all. The served
-    response header is otherwise the sole authority, because it describes the
-    bytes that actually arrived; the fallback exists because OpenProject
-    normalizes a served attachment's Content-Type to application/octet-stream
-    for anything it will not inline -- JSON very much included, and especially
-    on an external-storage redirect -- so without it every JSON attachment
-    would silently classify as an unusable binary blob. It is deliberately
-    narrow: no image is ever inlined on the strength of the stored type, since
-    a bitmap the server refused to label is not worth a broken image block.
+    This is the one place the stored type changes a DECISION (`_classify` also
+    reports it as the content type of an unusable blob, which decides
+    nothing). The served response header is otherwise the sole authority,
+    because it describes the bytes that actually arrived; the fallback exists
+    because OpenProject normalizes a served attachment's Content-Type to
+    application/octet-stream for anything it will not inline -- JSON very much
+    included, and especially on an external-storage redirect -- so without it
+    every JSON attachment would silently classify as an unusable binary blob.
+    It is deliberately narrow: no image is ever inlined on the strength of the
+    stored type, since a bitmap the server refused to label is not worth a
+    broken image block.
     """
     if served is not None and served not in _GENERIC_CONTENT_TYPES:
         return None
@@ -375,6 +377,16 @@ class AttachmentService:
         truncated: bool,
         reason: str | None,
     ) -> AttachmentContentResult:
+        # `size_bytes` carries a different field name than the stored
+        # `file_size_bytes`, so `apply_hidden_fields` below would never mask
+        # it -- yet for content returned whole it is exactly the number the
+        # operator hid. Nulled for the same reason `total_size_bytes` is (see
+        # _sum_attachment_sizes): a hidden field must not come back
+        # indirectly under another name.
+        if size_bytes is not None and hidden_fields.field_hidden(
+            "attachment", "file_size_bytes", settings=self._settings
+        ):
+            size_bytes = None
         return hidden_fields.apply_hidden_fields(
             "attachment",
             AttachmentContentResult(
@@ -456,15 +468,27 @@ class AttachmentService:
                 text=text,
             )
 
+        # An unusable blob reports the STORED metadata type, not the served
+        # one: OpenProject serves everything it will not inline as
+        # application/octet-stream, so the served header here only repeats
+        # "not inlineable" while the stored type still names what the file
+        # actually is -- and naming it is the whole value of this outcome.
+        # Classification above is untouched: it stays served-header-based
+        # (see _text_type_from_metadata_fallback), only the reported value
+        # differs. Same type the include_images pre-filter already reports
+        # for a non-image, which never downloads anything at all.
+        reported = (
+            stored if not hidden_fields.field_hidden("attachment", "content_type", settings=self._settings) else None
+        )
         return AttachmentContentOutcome(
             metadata=self._content_metadata(
                 summary,
                 outcome=_OUTCOME_NOT_SUPPORTED,
-                content_type=effective,
+                content_type=reported,
                 size_bytes=None,
                 truncated=False,
                 reason=(
-                    f"Content type {effective or 'unknown'} is not something an MCP client can display. "
+                    f"Content type {reported or 'unknown'} is not something an MCP client can display. "
                     "The bytes are not returned; open download_url in a browser instead."
                 ),
             )
