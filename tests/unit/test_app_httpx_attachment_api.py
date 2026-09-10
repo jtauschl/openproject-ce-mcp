@@ -187,3 +187,23 @@ def test_normalize_attachment_download_url_denies_foreign_origin() -> None:
     summary = normalize_attachment(payload, base_url=BASE_URL, origin=BASE_URL)
 
     assert summary.download_url is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_downloads_from_content_endpoint_and_maps_to_port_record() -> None:
+    """GET /attachments/{id}/content via the Transport's bounded binary read;
+    the Transport's BinaryContent is translated into the Port's own
+    AttachmentContent (ports may not import transport, see the Port docstring)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/v3/attachments/5/content"
+        return httpx.Response(200, content=b"\x89PNG rest", headers={"Content-Type": "image/png"}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        content = await api.get_content(5, max_bytes=4)
+
+    assert content.data == b"\x89PNG"
+    assert content.served_content_type == "image/png"
+    assert content.truncated is True

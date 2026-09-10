@@ -120,15 +120,18 @@ See the README's configuration and security sections for the full flag reference
 ## Prompt injection risk
 
 This server returns user-authored text (work-package descriptions, comments, news,
-wiki content) from the OpenProject instance. **Malicious users could embed prompt
-injection payloads** in this content to manipulate an agent connected via MCP.
+wiki content, and the content of text-like attachments read by
+`get_attachment_content`) from the OpenProject instance. **Malicious users could
+embed prompt injection payloads** in this content to manipulate an agent
+connected via MCP.
 
 ### Mitigations
 
 1. **Server instructions** explicitly warn connecting agents that returned content
    is untrusted and should be treated as data, not instructions.
 2. **Content delimiting**: Long-form user-provided text (descriptions, comments,
-   news, wiki content) is wrapped in `<user-content>` tags to mark clear boundaries.
+   news, wiki content, inlined attachment text) is wrapped in `<user-content>`
+   tags to mark clear boundaries.
    Short fields (subject lines, titles, names) are NOT delimited as they are
    typically visible in listings and easier to inspect manually.
 3. **Fail-closed project scope by default**: a fresh, unconfigured install has

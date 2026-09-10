@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import json
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import fields as dataclass_fields
@@ -26,6 +27,7 @@ from dataclasses import is_dataclass
 from typing import Any, TypeVar, cast
 
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.types import TextContent
 
 from .client import (
     AuthenticationError,
@@ -37,7 +39,7 @@ from .client import (
     PermissionDeniedError,
     TransportError,
 )
-from .presentation import _to_payload
+from .presentation import ContentBundle, _to_payload
 
 # Resolves every classified tool name (via @register_tool below) to its
 # actual function object. Explicit registration, not module-namespace
@@ -98,7 +100,18 @@ def register_selected_tools(mcp: MCPServer, *, names: Iterable[str], hide_active
         @functools.wraps(wrapped)
         async def trimming(*args, **kwargs):
             select = _normalize_select(kwargs.get("select"))
-            return _to_payload(await wrapped(*args, **kwargs), select=select, elide_none=elide_none)
+            result = await wrapped(*args, **kwargs)
+            if isinstance(result, ContentBundle):
+                # The bundle's body is trimmed exactly like any other result
+                # and emitted as the leading JSON block; only the extra
+                # content blocks travel outside the seam, because JSON cannot
+                # carry them (see presentation.ContentBundle).
+                payload = _to_payload(result.body, select=select, elide_none=elide_none)
+                return [
+                    TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, default=str)),
+                    *result.blocks,
+                ]
+            return _to_payload(result, select=select, elide_none=elide_none)
 
         return mcp.tool(structured_output=False)(trimming)
 
@@ -205,11 +218,30 @@ def _returns_trimmable(fn: Any) -> bool:
     """
     if "select" in inspect.signature(fn).parameters:
         return True
+    if _returns_content_bundle(fn):
+        return True
     model = _return_model(fn)
     if model is None:
         return False
     names = {f.name for f in dataclass_fields(model)}
     return bool(names & {"results", "payload", "items"})
+
+
+def _returns_content_bundle(fn: Any) -> bool:
+    """True if the tool can return a ContentBundle (native MCP content blocks
+    alongside a normal result).
+
+    Checked against the raw annotation text rather than through
+    ``_return_model``, because such a tool's annotation is typically a union
+    (``AttachmentListResult | ContentBundle`` — the bundle only comes back
+    when the caller asked for inlined content), which resolves to no single
+    dataclass. The wrapper's own ``isinstance`` check is what actually decides
+    per call; this only has to be right about whether the wrapper must run.
+    """
+    ann = fn.__annotations__.get("return")
+    if isinstance(ann, str):
+        return "ContentBundle" in ann
+    return ann is ContentBundle
 
 
 def _normalize_select(select: Any) -> frozenset[str] | None:

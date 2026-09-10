@@ -6,9 +6,10 @@ import pytest
 from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
-from openproject_ce_mcp.app.ports.attachment_api import AttachmentRecord
+from openproject_ce_mcp.app.ports.attachment_api import AttachmentContent, AttachmentRecord
 from openproject_ce_mcp.app.services.attachment_service import AttachmentService
 from openproject_ce_mcp.models import AttachmentSummary
+from openproject_ce_mcp.presentation import _to_payload
 
 PROJECT_ID_TO_IDENTIFIER = {6: "demo", 7: "secret"}
 
@@ -19,6 +20,7 @@ def _summary(
     container_type: str = "WorkPackage",
     container_id: int = 9,
     file_size_bytes: int | None = 1024,
+    content_type: str | None = "application/pdf",
 ) -> AttachmentSummary:
     return AttachmentSummary(
         id=attachment_id,
@@ -26,7 +28,7 @@ def _summary(
         file_name="report.pdf",
         file_size_bytes=file_size_bytes,
         description=None,
-        content_type="application/pdf",
+        content_type=content_type,
         status="uploaded",
         author="Alice",
         container_type=container_type,
@@ -42,25 +44,49 @@ def _record(
     has_container_link: bool = True,
     container_id: int = 9,
     file_size_bytes: int | None = 1024,
+    content_type: str | None = "application/pdf",
 ) -> AttachmentRecord:
     container_link = {"href": f"/api/v3/work_packages/{container_id}"} if has_container_link else None
     summary_container_id = container_id if has_container_link else None
     return AttachmentRecord(
-        summary=_summary(attachment_id, container_id=summary_container_id, file_size_bytes=file_size_bytes),
+        summary=_summary(
+            attachment_id,
+            container_id=summary_container_id,
+            file_size_bytes=file_size_bytes,
+            content_type=content_type,
+        ),
         container_link=container_link,
     )
 
 
 class _FakeAttachmentApi:
     def __init__(
-        self, records: list[AttachmentRecord] | None = None, *, max_attachment_size: int | None = 10_000_000
+        self,
+        records: list[AttachmentRecord] | None = None,
+        *,
+        max_attachment_size: int | None = 10_000_000,
+        contents: dict[int, AttachmentContent] | None = None,
     ) -> None:
         self._records = {r.summary.id: r for r in (records or [_record()])}
         self._max_attachment_size = max_attachment_size
+        self._contents = contents or {}
         self.list_for_work_package_calls: list[tuple[int, int]] = []
         self.get_calls: list[int] = []
+        self.get_content_calls: list[tuple[int, int]] = []
         self.create_calls: list[tuple[int, dict, str, bytes, str]] = []
         self.delete_calls: list[int] = []
+
+    async def get_content(self, attachment_id: int, *, max_bytes: int) -> AttachmentContent:
+        # Honours max_bytes the way the real Transport does: hands back at most
+        # max_bytes bytes and flags truncation, so budget arithmetic in the
+        # Service is exercised against a faithful contract.
+        self.get_content_calls.append((attachment_id, max_bytes))
+        content = self._contents[attachment_id]
+        return AttachmentContent(
+            data=content.data[:max_bytes],
+            served_content_type=content.served_content_type,
+            truncated=content.truncated or len(content.data) > max_bytes,
+        )
 
     async def list_for_work_package(
         self, work_package_id: int, *, offset: int, page_size: int
@@ -539,3 +565,330 @@ async def test_description_hidden_by_attachment_scope_not_grid_scope() -> None:
     service_attachment_hidden = _service(settings=settings_attachment_hidden)
     result_attachment_hidden = await service_attachment_hidden.list_for_work_package(9)
     assert getattr(result_attachment_hidden.results[0], "_hidden_keys", frozenset()) == {"description"}
+
+
+# --- get_content ---------------------------------------------------------------
+
+
+def _png_record(attachment_id: int = 5, *, container_id: int = 9) -> AttachmentRecord:
+    return _record(attachment_id, container_id=container_id, content_type="image/png")
+
+
+@pytest.mark.asyncio
+async def test_get_content_checks_container_scope_before_downloading_anything() -> None:
+    """Authorization runs to completion first: a denied container must not
+    cause a single byte to be fetched."""
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/7"})
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    service = _service(api=api, work_package_lookup_api=lookup, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get_content(5)
+
+    assert api.get_calls == [5]
+    assert api.get_content_calls == []
+
+
+@pytest.mark.asyncio
+async def test_get_content_inlineable_image_returns_bytes() -> None:
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    service = _service(api=api)
+
+    outcome = await service.get_content(5)
+
+    assert outcome.metadata.outcome == "image"
+    assert outcome.metadata.content_type == "image/png"
+    assert outcome.metadata.size_bytes == 3
+    assert outcome.metadata.truncated is False
+    assert outcome.metadata.reason is None
+    assert outcome.image_bytes == b"PNG"
+    assert outcome.text is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_oversized_image_is_too_large_and_never_partial() -> None:
+    settings = dataclasses.replace(make_settings(), attachment_content_max_bytes=2)
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    service = _service(api=api, settings=settings)
+
+    outcome = await service.get_content(5)
+
+    assert outcome.metadata.outcome == "too_large"
+    assert outcome.metadata.size_bytes is None
+    assert "2-byte inline limit" in (outcome.metadata.reason or "")
+    assert outcome.image_bytes is None
+    assert outcome.text is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_text_is_decoded_and_truncation_is_reported_not_refused() -> None:
+    settings = dataclasses.replace(make_settings(), attachment_content_max_bytes=5)
+    api = _FakeAttachmentApi(
+        [_record(content_type="text/plain")],
+        contents={5: AttachmentContent(b"hello world", "text/plain; charset=utf-8", False)},
+    )
+    service = _service(api=api, settings=settings)
+
+    outcome = await service.get_content(5)
+
+    assert outcome.metadata.outcome == "text"
+    assert outcome.metadata.content_type == "text/plain"
+    assert outcome.metadata.truncated is True
+    assert outcome.metadata.size_bytes == 5
+    assert "Cut at the 5-byte inline limit" in (outcome.metadata.reason or "")
+    assert outcome.text == "hello"
+    assert outcome.image_bytes is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_json_served_as_octet_stream_uses_stored_type() -> None:
+    """OpenProject serves JSON as application/octet-stream; without the
+    stored-type fallback every JSON attachment would come back as an unusable
+    binary blob."""
+    api = _FakeAttachmentApi(
+        [_record(content_type="application/json")],
+        contents={5: AttachmentContent(b'{"a": 1}', "application/octet-stream", False)},
+    )
+    outcome = await _service(api=api).get_content(5)
+
+    assert outcome.metadata.outcome == "text"
+    assert outcome.metadata.content_type == "application/json"
+    assert outcome.text == '{"a": 1}'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("served", [None, "application/octet-stream"])
+async def test_get_content_image_served_generically_is_not_inlined(served: str | None) -> None:
+    """The stored-type fallback is for the text allowlist only: an image is
+    classified off the served header alone, so a PNG the server labels as
+    octet-stream (or not at all) is reported, never guessed. The reported type
+    is the stored one either way -- what the file is, not what the download
+    endpoint called it."""
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", served, False)})
+    outcome = await _service(api=api).get_content(5)
+
+    assert outcome.metadata.outcome == "not_inline_supported"
+    assert outcome.metadata.content_type == "image/png"
+    assert outcome.image_bytes is None
+    assert api.get_content_calls == [(5, make_settings().attachment_content_max_bytes)]
+
+
+@pytest.mark.asyncio
+async def test_get_content_served_type_wins_over_a_disagreeing_stored_type() -> None:
+    api = _FakeAttachmentApi(
+        [_record(content_type="application/pdf")],
+        contents={5: AttachmentContent(b"PNG", "image/png", False)},
+    )
+    outcome = await _service(api=api).get_content(5)
+
+    assert outcome.metadata.outcome == "image"
+    assert outcome.metadata.content_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_get_content_svg_is_text_never_an_image() -> None:
+    """image/svg+xml is deliberately outside the image allowlist; as +xml it
+    is still readable as text (its source), which is all a client can do
+    with it."""
+    api = _FakeAttachmentApi(
+        [_record(content_type="image/svg+xml")],
+        contents={5: AttachmentContent(b"<svg/>", "image/svg+xml", False)},
+    )
+    outcome = await _service(api=api).get_content(5)
+
+    assert outcome.metadata.outcome == "text"
+    assert outcome.text == "<svg/>"
+    assert outcome.image_bytes is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_unusable_binary_returns_metadata_only() -> None:
+    api = _FakeAttachmentApi(
+        [_record(content_type="application/pdf")],
+        contents={5: AttachmentContent(b"%PDF-1.7", "application/pdf", False)},
+    )
+    outcome = await _service(api=api).get_content(5)
+
+    assert outcome.metadata.outcome == "not_inline_supported"
+    assert outcome.metadata.content_type == "application/pdf"
+    assert outcome.metadata.size_bytes is None
+    assert "application/pdf" in (outcome.metadata.reason or "")
+    assert outcome.image_bytes is None
+    assert outcome.text is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_unusable_blob_reports_the_stored_type_not_the_generic_served_one() -> None:
+    """OpenProject serves anything it will not inline as
+    application/octet-stream, so the served header on this outcome says only
+    "not inlineable" -- the stored type is the one that names the file."""
+    api = _FakeAttachmentApi(
+        [_record(content_type="application/zip")],
+        contents={5: AttachmentContent(b"PK\x03\x04", "application/octet-stream", False)},
+    )
+    outcome = await _service(api=api).get_content(5)
+
+    assert outcome.metadata.outcome == "not_inline_supported"
+    assert outcome.metadata.content_type == "application/zip"
+    assert "application/zip" in (outcome.metadata.reason or "")
+    assert outcome.image_bytes is None
+    assert outcome.text is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_unusable_blob_reports_no_type_when_content_type_is_hidden() -> None:
+    """`reason` is prose: with content_type hidden, the key is dropped from the
+    payload and the sentence must not spell the same value back out."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("content_type",)})
+    api = _FakeAttachmentApi(
+        [_record(content_type="application/zip")],
+        contents={5: AttachmentContent(b"PK\x03\x04", "application/octet-stream", False)},
+    )
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    assert outcome.metadata.outcome == "not_inline_supported"
+    assert outcome.metadata.content_type is None
+    assert "application/zip" not in (outcome.metadata.reason or "")
+    assert "Content type unknown" in (outcome.metadata.reason or "")
+
+
+@pytest.mark.asyncio
+async def test_get_content_max_bytes_may_only_lower_the_configured_cap() -> None:
+    settings = dataclasses.replace(make_settings(), attachment_content_max_bytes=100)
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    service = _service(api=api, settings=settings)
+
+    await service.get_content(5, max_bytes=10)
+    await service.get_content(5, max_bytes=1000)
+    await service.get_content(5)
+
+    assert api.get_content_calls == [(5, 10), (5, 100), (5, 100)]
+
+
+@pytest.mark.asyncio
+async def test_get_content_rejects_non_positive_max_bytes() -> None:
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    with pytest.raises(InvalidInputError, match="max_bytes"):
+        await _service(api=api).get_content(5, max_bytes=0)
+    assert api.get_content_calls == []
+
+
+@pytest.mark.asyncio
+async def test_get_content_metadata_honours_hidden_attachment_fields() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("content_type", "file_name")})
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    payload = _to_payload(outcome.metadata, elide_none=False)
+    assert "content_type" not in payload
+    assert "file_name" not in payload
+    assert payload["outcome"] == "image"
+    # The image itself is still inlined: hiding is exposure control on the
+    # metadata, not a second authorization layer on the content.
+    assert outcome.image_bytes == b"PNG"
+
+
+@pytest.mark.asyncio
+async def test_get_content_size_bytes_is_none_when_file_size_hidden() -> None:
+    """`size_bytes` is the returned block's size, but for content returned
+    whole it is exactly the hidden `file_size_bytes` -- so it gets the same
+    treatment `total_size_bytes` does, rather than leaking the number back
+    under another field name. The content itself is still returned."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("file_size_bytes",)})
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    assert outcome.metadata.outcome == "image"
+    assert outcome.metadata.size_bytes is None
+    assert outcome.image_bytes == b"PNG"
+    assert _to_payload(outcome.metadata, elide_none=False)["size_bytes"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_content_truncated_text_size_bytes_is_none_when_file_size_hidden() -> None:
+    """Even a truncated block's size is withheld: it is the byte cap here, but
+    a caller cannot tell that from a size that happens to equal the cap."""
+    settings = dataclasses.replace(
+        make_settings(), attachment_content_max_bytes=5, hidden_fields={"attachment": ("file_size_bytes",)}
+    )
+    api = _FakeAttachmentApi(
+        [_record(content_type="text/plain")],
+        contents={5: AttachmentContent(b"hello world", "text/plain", False)},
+    )
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    assert outcome.metadata.outcome == "text"
+    assert outcome.metadata.truncated is True
+    assert outcome.metadata.size_bytes is None
+    assert outcome.text == "hello"
+
+
+@pytest.mark.asyncio
+async def test_list_with_images_size_bytes_is_none_when_file_size_hidden() -> None:
+    """The include_images entries go through the same metadata funnel."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("file_size_bytes",)})
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    result = await _service(api=api, settings=settings).list_for_work_package_with_images(9)
+
+    assert result.list_result.images is not None
+    assert [entry.outcome for entry in result.list_result.images] == ["image"]
+    assert result.list_result.images[0].size_bytes is None
+    assert [outcome.image_bytes for outcome in result.included] == [b"PNG"]
+
+
+# --- list_for_work_package_with_images ------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_with_images_inlines_in_order_under_one_aggregate_budget() -> None:
+    records = [
+        _png_record(1),
+        _record(2, content_type="application/pdf"),
+        _png_record(3),
+    ]
+    contents = {
+        1: AttachmentContent(b"AAA", "image/png", False),
+        2: AttachmentContent(b"%PDF", "application/pdf", False),
+        3: AttachmentContent(b"BBBB", "image/png", False),
+    }
+    settings = dataclasses.replace(make_settings(), attachment_content_max_bytes=4)
+    api = _FakeAttachmentApi(records, contents=contents)
+    service = _service(api=api, settings=settings)
+
+    listing = await service.list_for_work_package_with_images(9)
+
+    assert [s.id for s in listing.list_result.results] == [1, 2, 3]
+    assert listing.list_result.images is not None
+    outcomes = [(e.attachment_id, e.outcome) for e in listing.list_result.images]
+    assert outcomes == [(1, "image"), (2, "not_inline_supported"), (3, "too_large")]
+    assert "include_images inlines images only" in (listing.list_result.images[1].reason or "")
+    assert "1-byte budget left" in (listing.list_result.images[2].reason or "")
+    # Only the PNGs were fetched, the second one with whatever budget was left.
+    assert api.get_content_calls == [(1, 4), (3, 1)]
+    assert [o.metadata.attachment_id for o in listing.included] == [1]
+    assert listing.included[0].image_bytes == b"AAA"
+
+
+@pytest.mark.asyncio
+async def test_list_with_images_exhausted_budget_skips_without_downloading() -> None:
+    records = [_png_record(1), _png_record(3)]
+    contents = {1: AttachmentContent(b"AAA", "image/png", False), 3: AttachmentContent(b"B", "image/png", False)}
+    settings = dataclasses.replace(make_settings(), attachment_content_max_bytes=3)
+    api = _FakeAttachmentApi(records, contents=contents)
+
+    listing = await _service(api=api, settings=settings).list_for_work_package_with_images(9)
+
+    assert api.get_content_calls == [(1, 3)]
+    assert listing.list_result.images is not None
+    assert listing.list_result.images[1].outcome == "too_large"
+    assert "3-byte budget for this call was already used" in (listing.list_result.images[1].reason or "")
+    assert len(listing.included) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_without_images_leaves_images_field_unset() -> None:
+    api = _FakeAttachmentApi([_png_record(1)])
+    result = await _service(api=api).list_for_work_package(9)
+    assert result.images is None
+    assert api.get_content_calls == []

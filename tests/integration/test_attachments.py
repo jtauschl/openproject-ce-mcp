@@ -123,3 +123,106 @@ async def test_delete_attachment_denied_outside_write_allowlist(
 
     # Clean up directly since the denied client couldn't remove it.
     await client.attachment.delete(attachment_id=attachment_id, confirm=True)
+
+
+# --- get_attachment_content / include_images -----------------------------------
+
+
+async def _upload(rooted_client: OpenProjectClient, work_package_id: int, file_path: str) -> int:
+    created = await rooted_client.attachment.create(
+        work_package_id=work_package_id,
+        file_path=file_path,
+        description="[integration-test] content",
+        confirm=True,
+    )
+    assert created.ready
+    assert created.attachment_id is not None
+    return created.attachment_id
+
+
+async def test_get_attachment_content_inlines_png_and_text(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """Round-trips GET /attachments/{id}/content -- including OpenProject's
+    redirect to its storage backend -- for an image and for a text file."""
+    result = await client.work_package.create(
+        project=test_project,
+        type="Task",
+        subject="[integration-test] attachment content",
+        confirm=True,
+    )
+    assert result.ready
+    wp_ids.append(result.work_package_id)
+
+    rooted_client = _attachment_capable_client(client)
+    await rooted_client.initialize()
+    png_id = await _upload(rooted_client, result.work_package_id, "tests/fixtures/pixel.png")
+    text_id = await _upload(rooted_client, result.work_package_id, "tests/fixtures/spec.md")
+    try:
+        with open("tests/fixtures/pixel.png", "rb") as fh:
+            png_bytes = fh.read()
+        image = await client.attachment.get_content(png_id)
+        assert image.metadata.outcome == "image"
+        assert image.metadata.content_type == "image/png"
+        assert image.metadata.size_bytes == len(png_bytes)
+        assert image.image_bytes == png_bytes
+
+        with open("tests/fixtures/spec.md", encoding="utf-8") as fh:
+            spec_text = fh.read()
+        text = await client.attachment.get_content(text_id)
+        assert text.metadata.outcome == "text"
+        assert text.metadata.truncated is False
+        assert text.text == spec_text
+
+        # Text over the cap is cut, an image over the cap is refused whole.
+        cut = await client.attachment.get_content(text_id, max_bytes=10)
+        assert cut.metadata.outcome == "text"
+        assert cut.metadata.truncated is True
+        assert cut.text == spec_text.encode("utf-8")[:10].decode("utf-8", errors="replace")
+        refused = await client.attachment.get_content(png_id, max_bytes=10)
+        assert refused.metadata.outcome == "too_large"
+        assert refused.image_bytes is None
+
+        listing = await client.attachment.list_for_work_package_with_images(result.work_package_id)
+        assert listing.list_result.images is not None
+        by_id = {entry.attachment_id: entry.outcome for entry in listing.list_result.images}
+        assert by_id[png_id] == "image"
+        assert by_id[text_id] == "not_inline_supported"
+        assert [o.metadata.attachment_id for o in listing.included] == [png_id]
+        assert listing.included[0].image_bytes == png_bytes
+    finally:
+        await client.attachment.delete(attachment_id=png_id, confirm=True)
+        await client.attachment.delete(attachment_id=text_id, confirm=True)
+
+
+async def test_get_attachment_content_denied_outside_read_allowlist(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """`denied_client` only narrows the WRITE allowlist; reading content is a
+    read, so the denial has to come from a read allowlist that does not
+    contain the container's project. The metadata fetch itself succeeds (it is
+    how the container is discovered) -- the scope check on its project link is
+    what must refuse, before any content is requested."""
+    read_denied_settings = dataclasses.replace(
+        client.settings, read_projects=("no-such-project-for-integration-tests",)
+    )
+    read_denied_client = OpenProjectClient(read_denied_settings)
+    await read_denied_client.initialize()
+
+    result = await client.work_package.create(
+        project=test_project,
+        type="Task",
+        subject="[integration-test] attachment content denied",
+        confirm=True,
+    )
+    assert result.ready
+    wp_ids.append(result.work_package_id)
+
+    rooted_client = _attachment_capable_client(client)
+    await rooted_client.initialize()
+    png_id = await _upload(rooted_client, result.work_package_id, "tests/fixtures/pixel.png")
+    try:
+        with pytest.raises(PermissionDeniedError):
+            await read_denied_client.attachment.get_content(png_id)
+    finally:
+        await client.attachment.delete(attachment_id=png_id, confirm=True)

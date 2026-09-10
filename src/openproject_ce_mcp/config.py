@@ -114,6 +114,18 @@ def tool_exposure_violations(
 DEFAULT_TEXT_LIMIT = 500
 TEXT_LIMIT_MAX = 50_000
 
+# Cap for attachment content inlined into a tool response
+# (get_attachment_content, and the aggregate budget for
+# list_work_package_attachments' include_images). Deliberately much smaller
+# than OpenProject's own upload limit (`maximumAttachmentFileSize`, which
+# `_validate_attachment_size` enforces on the way up): this one exists for the
+# agent's context window and the server's memory, not for what OpenProject
+# will accept. ATTACHMENT_CONTENT_MAX_BYTES_CEILING is an absolute sanity
+# ceiling no configured value may exceed; a per-call ``max_bytes`` may only
+# lower the configured value, never raise it.
+DEFAULT_ATTACHMENT_CONTENT_MAX_BYTES = 5 * 1024 * 1024
+ATTACHMENT_CONTENT_MAX_BYTES_CEILING = 25 * 1024 * 1024
+
 
 HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
     "project": "OPENPROJECT_HIDE_PROJECT_FIELDS",
@@ -225,6 +237,7 @@ class Settings:
     enable_user_schedule_write: bool = False
     enable_metadata_tools: bool = False
     attachment_root: str = ""
+    attachment_content_max_bytes: int = DEFAULT_ATTACHMENT_CONTENT_MAX_BYTES
     max_retries: int = 3
     retry_base_delay: float = 1.0
     retry_max_delay: float = 60.0
@@ -306,6 +319,16 @@ class Settings:
                 "or ~/uploads) — a relative path would resolve against the server's current "
                 "working directory, which this phase removes as an implicit fallback."
             )
+        attachment_content_max_bytes = _int_env(
+            env,
+            "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES",
+            default=DEFAULT_ATTACHMENT_CONTENT_MAX_BYTES,
+            minimum=1,
+        )
+        if attachment_content_max_bytes > ATTACHMENT_CONTENT_MAX_BYTES_CEILING:
+            raise ConfigError(
+                f"OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES must not exceed {ATTACHMENT_CONTENT_MAX_BYTES_CEILING}."
+            )
         max_retries = _int_env(env, "OPENPROJECT_MAX_RETRIES", default=3, minimum=0)
         if max_retries > 10:
             raise ConfigError("OPENPROJECT_MAX_RETRIES must not exceed 10.")
@@ -383,6 +406,7 @@ class Settings:
             enable_user_schedule_write=enable_user_schedule_write,
             enable_metadata_tools=enable_metadata_tools,
             attachment_root=attachment_root,
+            attachment_content_max_bytes=attachment_content_max_bytes,
             max_retries=max_retries,
             retry_base_delay=retry_base_delay,
             retry_max_delay=retry_max_delay,

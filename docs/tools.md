@@ -412,6 +412,7 @@ saving over N individual `update_work_package` calls is real but modest.
 | --- | --- |
 | `list_work_package_attachments` | List attachments on a work package |
 | `get_attachment` | Fetch a single work-package attachment by id |
+| `get_attachment_content` | Read an attachment's content: images come back as images the model can see, text-like files as text, anything else as metadata explaining why it wasn't inlined |
 | `create_work_package_attachment` | Validate and then upload an attachment to a work package; only writes when called again with `confirm=true` |
 | `delete_attachment` | Validate and then delete an attachment; only deletes when called again with `confirm=true` |
 
@@ -420,6 +421,38 @@ uploads to work at all — `create_work_package_attachment` isn't even registere
 otherwise, no working-directory fallback. Once set, files outside it — and
 credential/config files such as `.mcp.json`, `.env`, or private keys even inside
 it — are refused, so a tool call cannot exfiltrate local secrets.
+
+### Reading attachment content
+
+`get_attachment_content` (and `list_work_package_attachments` with
+`include_images=true`) return a JSON metadata block describing the outcome,
+followed by a native MCP content block only when content was actually inlined.
+`outcome` is one of:
+
+| Outcome | Meaning | Content block |
+| --- | --- | --- |
+| outcome `image` | PNG, JPEG, GIF or WebP within the byte limit | `ImageContent` |
+| outcome `text` | `text/*`, JSON or XML; `truncated=true` when cut at the limit | `TextContent`, wrapped in `<user-content>` |
+| outcome `too_large` | An image over the byte limit — never returned partially | none |
+| outcome `not_inline_supported` | A type no MCP client can display; the bytes are not returned at all | none |
+
+The byte limit is `OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES` (5 MB by default,
+25 MB ceiling), enforced while streaming so an oversized file is never fully
+downloaded. `get_attachment_content`'s `max_bytes` argument may only lower it.
+With `include_images=true` the same value is the aggregate budget for the whole
+call, spent in listing order — every attachment that was not inlined is listed
+in `images` with its reason, never silently dropped. The type decision uses the
+served response's `Content-Type`; for text-like types only, it falls back to the
+stored metadata's type when the server answers with a generic
+`application/octet-stream` (which OpenProject does for JSON). Images are decided
+on the served header alone. The `content_type` **reported** for
+`not_inline_supported` is the stored type instead, which names the file where
+the served header only repeats that it was not inlineable; `size_bytes` (the
+size of the returned block, not the stored size) is null when
+`file_size_bytes` is hidden by `OPENPROJECT_HIDE_ATTACHMENT_FIELDS`. Nothing is
+written to disk, and the content is read from OpenProject's own
+`/attachments/{id}/content` endpoint rather than from `download_url`, which
+needs credentials the MCP client does not carry.
 
 ## Versions
 

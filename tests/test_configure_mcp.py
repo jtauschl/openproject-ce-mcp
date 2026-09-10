@@ -1908,6 +1908,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
                             "OPENPROJECT_HIDE_PROJECT_FIELDS": "description",
                             "OPENPROJECT_ENABLE_EXTENDED_READ": "true",
                             "OPENPROJECT_ATTACHMENT_ROOT": ATTACHMENT_ROOT,
+                            "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES": "1048576",
                             "OPENPROJECT_MAX_RETRIES": "7",
                             "OPENPROJECT_RETRY_BASE_DELAY": "2.5",
                             "OPENPROJECT_RETRY_MAX_DELAY": "30",
@@ -1934,6 +1935,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "description"
     assert env["OPENPROJECT_ENABLE_EXTENDED_READ"] == "true"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ATTACHMENT_ROOT
+    assert env["OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES"] == "1048576"
     assert env["OPENPROJECT_MAX_RETRIES"] == "7"
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "2.5"
     assert env["OPENPROJECT_RETRY_MAX_DELAY"] == "30"
@@ -2989,6 +2991,7 @@ _FULL_DEFAULT_ENV: dict[str, str] = {
     "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
     "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
     "OPENPROJECT_ATTACHMENT_ROOT": "",
+    "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES": "5242880",
     "OPENPROJECT_TIMEOUT": "12",
     "OPENPROJECT_VERIFY_SSL": "true",
     "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
@@ -3033,6 +3036,7 @@ def test_minimal_env_all_defaults_keeps_only_base_url_and_token() -> None:
         ("OPENPROJECT_ENABLE_VERSION_WRITE", "false"),
         ("OPENPROJECT_ENABLE_BOARD_WRITE", "false"),
         ("OPENPROJECT_ATTACHMENT_ROOT", ATTACHMENT_ROOT),
+        ("OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES", "1048576"),
         ("OPENPROJECT_TIMEOUT", "20"),
         ("OPENPROJECT_VERIFY_SSL", "false"),
         ("OPENPROJECT_DEFAULT_PAGE_SIZE", "5"),

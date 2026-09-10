@@ -99,6 +99,13 @@ src/openproject_ce_mcp/
   categorization, and the return-model/select-trimming machinery.
 - `tools_validation.py` holds the generic, domain-crossing field validators
   every domain module imports from.
+- Every tool result is a `models.py` dataclass trimmed by the presentation seam
+  (`presentation._to_payload`: `select`, hidden-field masking, confirmed-payload
+  drop). The one thing JSON cannot carry -- an attachment's image or text as a
+  native MCP content block -- goes through `presentation.ContentBundle`: the
+  bundle's `body` still takes the normal trimmed path and becomes the leading
+  JSON block, and only the extra blocks travel outside it. Blocks are built in
+  the tool layer, since nothing under `app/` may import the `mcp` SDK.
 
 ### `server.py`
 
@@ -508,6 +515,14 @@ The model has two independent layers:
   [Field hiding](field-hiding.md))
 - preview-by-default writes — every mutation always requires explicit
   `confirm=true`, with no bypass
+- attachment content (`get_attachment_content`, `include_images`) is bounded by
+  `OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES` while streaming — the cap protects
+  memory and network transfer, not just the response — is authorized against
+  the container work package's project before a single byte is fetched, is
+  never written to disk, and follows OpenProject's storage redirect with the
+  `Authorization` header kept on a same-origin hop and dropped on a
+  cross-origin one, so instance credentials never reach a pre-signed
+  object-storage URL
 
 **Layer 2 — OpenProject server permissions** (enforced by the API, not the MCP):
 

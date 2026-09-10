@@ -14,7 +14,71 @@ import httpx
 from ...hal import normalize_links
 from ..errors import OpenProjectServerError, TransportError
 from .errors import raise_for_status
-from .protocol import TransportResponse
+from .protocol import BinaryContent, TransportResponse
+
+# Redirect statuses get_binary follows itself (see Transport.get_binary's
+# docstring for why this path does not lean on httpx's client-level
+# follow_redirects). 303 is included because OpenProject's own
+# `/attachments/{id}/content` answers with a redirect to the storage backend,
+# and 307/308 because an object-storage host may answer with either.
+_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+# Enough for OpenProject -> storage backend (one hop) with room for a bucket
+# that redirects once more; low enough that a redirect loop fails fast.
+_MAX_REDIRECTS = 5
+
+
+def _origin_of(url: httpx.URL) -> tuple[str, str, int | None]:
+    """Scheme/host/port triple. `url.port` is None for a scheme's default port,
+    so http://host and http://host:80 compare equal here only if httpx
+    normalized them identically -- which it does, since it drops the default
+    port when parsing."""
+    return (url.scheme, url.host, url.port)
+
+
+def _redirect_request(request: httpx.Request, location: str) -> httpx.Request:
+    """Build the next hop, carrying the previous request's headers minus the
+    ones that must not survive it.
+
+    Authorization is dropped when the hop crosses origins: on an S3-backed
+    instance the target is a pre-signed bucket URL, and sending the
+    instance's Basic credentials to a third-party host would leak them for no
+    benefit (the pre-signed URL authenticates itself). It is kept on a
+    same-origin hop, which is what local-filesystem storage produces.
+
+    Host is dropped unconditionally: it belongs to the previous hop's origin
+    and httpx recomputes it for the new URL.
+
+    Constructed via `httpx.Request(...)` rather than `client.build_request`
+    on purpose -- build_request would merge the client's default headers back
+    in, putting the Authorization header we just removed straight back on a
+    cross-origin request.
+    """
+    target = httpx.URL(location)
+    if not target.is_absolute_url:
+        target = request.url.join(location)
+    drop = {"host"}
+    if _origin_of(target) != _origin_of(request.url):
+        drop.add("authorization")
+    headers = [(name, value) for name, value in request.headers.multi_items() if name.lower() not in drop]
+    return httpx.Request("GET", target, headers=headers)
+
+
+async def _read_bounded(response: httpx.Response, max_bytes: int) -> BinaryContent:
+    """Accumulate the streamed body, stopping as soon as it exceeds `max_bytes`.
+
+    Reading stops at the first chunk that crosses the limit, so an oversized
+    attachment costs one chunk of memory and one chunk of transfer past the
+    cap -- not the whole file. The returned data is trimmed to exactly
+    `max_bytes` in that case, and `truncated` says so; a body that ends
+    exactly at the limit is NOT truncated.
+    """
+    content_type = response.headers.get("content-type")
+    buffer = bytearray()
+    async for chunk in response.aiter_bytes():
+        buffer.extend(chunk)
+        if len(buffer) > max_bytes:
+            return BinaryContent(data=bytes(buffer[:max_bytes]), content_type=content_type, truncated=True)
+    return BinaryContent(data=bytes(buffer), content_type=content_type, truncated=False)
 
 
 class HttpxTransport:
@@ -27,6 +91,23 @@ class HttpxTransport:
 
     async def get_json(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
         return await self._request_json("GET", path, params=params)
+
+    async def get_binary(self, path: str, *, max_bytes: int) -> BinaryContent:
+        request = self._client.build_request("GET", path)
+        for _ in range(_MAX_REDIRECTS + 1):
+            response = await self._send_stream(request)
+            location = response.headers.get("location")
+            if response.status_code in _REDIRECT_STATUS_CODES and location:
+                await response.aclose()
+                request = _redirect_request(request, location)
+                continue
+            try:
+                if response.status_code >= 400:
+                    await self._raise_for_stream_status(response)
+                return await _read_bounded(response, max_bytes)
+            finally:
+                await response.aclose()
+        raise OpenProjectServerError("OpenProject redirected the attachment download too many times.")
 
     async def post_json(
         self, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
@@ -80,6 +161,29 @@ class HttpxTransport:
                 {k.lower(): v for k, v in redirect.headers.items()} for redirect in response.history
             ),
         )
+
+    async def _send_stream(self, request: httpx.Request) -> httpx.Response:
+        """Send one hop with the body left unread, mapping transport failures the
+        same way `_request` does. `follow_redirects=False`: get_binary walks the
+        redirect chain itself so the Authorization header's fate at a
+        cross-origin hop is explicit rather than inherited from the client."""
+        try:
+            return await self._client.send(request, stream=True, follow_redirects=False)
+        except httpx.TimeoutException as exc:
+            raise TransportError("OpenProject request timed out.") from exc
+        except httpx.HTTPError as exc:
+            raise TransportError("Could not reach OpenProject.") from exc
+
+    async def _raise_for_stream_status(self, response: httpx.Response) -> None:
+        """Read an error response's (small, JSON) body and raise the mapped
+        error. Safe to read in full here, unlike the success path: this only
+        runs for a >=400 status, whose body is an API error document."""
+        try:
+            await response.aread()
+            payload = response.json()
+        except (ValueError, httpx.HTTPError):
+            payload = {}
+        raise_for_status(response.status_code, payload)
 
     async def _request_json(
         self,

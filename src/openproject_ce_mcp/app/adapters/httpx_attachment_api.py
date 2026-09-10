@@ -26,7 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...models import AttachmentSummary
-from ..ports.attachment_api import AttachmentRecord
+from ..ports.attachment_api import AttachmentContent, AttachmentRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
@@ -116,6 +116,19 @@ class HttpxAttachmentApi:
 
     async def get(self, attachment_id: int) -> AttachmentRecord:
         return self._record(await self._transport.get_json(f"attachments/{attachment_id}"))
+
+    async def get_content(self, attachment_id: int, *, max_bytes: int) -> AttachmentContent:
+        # GET /attachments/{id}/content answers 302 to wherever the instance
+        # actually stores the file: a same-origin path under local filesystem
+        # storage, a pre-signed URL on an S3-backed one. The Transport walks
+        # that redirect itself (dropping Authorization only when it leaves the
+        # origin) and stops reading at max_bytes.
+        content = await self._transport.get_binary(f"attachments/{attachment_id}/content", max_bytes=max_bytes)
+        return AttachmentContent(
+            data=content.data,
+            served_content_type=content.content_type,
+            truncated=content.truncated,
+        )
 
     async def create(
         self,

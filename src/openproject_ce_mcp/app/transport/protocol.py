@@ -29,8 +29,51 @@ class TransportResponse:
     redirect_headers: tuple[Mapping[str, str], ...]
 
 
+@dataclass(frozen=True)
+class BinaryContent:
+    """Bounded binary body read by get_binary.
+
+    `content_type` is the SERVED response's own Content-Type header (the
+    final response after any redirect), not the stored metadata's -- the two
+    disagree often enough that the caller must be able to tell them apart:
+    OpenProject normalizes a served attachment to `application/octet-stream`
+    for anything it will not inline, including JSON. None when the response
+    carried no Content-Type at all.
+
+    `truncated` is True when the body was longer than the caller's `max_bytes`
+    and reading stopped there; `data` then holds exactly the first `max_bytes`
+    bytes. The caller -- not the transport -- decides whether a truncated body
+    is usable (text) or must be discarded (an image is never partially
+    returned).
+    """
+
+    data: bytes
+    content_type: str | None
+    truncated: bool
+
+
 class Transport(Protocol):
     async def get_json(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]: ...
+
+    async def get_binary(self, path: str, *, max_bytes: int) -> BinaryContent:
+        """GET a binary body, streamed and stopped at `max_bytes`.
+
+        Streaming, not a buffered read: the size limit must bound memory and
+        network transfer, not just what is handed back -- a buffered GET would
+        pull a multi-gigabyte attachment into memory before the caller could
+        reject it.
+
+        Redirects are followed explicitly here rather than left to httpx's
+        client-level `follow_redirects=True`, because this is the one path
+        whose redirect target is routinely a foreign origin (a pre-signed
+        object-storage URL on an S3-backed instance): the `Authorization`
+        header is kept on a same-origin hop and dropped on a cross-origin one,
+        so instance credentials never reach a third-party bucket. httpx's own
+        default happens to behave the same way, but this path states it
+        outright and tests it, matching how `_link_to_api_path` refuses to
+        follow an unexpected link host rather than trusting a default.
+        """
+        ...
 
     async def post_json(
         self, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None

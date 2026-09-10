@@ -33,6 +33,7 @@ from .tools_attachments import (  # noqa: F401 -- @register_tool side effect; re
     delete_attachment,
     delete_file_link,
     get_attachment,
+    get_attachment_content,
     list_work_package_attachments,
     list_work_package_file_links,
 )
@@ -280,6 +281,7 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_work_package_relations",
         "list_work_package_attachments",
         "get_attachment",
+        "get_attachment_content",
         "list_work_package_file_links",
         "list_work_package_watchers",
         "list_statuses",
@@ -514,6 +516,7 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_work_package_relations",
         "list_work_package_attachments",
         "get_attachment",
+        "get_attachment_content",
         "list_work_package_file_links",
         "list_work_package_watchers",
         "list_time_entry_activities",
