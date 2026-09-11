@@ -105,6 +105,35 @@ def tool_exposure_violations(
     return [entry for entry in WRITE_GROUP_REQUIREMENTS if write_flags.get(entry[0]) and not read_flags.get(entry[1])]
 
 
+# Old project-scope env-var name -> its 0.4.0 replacement. Never read for a
+# value — Settings.from_env has zero legacy-name handling, by design
+# (fail-closed rename: an unset or renamed legacy variable denies access
+# rather than defaulting to allow); this map exists only to WARN, once per
+# detected old name, from every entry point that inspects raw env (doctor.py
+# and server.py's real startup path, so the warning fires whether the server
+# is inspected or actually running).
+_LEGACY_PROJECT_SCOPE_ENV_VAR_MAP: dict[str, str] = {
+    "OPENPROJECT_ALLOWED_PROJECTS": "OPENPROJECT_READ_PROJECTS",
+    "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPENPROJECT_READ_PROJECTS",
+    "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "OPENPROJECT_WRITE_PROJECTS",
+}
+
+
+def legacy_env_warnings(env: Mapping[str, str]) -> list[str]:
+    """One warning line per detected legacy project-scope env-var name, naming
+    both the old name and its replacement — never a single generic message
+    per category, so the operator knows exactly which variable to rename.
+    Presence alone triggers a warning: a legacy var sitting alongside its
+    already-correct replacement still warns, since its value is silently
+    ignored either way and that's worth flagging as dead config.
+    """
+    return [
+        f"{old} is deprecated and ignored (fail-closed defaults still apply) — use {new} instead."
+        for old, new in _LEGACY_PROJECT_SCOPE_ENV_VAR_MAP.items()
+        if old in env
+    ]
+
+
 # Cap for a work-package description shown in list/summary results — a per-row
 # preview so a multi-row list stays scannable without flooding the agent's context
 # window. Single-item reads (get_work_package, get_work_package_activities) are NOT

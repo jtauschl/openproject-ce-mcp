@@ -275,6 +275,25 @@ def test_env_config_legacy_project_scope_vars_are_ignored_by_effective_settings(
     assert getattr(settings, attr) == ()
 
 
+def test_env_config_warns_on_legacy_project_scope_var(monkeypatch, capsys):
+    """Unlike the never-implemented OPENPROJECT_TOOLS (no warning at all,
+    tested above), a legacy project-scope name is silently ignored by
+    Settings AND produces a [WARN] line naming its replacement."""
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "DEMO")
+
+    _check_env_config(None, {})
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "[WARN]" in output
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in output
+    assert "OPENPROJECT_READ_PROJECTS" in output
+
+
 # API connectivity tests
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from openproject_ce_mcp.config import ConfigError, Settings
+from openproject_ce_mcp.config import ConfigError, Settings, legacy_env_warnings
 
 # A real absolute path in native format for whichever OS runs the tests
 # (e.g. /tmp/uploads on Linux/macOS, C:\Users\...\Temp\uploads on Windows) —
@@ -514,29 +514,86 @@ def test_empty_attachment_root_is_accepted_at_config_time() -> None:
     assert settings.attachment_root == ""
 
 
-# ── legacy env-var names (removed) ──────────────────────────────────────────
+# ── legacy project-scope env-var names ──────────────────────────────────────
+#
+# OPM-483 (0.5.0) removes this warn-only shim again. See config.py's
+# _LEGACY_PROJECT_SCOPE_ENV_VAR_MAP docstring for why it's back for one more
+# release and scoped to only these 3 names.
 
 
-def test_legacy_env_var_names_have_no_effect_on_settings() -> None:
-    # Removed names are unrecognized env vars like any other, silently ignored by
-    # Settings.from_env with no warning and no special-cased adoption.
+def test_legacy_project_scope_env_vars_have_no_effect_on_settings() -> None:
+    # Legacy names are unrecognized by Settings.from_env — presence only
+    # triggers a warning (tested separately below), never a value adoption.
     env = {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "token-value",
         "OPENPROJECT_ALLOWED_PROJECTS_READ": "DEMO",
         "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "DEMO",
-        "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
-        "OPENPROJECT_PERSONAL_WRITE": "true",
+        # Confirms the OPM-136 scope (never-implemented/removed-outright names)
+        # still has zero effect and — unlike the 3 project-scope names above —
+        # produces no warning either; see the warning-content tests below.
         "OPENPROJECT_TOOLS": "projects,work-packages",
-        "OPENPROJECT_ENABLE_METADATA_TOOLS": "true",
-        "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
-        "OPENPROJECT_AUTO_CONFIRM_DELETE": "true",
     }
     settings = Settings.from_env(env)
     assert settings.read_projects == ()
     assert settings.write_projects == ()
-    assert settings.write_enabled("personal") is False
-    assert settings.read_enabled("extended") is False
+
+
+def test_legacy_env_warnings_empty_when_no_legacy_vars_present() -> None:
+    assert legacy_env_warnings({"OPENPROJECT_BASE_URL": "https://op.example.com"}) == []
+
+
+def test_legacy_env_warnings_names_both_old_and_new_var() -> None:
+    warnings = legacy_env_warnings({"OPENPROJECT_ALLOWED_PROJECTS_READ": "DEMO"})
+    assert len(warnings) == 1
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
+    assert "OPENPROJECT_READ_PROJECTS" in warnings[0]
+    assert "deprecated" in warnings[0]
+    assert "fail-closed" in warnings[0]
+
+
+def test_legacy_env_warnings_bare_name_points_at_read_projects() -> None:
+    warnings = legacy_env_warnings({"OPENPROJECT_ALLOWED_PROJECTS": "DEMO"})
+    assert len(warnings) == 1
+    assert "OPENPROJECT_ALLOWED_PROJECTS" in warnings[0]
+    assert "OPENPROJECT_READ_PROJECTS" in warnings[0]
+
+
+def test_legacy_env_warnings_write_variant_points_at_write_projects() -> None:
+    warnings = legacy_env_warnings({"OPENPROJECT_ALLOWED_PROJECTS_WRITE": "DEMO"})
+    assert len(warnings) == 1
+    assert "OPENPROJECT_ALLOWED_PROJECTS_WRITE" in warnings[0]
+    assert "OPENPROJECT_WRITE_PROJECTS" in warnings[0]
+
+
+def test_legacy_env_warnings_one_line_per_detected_name_in_map_order() -> None:
+    env = {
+        "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "DEMO",
+        "OPENPROJECT_ALLOWED_PROJECTS": "DEMO",
+        "OPENPROJECT_ALLOWED_PROJECTS_READ": "DEMO",
+    }
+    warnings = legacy_env_warnings(env)
+    assert len(warnings) == 3
+    # Deterministic order = the map's own definition order, not the
+    # dict-iteration order of the (arbitrarily ordered) input env.
+    assert warnings[0].startswith("OPENPROJECT_ALLOWED_PROJECTS ")  # bare name first
+    assert warnings[1].startswith("OPENPROJECT_ALLOWED_PROJECTS_READ ")
+    assert warnings[2].startswith("OPENPROJECT_ALLOWED_PROJECTS_WRITE ")
+
+
+def test_legacy_env_warnings_ignores_never_implemented_or_removed_names() -> None:
+    # OPENPROJECT_TOOLS was never implemented; the old auto-confirm/
+    # personal-write/metadata-tools names are out of this narrower shim's
+    # scope entirely (OPM-136 already removed warnings for them). None of
+    # these should produce a warning.
+    env = {
+        "OPENPROJECT_TOOLS": "projects",
+        "OPENPROJECT_ENABLE_METADATA_TOOLS": "true",
+        "OPENPROJECT_PERSONAL_WRITE": "true",
+        "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
+        "OPENPROJECT_AUTO_CONFIRM_DELETE": "true",
+    }
+    assert legacy_env_warnings(env) == []
 
 
 def test_core_five_legacy_names_now_take_effect() -> None:

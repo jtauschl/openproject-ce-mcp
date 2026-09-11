@@ -39,22 +39,25 @@ available it will be released to PyPI and noted in the
 This server is a guarded bridge to the OpenProject REST API. Its security posture
 depends on configuration; the most relevant controls are:
 
-- **Read tools are exposed per group via 8 individual booleans**:
+- **Read tools are exposed per group via 10 individual booleans**:
   `OPENPROJECT_ENABLE_PROJECT_READ`, `_WORK_PACKAGE_READ`, `_MEMBERSHIP_READ`,
-  `_VERSION_READ`, `_BOARD_READ` (default `true`), plus the opt-in
-  `_PERSONAL_READ`, `_EXTENDED_READ`, and `_ADMIN_READ` (default `false` —
-  `_ADMIN_READ` gates the instance-wide user/group listing, which is PII with
-  no project-scope boundary). Setting any leftover `OPENPROJECT_TOOLS` or
-  `OPENPROJECT_ENABLE_METADATA_TOOLS` var in your config is now ignored (a
-  startup/`doctor` warning names the exact replacement). **The 5 core write
-  flags default `true`**, since the real gate is the project allowlists below,
-  not the category flag — a write flag alone does nothing without a project in
-  `OPENPROJECT_WRITE_PROJECTS`, and the corresponding write tools aren't even
-  registered unless both `OPENPROJECT_READ_PROJECTS` and
-  `OPENPROJECT_WRITE_PROJECTS` are non-empty. `OPENPROJECT_ENABLE_PERSONAL_WRITE` and
-  `OPENPROJECT_ENABLE_ADMIN_WRITE` default `false`, since neither has that
-  project-scope safety net. Every write flag requires its own matching read
-  boolean to be `true` (enforced at startup); write scopes are always
+  `_VERSION_READ`, `_BOARD_READ`, `_MEETING_READ` (default `true`), plus the
+  opt-in `_PERSONAL_READ`, `_EXTENDED_READ`, `_ADMIN_READ`, and
+  `_USER_SCHEDULE_READ` (default `false` — `_ADMIN_READ` gates the
+  instance-wide user/group listing, which is PII with no project-scope
+  boundary). Setting the legacy `OPENPROJECT_ALLOWED_PROJECTS`/`_READ`/`_WRITE`
+  names (see [Configuration](docs/configuration.md#legacy-configuration-migration))
+  in your config has no effect on the running server beyond a startup/`doctor`
+  warning naming the exact replacement. **6 core write flags default `true`**
+  (the 5 read-default-`true` categories above plus `_MEETING_WRITE`), since the
+  real gate is the project allowlists below, not the category flag — a write
+  flag alone does nothing without a project in `OPENPROJECT_WRITE_PROJECTS`,
+  and the corresponding write tools aren't even registered unless both
+  `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` are non-empty.
+  `OPENPROJECT_ENABLE_PERSONAL_WRITE`, `OPENPROJECT_ENABLE_ADMIN_WRITE`, and
+  `OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE` default `false`, since none has
+  that project-scope safety net. Every write flag requires its own matching
+  read boolean to be `true` (enforced at startup); write scopes are always
   additionally intersected with the project read scope, so a project must be
   readable before it can be written.
 - **Project allowlists** (`OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS`)

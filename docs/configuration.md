@@ -175,6 +175,25 @@ Invalid combinations (e.g. `MAX_RETRIES` above 10, `DEFAULT_PAGE_SIZE` above
 `MAX_PAGE_SIZE`) fail at startup with a clear error rather than being silently
 clamped.
 
+## Legacy configuration migration
+
+At runtime, these older project-scope variable names are detected but never
+used to configure the server — setting one has no effect beyond a one-time
+startup/`doctor` warning naming its replacement. The setup wizard
+additionally preserves their values, as described below. Rename to the
+current variable for the setting to actually take effect at runtime:
+
+| Legacy variable | Replaced by |
+| --- | --- |
+| `OPENPROJECT_ALLOWED_PROJECTS` | `OPENPROJECT_READ_PROJECTS` |
+| `OPENPROJECT_ALLOWED_PROJECTS_READ` | `OPENPROJECT_READ_PROJECTS` |
+| `OPENPROJECT_ALLOWED_PROJECTS_WRITE` | `OPENPROJECT_WRITE_PROJECTS` |
+
+`openproject-ce-mcp configure` preserves these legacy project-allowlist
+variables' values when rewriting an existing configuration, prefilling
+`OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS` from them. This
+table is only relevant if you edit a config file by hand.
+
 ## See also
 
 - [Documentation hub](README.md) — full documentation index

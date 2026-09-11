@@ -124,7 +124,10 @@ broader OpenProject version compatibility.
   `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`, the individual
   `OPENPROJECT_ENABLE_<GROUP>_READ` flags, `OPENPROJECT_ENABLE_EXTENDED_READ`,
   and `OPENPROJECT_ENABLE_PERSONAL_WRITE`; the old auto-confirm flags have no
-  replacement.
+  replacement. `OPENPROJECT_ALLOWED_PROJECTS`/`_READ`/`_WRITE` still emit a
+  one-time startup/`doctor` warning naming their replacement and are prefilled
+  by `configure`, unlike every other legacy name in this list — see
+  [Configuration](docs/configuration.md#legacy-configuration-migration).
 
 ### Fixed
 

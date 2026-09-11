@@ -989,6 +989,21 @@ _WRITE_SCOPE_FLAG_KEYS = (
 )
 
 
+def _scope_prefill(existing: dict[str, str], new_key: str, legacy_keys: list[str]) -> tuple[str, bool]:
+    """Resolve a project-scope prefill by key presence, not truthiness.
+
+    A present-but-empty new key (an explicit, deliberate lock-down) must win over
+    any legacy key's value — falsy-or-chaining would silently resurrect the old
+    value and defeat the point of the migration.
+    """
+    if new_key in existing:
+        return existing[new_key], False
+    for legacy_key in legacy_keys:
+        if legacy_key in existing:
+            return existing[legacy_key], True
+    return "", False
+
+
 def _has_openproject_config(client: Client, target: Path | None) -> bool:
     target = target if target is not None else client.target
     if target is None or not target.exists():
@@ -1143,8 +1158,14 @@ def _merge_prefill(pairs: list[tuple[Client, Path | None]]) -> dict[str, str]:
     Later pairs override earlier ones ONLY for keys they actually define — so a
     partial config (e.g. a project ``.codex/config.toml`` with a base URL but no
     token) contributes its URL without discarding a complete global entry's
-    token. Pass pairs LOWEST priority first (globals), HIGHEST last
-    (project/cwd).
+    token. Project-scope keys (``OPENPROJECT_READ_PROJECTS``/
+    ``OPENPROJECT_WRITE_PROJECTS`` and their legacy aliases) are deliberately
+    NOT specially handled here — they get their own presence-aware,
+    per-source-then-cross-source resolution in :func:`_merge_scope_prefill`,
+    since a plain field-wise merge of this dict would lose per-source priority
+    once a new-key value from one source and a legacy-key value from another
+    end up side by side in the same merged dict. Pass pairs LOWEST priority
+    first (globals), HIGHEST last (project/cwd).
     """
     merged: dict[str, str] = {}
     for client, target in pairs:
@@ -1153,6 +1174,37 @@ def _merge_prefill(pairs: list[tuple[Client, Path | None]]) -> dict[str, str]:
             if value:
                 merged[key] = value
     return merged
+
+
+_READ_SCOPE_KEYS = ("OPENPROJECT_READ_PROJECTS", "OPENPROJECT_ALLOWED_PROJECTS_READ", "OPENPROJECT_ALLOWED_PROJECTS")
+_WRITE_SCOPE_KEYS = ("OPENPROJECT_WRITE_PROJECTS", "OPENPROJECT_ALLOWED_PROJECTS_WRITE")
+
+
+def _merge_scope_prefill(pairs: list[tuple[Client, Path | None]]) -> tuple[str, str, bool, bool]:
+    """Resolve READ_PROJECTS/WRITE_PROJECTS prefill across config sources correctly.
+
+    Cross-source priority must be resolved BEFORE new-vs-legacy resolution, not
+    after: merging every source's raw keys into one dict first (as
+    ``_merge_prefill`` does for other fields) would let a lower-priority
+    source's new key sit next to a higher-priority source's legacy key in the
+    same dict, with no way to tell which source either came from — silently
+    picking the new key regardless of source priority. Instead, each source
+    is resolved (new key wins over legacy within that
+    source) independently, and only the last source that defines ANY relevant
+    key — new or legacy — contributes its resolved value, so a higher-priority
+    source always wins outright, even with an empty value. Pairs must be
+    LOWEST priority first (globals), HIGHEST last (project/cwd), matching
+    ``_merge_prefill``.
+    """
+    read_value, write_value = "", ""
+    read_used_legacy, write_used_legacy = False, False
+    for client, target in pairs:
+        env = _read_client_env(client, target=target)
+        if any(key in env for key in _READ_SCOPE_KEYS):
+            read_value, read_used_legacy = _scope_prefill(env, _READ_SCOPE_KEYS[0], list(_READ_SCOPE_KEYS[1:]))
+        if any(key in env for key in _WRITE_SCOPE_KEYS):
+            write_value, write_used_legacy = _scope_prefill(env, _WRITE_SCOPE_KEYS[0], list(_WRITE_SCOPE_KEYS[1:]))
+    return read_value, write_value, read_used_legacy, write_used_legacy
 
 
 # ── live connection test + preview/confirm ──────────────────────────────────
@@ -1271,6 +1323,7 @@ _TOOL_GROUPS: tuple[_ToolGroup, ...] = (
 
 
 def _collect_credentials(
+    prefill_pairs: list[tuple[Client, Path | None]],
     existing: dict[str, str],
     *,
     interactive: bool,
@@ -1318,11 +1371,19 @@ def _collect_credentials(
 
         print()
         print("Project scope — comma-separated identifiers, names, or globs (e.g. team-*).")
+        read_projects_existing, write_projects_existing, read_used_legacy, write_used_legacy = _merge_scope_prefill(
+            prefill_pairs
+        )
+        if read_used_legacy or write_used_legacy:
+            print(
+                "Found legacy OPENPROJECT_ALLOWED_PROJECTS_READ/_WRITE — using their values as "
+                "defaults for the renamed OPENPROJECT_READ_PROJECTS/OPENPROJECT_WRITE_PROJECTS."
+            )
         read_projects = _prompt(
             "Readable projects (empty = none, * = all visible)",
-            existing.get("OPENPROJECT_READ_PROJECTS", ""),
+            read_projects_existing,
         )
-        existing_write_projects = existing.get("OPENPROJECT_WRITE_PROJECTS", "").strip()
+        existing_write_projects = write_projects_existing.strip()
         advanced = mode == "advanced"
 
         if advanced:
@@ -1794,9 +1855,10 @@ def _minimal_env(env: dict[str, str], candidate: Settings) -> dict[str, str]:
     ``env`` — never a re-serialized ``Settings`` value — so e.g. ``"12.0"``
     typed for a default-12.0 timeout is recognized as "= default" without ever
     writing back a reformatted ``"12"``. Re-running ``configure`` later
-    prefills identically either way: every prefill reader (the plain
-    ``existing.get(KEY, "<default>")`` calls) already treats a *missing* key
-    the same as an explicit default value.
+    prefills identically either way: every prefill reader (``_scope_prefill``,
+    ``_merge_scope_prefill``, the plain ``existing.get(KEY, "<default>")``
+    calls) already treats a *missing* key the same as an explicit default
+    value.
     """
     minimal: dict[str, str] = {
         "OPENPROJECT_BASE_URL": env["OPENPROJECT_BASE_URL"],
@@ -1940,7 +2002,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     ]
     existing = _merge_prefill(prefill_pairs)
 
-    env, connection = _collect_credentials(existing, interactive=interactive, mode=mode)
+    env, connection = _collect_credentials(prefill_pairs, existing, interactive=interactive, mode=mode)
 
     # Final defensive check: the generated config must always parse cleanly with
     # the exact runtime validation, not just the wizard's own reconciliation above.
