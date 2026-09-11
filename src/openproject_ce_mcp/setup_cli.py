@@ -986,6 +986,7 @@ _WRITE_SCOPE_FLAG_KEYS = (
     "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
     "OPENPROJECT_ENABLE_VERSION_WRITE",
     "OPENPROJECT_ENABLE_BOARD_WRITE",
+    "OPENPROJECT_ENABLE_MEETING_WRITE",
 )
 
 
@@ -1312,12 +1313,21 @@ _TOOL_GROUPS: tuple[_ToolGroup, ...] = (
     ),
     _ToolGroup("board", "OPENPROJECT_ENABLE_BOARD_READ", "boards", ("OPENPROJECT_ENABLE_BOARD_WRITE", "Board")),
     _ToolGroup(
+        "meeting", "OPENPROJECT_ENABLE_MEETING_READ", "meetings", ("OPENPROJECT_ENABLE_MEETING_WRITE", "Meeting")
+    ),
+    _ToolGroup(
         "personal",
         "OPENPROJECT_ENABLE_PERSONAL_READ",
         "personal",
         ("OPENPROJECT_ENABLE_PERSONAL_WRITE", "Personal-data"),
     ),
     _ToolGroup("admin", "OPENPROJECT_ENABLE_ADMIN_READ", "admin", ("OPENPROJECT_ENABLE_ADMIN_WRITE", "Admin")),
+    _ToolGroup(
+        "user_schedule",
+        "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
+        "user-schedule",
+        ("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "User-schedule"),
+    ),
     _ToolGroup("extended", "OPENPROJECT_ENABLE_EXTENDED_READ", "extended", None),
 )
 
@@ -1394,7 +1404,7 @@ def _collect_credentials(
                     "Writable projects (subset of readable)",
                     write_projects_default,
                 )
-                wp_write, project_write, membership_write, version_write, board_write = (
+                wp_write, project_write, membership_write, version_write, board_write, meeting_write = (
                     _bool_from_env(existing, key, True) for key in _WRITE_SCOPE_FLAG_KEYS
                 )
             else:
@@ -1405,6 +1415,7 @@ def _collect_credentials(
                 membership_write = False
                 version_write = False
                 board_write = False
+                meeting_write = False
         else:
             # Quick mode: a Y/N gate plus a Y/N per write category, replacing
             # the yes/no gate above entirely — no overlapping decisions. Same
@@ -1445,10 +1456,14 @@ def _collect_credentials(
                     "  Boards (create/update/delete)?",
                     _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", False),
                 )
+                meeting_write = _prompt_bool(
+                    "  Meetings (create/update/delete)?",
+                    _bool_from_env(existing, "OPENPROJECT_ENABLE_MEETING_WRITE", False),
+                )
             else:
                 write_projects = ""
                 print("Write access disabled — project-scoped writes are disabled.")
-                wp_write = project_write = membership_write = version_write = board_write = False
+                wp_write = project_write = membership_write = version_write = board_write = meeting_write = False
 
         print()
 
@@ -1457,10 +1472,13 @@ def _collect_credentials(
         enable_membership_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", True)
         enable_version_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_READ", True)
         enable_board_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_READ", True)
+        enable_meeting_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEETING_READ", True)
         enable_personal_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_PERSONAL_READ", False)
         personal_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PERSONAL_WRITE", False)
         enable_admin_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_READ", False)
         admin_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
+        enable_user_schedule_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_USER_SCHEDULE_READ", False)
+        user_schedule_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", False)
         enable_metadata_tools = _bool_from_env(existing, "OPENPROJECT_ENABLE_EXTENDED_READ", False)
         hide_project = existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", "")
         hide_wp = existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "")
@@ -1519,6 +1537,12 @@ def _collect_credentials(
                     "Enable board writes (create/update/delete)?",
                     board_write,
                 )
+            enable_meeting_read = _prompt_bool("Enable meeting tools?", enable_meeting_read)
+            if write_access:
+                meeting_write = _prompt_bool(
+                    "Enable meeting writes (create/update/delete)?",
+                    meeting_write,
+                )
             enable_personal_read = _prompt_bool(
                 "Enable personal tools (own preferences, notifications)?", enable_personal_read
             )
@@ -1529,6 +1553,13 @@ def _collect_credentials(
                 )
             enable_admin_read = _prompt_bool("Enable admin tools (list/view users and groups)?", enable_admin_read)
             admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
+            enable_user_schedule_read = _prompt_bool(
+                "Enable user-schedule tools (non-working times, working hours)?", enable_user_schedule_read
+            )
+            user_schedule_write = _prompt_bool(
+                "Enable user-schedule writes (non-working times, working hours)?",
+                user_schedule_write,
+            )
             enable_metadata_tools = _prompt_bool("Enable extended/rarely-used metadata tools?", enable_metadata_tools)
 
         if not enable_personal_read:
@@ -1580,8 +1611,10 @@ def _collect_credentials(
             "membership_read": enable_membership_read,
             "version_read": enable_version_read,
             "board_read": enable_board_read,
+            "meeting_read": enable_meeting_read,
             "personal_read": enable_personal_read,
             "admin_read": enable_admin_read,
+            "user_schedule_read": enable_user_schedule_read,
             "extended_read": enable_metadata_tools,
         }
         original_write_flags = {
@@ -1590,8 +1623,10 @@ def _collect_credentials(
             "membership_write": membership_write,
             "version_write": version_write,
             "board_write": board_write,
+            "meeting_write": meeting_write,
             "personal_write": personal_write,
             "admin_write": admin_write,
+            "user_schedule_write": user_schedule_write,
         }
         write_flags = original_write_flags.copy()
         for write_key, _read_key, write_env_var, read_env_var in tool_exposure_violations(read_flags, write_flags):
@@ -1602,8 +1637,10 @@ def _collect_credentials(
         membership_write = write_flags["membership_write"]
         version_write = write_flags["version_write"]
         board_write = write_flags["board_write"]
+        meeting_write = write_flags["meeting_write"]
         personal_write = write_flags["personal_write"]
         admin_write = write_flags["admin_write"]
+        user_schedule_write = write_flags["user_schedule_write"]
 
         tool_env: dict[str, str] = {}
         for group in _TOOL_GROUPS:
@@ -1822,10 +1859,14 @@ _MINIMAL_ENV_FIELD_MAP: tuple[tuple[str, str], ...] = (
     ("OPENPROJECT_ENABLE_VERSION_WRITE", "enable_version_write"),
     ("OPENPROJECT_ENABLE_BOARD_READ", "enable_board_read"),
     ("OPENPROJECT_ENABLE_BOARD_WRITE", "enable_board_write"),
+    ("OPENPROJECT_ENABLE_MEETING_READ", "enable_meeting_read"),
+    ("OPENPROJECT_ENABLE_MEETING_WRITE", "enable_meeting_write"),
     ("OPENPROJECT_ENABLE_PERSONAL_READ", "enable_personal_read"),
     ("OPENPROJECT_ENABLE_PERSONAL_WRITE", "enable_personal_write"),
     ("OPENPROJECT_ENABLE_ADMIN_READ", "enable_admin_read"),
     ("OPENPROJECT_ENABLE_ADMIN_WRITE", "enable_admin_write"),
+    ("OPENPROJECT_ENABLE_USER_SCHEDULE_READ", "enable_user_schedule_read"),
+    ("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "enable_user_schedule_write"),
     ("OPENPROJECT_ENABLE_EXTENDED_READ", "enable_metadata_tools"),
     ("OPENPROJECT_HIDE_PROJECT_FIELDS", "hide_project_fields"),
     ("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "hide_work_package_fields"),

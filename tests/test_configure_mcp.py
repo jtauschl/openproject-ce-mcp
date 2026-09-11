@@ -1315,11 +1315,11 @@ def _run_main(
         book.assert_consumed()
 
 
-# When ``advanced`` is answered yes, the wizard always asks 16 further optional
-# fields regardless of write access; 5 more (the per-category write toggles) are
+# When ``advanced`` is answered yes, the wizard always asks 18 further optional
+# fields regardless of write access; 6 more (the per-category write toggles) are
 # asked additionally when write access is also enabled. Tests that drive the
 # advanced flow but don't care about these specific values merge one or both of
-# these in with "" (keep-default) answers, rather than retyping all 16-21 keys
+# these in with "" (keep-default) answers, rather than retyping all 18-24 keys
 # — and rather than relying on iterator-exhaustion padding the way the old
 # positional lists did, which was a silent-absorption failure mode that keying
 # answers by prompt content removes.
@@ -1329,10 +1329,11 @@ _WRITE_CONTROL_DEFAULTS: dict[str, str] = {
     "Enable membership writes": "",
     "Enable version writes": "",
     "Enable board writes": "",
+    "Enable meeting writes": "",
 }
-# The 8 individual tool-exposure read booleans are unconditionally asked whenever
+# The 10 individual tool-exposure read booleans are unconditionally asked whenever
 # --advanced is used (regardless of write access) — every advanced-mode test must
-# answer all 8, so tests that don't care about a specific one merge this in with
+# answer all 10, so tests that don't care about a specific one merge this in with
 # "" (keep existing/default) answers.
 _TOOL_EXPOSURE_DEFAULTS: dict[str, str] = {
     "Enable project tools?": "",
@@ -1340,9 +1341,11 @@ _TOOL_EXPOSURE_DEFAULTS: dict[str, str] = {
     "Enable membership tools?": "",
     "Enable version tools?": "",
     "Enable board tools?": "",
+    "Enable meeting tools?": "",
     "Enable personal tools (own preferences, notifications)?": "",
     "Enable extended/rarely-used metadata tools?": "",
     "Enable admin tools (list/view users and groups)?": "",
+    "Enable user-schedule tools (non-working times, working hours)?": "",
 }
 _ADVANCED_ONLY_DEFAULTS: dict[str, str] = {
     "Hidden project fields": "",
@@ -1350,6 +1353,7 @@ _ADVANCED_ONLY_DEFAULTS: dict[str, str] = {
     "Hidden activity fields": "",
     "Hidden custom fields": "",
     "Enable admin writes": "",
+    "Enable user-schedule writes": "",
     "Attachment upload root": "",
     "Default page size": "",
     "Max page size": "",
@@ -1363,7 +1367,7 @@ _ADVANCED_ONLY_DEFAULTS: dict[str, str] = {
     "Log level": "",
 }
 # Quick mode (not --advanced): once "Enable write access?" is answered yes,
-# these 5 per-category Y/N prompts are asked unconditionally. Tests that drive
+# these 6 per-category Y/N prompts are asked unconditionally. Tests that drive
 # write access on but don't care about the specific per-category split merge
 # this in with "" (keep-default) answers.
 _QUICK_WRITE_SCOPE_DEFAULTS: dict[str, str] = {
@@ -1372,6 +1376,7 @@ _QUICK_WRITE_SCOPE_DEFAULTS: dict[str, str] = {
     "Projects (create": "",
     "Memberships (create": "",
     "Boards (create": "",
+    "Meetings (create": "",
 }
 
 
@@ -1690,7 +1695,7 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
     # A fresh setup's fail-safe quick-mode default ("no write access") deviates
-    # from Settings' own optimistic True default for the 5 project-scoped write
+    # from Settings' own optimistic True default for the 6 project-scoped write
     # flags (that default only makes sense once a project scope is granted), so
     # minimal-diff writing must keep them explicitly false here.
     assert set(env) == {
@@ -1701,6 +1706,7 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
         "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
         "OPENPROJECT_ENABLE_VERSION_WRITE",
         "OPENPROJECT_ENABLE_BOARD_WRITE",
+        "OPENPROJECT_ENABLE_MEETING_WRITE",
     }
     settings = c.Settings.from_env(env)
     assert settings.enable_work_package_write is False
@@ -1708,6 +1714,7 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
     assert settings.enable_membership_write is False
     assert settings.enable_version_write is False
     assert settings.enable_board_write is False
+    assert settings.enable_meeting_write is False
     assert settings.enable_personal_write is False
     assert settings.attachment_root == ""
     assert settings.max_retries == 3
@@ -1828,6 +1835,7 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
         "Projects (create": "",
         "Memberships (create": "",
         "Boards (create": "",
+        "Meetings (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1905,6 +1913,7 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
         "Projects (create": "y",
         "Memberships (create": "y",
         "Boards (create": "y",
+        "Meetings (create": "y",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -2012,6 +2021,7 @@ def test_main_quick_write_scope_work_packages_only(monkeypatch, tmp_path: Path) 
         "Projects (create": "n",
         "Memberships (create": "n",
         "Boards (create": "n",
+        "Meetings (create": "n",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -2041,6 +2051,7 @@ def test_main_quick_write_scope_all_enables_every_scoped_write(monkeypatch, tmp_
         "Projects (create": "y",
         "Memberships (create": "y",
         "Boards (create": "y",
+        "Meetings (create": "y",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -2117,6 +2128,7 @@ def test_main_quick_write_scope_prefill_matches_existing_combo(monkeypatch, tmp_
         "Projects (create": "",
         "Memberships (create": "",
         "Boards (create": "",
+        "Meetings (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2172,6 +2184,7 @@ def test_main_quick_write_scope_custom_combo_prefill_reproduced(monkeypatch, tmp
         "Projects (create": "",
         "Memberships (create": "",
         "Boards (create": "",
+        "Meetings (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2390,11 +2403,13 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "Enable membership writes": "n",
         "Enable version writes": "n",
         "Enable board writes": "n",
+        "Enable meeting writes": "n",
         "Hidden project fields": "status_explanation",
         "Hidden work-package fields": "description",
         "Hidden activity fields": "comment",
         "Hidden custom fields": "budget",
         "Enable admin writes": "n",
+        "Enable user-schedule writes": "n",
         "Attachment upload root": ATTACHMENT_ROOT,
         "Default page size": "5",
         "Max page size": "25",
@@ -2565,6 +2580,7 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
         "Projects (create": "",
         "Memberships (create": "",
         "Boards (create": "",
+        "Meetings (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -3009,10 +3025,14 @@ _FULL_DEFAULT_ENV: dict[str, str] = {
     "OPENPROJECT_ENABLE_VERSION_WRITE": "true",
     "OPENPROJECT_ENABLE_BOARD_READ": "true",
     "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
+    "OPENPROJECT_ENABLE_MEETING_READ": "true",
+    "OPENPROJECT_ENABLE_MEETING_WRITE": "true",
     "OPENPROJECT_ENABLE_PERSONAL_READ": "false",
     "OPENPROJECT_ENABLE_PERSONAL_WRITE": "false",
     "OPENPROJECT_ENABLE_ADMIN_READ": "false",
     "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
+    "OPENPROJECT_ENABLE_USER_SCHEDULE_READ": "false",
+    "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE": "false",
     "OPENPROJECT_ENABLE_EXTENDED_READ": "false",
     "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
     "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
@@ -3206,18 +3226,22 @@ _CANONICAL_SCOPE_KEY_ORDER: tuple[str, ...] = (
     "OPENPROJECT_ENABLE_VERSION_WRITE",
     "OPENPROJECT_ENABLE_BOARD_READ",
     "OPENPROJECT_ENABLE_BOARD_WRITE",
+    "OPENPROJECT_ENABLE_MEETING_READ",
+    "OPENPROJECT_ENABLE_MEETING_WRITE",
     "OPENPROJECT_ENABLE_PERSONAL_READ",
     "OPENPROJECT_ENABLE_PERSONAL_WRITE",
     "OPENPROJECT_ENABLE_ADMIN_READ",
     "OPENPROJECT_ENABLE_ADMIN_WRITE",
+    "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
+    "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE",
     "OPENPROJECT_ENABLE_EXTENDED_READ",
 )
 
-# Deviates every single scope-pair key from its own default (the 5 core reads
-# and their writes forced off; personal/admin/extended forced on; both
-# project allowlists set) so every key in _CANONICAL_SCOPE_KEY_ORDER actually
-# survives minimal-diff writing — letting the assertion below be an exact
-# equality against the full canonical list, not just a subsequence check.
+# Deviates every single scope-pair key from its own default (the 6 core reads
+# and their writes forced off; personal/admin/user-schedule/extended forced
+# on; both project allowlists set) so every key in _CANONICAL_SCOPE_KEY_ORDER
+# actually survives minimal-diff writing — letting the assertion below be an
+# exact equality against the full canonical list, not just a subsequence check.
 _ALL_SCOPE_KEYS_DEVIATED_ANSWERS: dict[str, str] = {
     "Configure globally": "n",
     "Configure project-scoped": "y",
@@ -3235,12 +3259,16 @@ _ALL_SCOPE_KEYS_DEVIATED_ANSWERS: dict[str, str] = {
     "Enable version writes": "n",
     "Enable board tools?": "n",
     "Enable board writes": "n",
+    "Enable meeting tools?": "n",
+    "Enable meeting writes": "n",
     "Enable personal tools (own preferences, notifications)?": "y",
     "Enable personal-data writes": "y",
     "Enable admin tools (list/view users and groups)?": "y",
+    "Enable user-schedule tools (non-working times, working hours)?": "y",
     "Enable extended/rarely-used metadata tools?": "y",
     **_ADVANCED_ONLY_DEFAULTS,
     "Enable admin writes": "y",
+    "Enable user-schedule writes": "y",
 }
 
 
@@ -3294,10 +3322,14 @@ def test_minimal_env_orders_keys_canonically() -> None:
     env["OPENPROJECT_ENABLE_VERSION_WRITE"] = "false"
     env["OPENPROJECT_ENABLE_BOARD_READ"] = "false"
     env["OPENPROJECT_ENABLE_BOARD_WRITE"] = "false"
+    env["OPENPROJECT_ENABLE_MEETING_READ"] = "false"
+    env["OPENPROJECT_ENABLE_MEETING_WRITE"] = "false"
     env["OPENPROJECT_ENABLE_PERSONAL_READ"] = "true"
     env["OPENPROJECT_ENABLE_PERSONAL_WRITE"] = "true"
     env["OPENPROJECT_ENABLE_ADMIN_READ"] = "true"
     env["OPENPROJECT_ENABLE_ADMIN_WRITE"] = "true"
+    env["OPENPROJECT_ENABLE_USER_SCHEDULE_READ"] = "true"
+    env["OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE"] = "true"
     env["OPENPROJECT_ENABLE_EXTENDED_READ"] = "true"
 
     minimal = _minimal_env_for(env)

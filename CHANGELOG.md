@@ -148,6 +148,9 @@ broader OpenProject version compatibility.
   allowed values as a link.
 - `update_document`'s `description` field no longer corrupts the stored
   value into an unusable string.
+- The setup wizard now offers the Meetings and per-user schedule (non-working
+  times, working hours) tool groups — both were previously always on with no
+  way to configure them through `configure`.
 
 ## [0.3.8] - 2026-08-25
 
