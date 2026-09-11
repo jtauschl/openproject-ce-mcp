@@ -475,7 +475,12 @@ def _extract_client_resources() -> set[str]:
         # same f-string-first-path-segment shape in both.
         for m in re.findall(
             r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"'
-            r'|self\._transport\.(?:get_json|post_json|patch_json|delete_json|delete)\(\s*f?"([^"]+)"'
+            # get_binary (streamed downloads, e.g. attachment content) and
+            # post_multipart (file uploads) are otherwise-invisible transport
+            # methods -- found missing when neither the attachment-content
+            # endpoint nor the attachment-upload endpoint showed up in --all
+            # coverage despite both existing in httpx_attachment_api.py.
+            r'|self\._transport\.(?:get_json|post_json|patch_json|delete_json|delete|get_binary|post_multipart)\(\s*f?"([^"]+)"'
             # Generic-verb request shapes -- client.py's self._request("METHOD", ...)
             # and app/'s self._transport.request_raw("METHOD", ...) both take the
             # HTTP verb as a separate first argument, so the path is the SECOND
