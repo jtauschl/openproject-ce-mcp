@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -302,16 +303,20 @@ def test_atomic_write_cleans_up_temp_file_on_write_failure(monkeypatch, tmp_path
     target = tmp_path / "config.toml"
 
     class _BoomFile:
+        def __init__(self, fd: int) -> None:
+            self._fd = fd
+
         def __enter__(self):
             return self
 
         def __exit__(self, *exc_info):
+            os.close(self._fd)
             return False
 
         def write(self, _text):
             raise OSError("simulated disk-full mid-write")
 
-    monkeypatch.setattr(c.os, "fdopen", lambda fd, *a, **k: _BoomFile())
+    monkeypatch.setattr(c.os, "fdopen", lambda fd, *a, **k: _BoomFile(fd))
     with pytest.raises(OSError):
         c._atomic_write(target, "new content\n")
     assert not target.exists()
