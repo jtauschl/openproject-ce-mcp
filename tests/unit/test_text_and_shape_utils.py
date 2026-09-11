@@ -934,7 +934,7 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
 
 
 def test_normalize_work_package_summary_uses_date_field_for_milestones() -> None:
-    """OPM (0.3.2 hotfix): OpenProject's work_package_representer.rb omits
+    """OpenProject's work_package_representer.rb omits
     startDate/dueDate entirely for milestone-type work packages and reports
     the single day under `date` instead -- confirmed live against a milestone
     created via this client. Without reading `date`, every milestone

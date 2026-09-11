@@ -14,6 +14,7 @@ bootstrap() {
 }
 
 shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh)
+required_shfmt_version="3.14.1"
 
 lint() {
     uv run ruff check .
@@ -23,6 +24,12 @@ lint() {
     uvx semgrep --config auto --error src/openproject_ce_mcp
     uvx pip-licenses --python .venv/bin/python3 --fail-on="GPL;LGPL;AGPL"
     shellcheck "${shell_scripts[@]}"
+    local actual_shfmt_version
+    actual_shfmt_version="$(shfmt --version)"
+    if [ "$actual_shfmt_version" != "$required_shfmt_version" ]; then
+        echo "shfmt $required_shfmt_version required; found $actual_shfmt_version" >&2
+        exit 1
+    fi
     shfmt -l "${shell_scripts[@]}"
     for f in "${shell_scripts[@]}"; do
         bash -n "$f"

@@ -442,6 +442,6 @@ async def set_project_favorite(
     safe_project = _validate_project_ref(project)
     # add_project_favorite/remove_project_favorite collapse through the client's private
     # _set_project_favorite helper straight to project.set_favorite -- that helper adds no
-    # logic beyond fixing the `favorite` bool literal, so this is a deliberately-reviewed
-    # exception to the "pure single-hop delegation only" rule (OPM-394 plan review).
+    # logic beyond fixing the `favorite` bool literal, so this is an intentional
+    # exception to the "pure single-hop delegation only" rule.
     return await _run_tool(client.project.set_favorite(safe_project, favorite=favorite, confirm=confirm))

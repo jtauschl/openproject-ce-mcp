@@ -307,7 +307,7 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
     # allows all -- link-based matching needs the cache
     # (_project_candidates only has the numeric id + display name from an
     # embedded HAL link, never the identifier itself, unless this cache fills
-    # it in). READ="*" + WRITE="OPM" is exactly the config that exposed this.
+    # it in). READ="*" + WRITE="DEMO" exercises this case.
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/projects"
         return httpx.Response(
@@ -315,7 +315,7 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
             json={
                 "_embedded": {
                     "elements": [
-                        {"id": 7, "identifier": "OPM", "name": "OPM OpenProject CE MCP"},
+                        {"id": 7, "identifier": "DEMO", "name": "Demo Project"},
                         {"id": 16, "identifier": "ENC", "name": "ENC Encore ST"},
                     ]
                 }
@@ -323,12 +323,12 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
             request=request,
         )
 
-    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     await client.initialize()
 
-    assert client._project_id_to_identifier == {7: "OPM"}
+    assert client._project_id_to_identifier == {7: "DEMO"}
     await client.aclose()
 
 
@@ -350,17 +350,17 @@ async def test_initialize_walks_every_server_page_of_projects() -> None:
         page_size = int(request.url.params["pageSize"])
         requested_offsets.append(offset)
         page_1 = [{"id": i, "identifier": f"proj-{i}", "name": f"Project {i}"} for i in range(1, page_size + 1)]
-        page_2 = [{"id": 999, "identifier": "OPM", "name": "OPM OpenProject CE MCP"}]
+        page_2 = [{"id": 999, "identifier": "DEMO", "name": "Demo Project"}]
         elements = {"1": page_1, "2": page_2}.get(offset, [])
         return httpx.Response(200, json={"_embedded": {"elements": elements}}, request=request)
 
-    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     await client.initialize()
 
     assert requested_offsets == ["1", "2"]
-    assert client._project_id_to_identifier == {999: "OPM"}
+    assert client._project_id_to_identifier == {999: "DEMO"}
     await client.aclose()
 
 
@@ -373,7 +373,7 @@ async def test_initialize_logs_and_survives_an_expected_transport_failure(caplog
     async def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom", request=request)
 
-    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     try:
@@ -394,7 +394,7 @@ async def test_initialize_propagates_an_unexpected_programming_error() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         raise RuntimeError("boom")
 
-    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     try:
@@ -414,19 +414,19 @@ async def test_write_link_allowlist_recognizes_identifier_after_initialize_with_
         assert request.url.path == "/api/v3/projects"
         return httpx.Response(
             200,
-            json={"_embedded": {"elements": [{"id": 7, "identifier": "OPM", "name": "OPM OpenProject CE MCP"}]}},
+            json={"_embedded": {"elements": [{"id": 7, "identifier": "DEMO", "name": "Demo Project"}]}},
             request=request,
         )
 
-    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     await client.initialize()
 
     # Must not raise: the embedded link only carries id + title, exactly like a
-    # real work package's "_links.project", and "OPM" (the identifier) is only
+    # real work package's "_links.project", and "DEMO" (the identifier) is only
     # resolvable via the cache initialize() just populated.
     scope.ensure_project_write_link_allowed(
-        {"href": "/api/v3/projects/7", "title": "OPM OpenProject CE MCP"},
+        {"href": "/api/v3/projects/7", "title": "Demo Project"},
         settings=client.settings,
         project_id_to_identifier=client._project_id_to_identifier,
     )

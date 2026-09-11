@@ -1,0 +1,6 @@
+# False positive: authentication_method validation call, not a credential.
+3bfe33c93e0a2efd537f4055b5570e72bff5ca27:src/openproject_ce_mcp/tools_admin.py:generic-api-key:368
+# False positive: the same validation call before the admin-domain split.
+d8b4e0030b3513820e906487646b94f91a458955:src/openproject_ce_mcp/tools.py:generic-api-key:5435
+# False positive: synthetic relation descriptions in a unit test.
+753c9669dadad9ccefe85f1170d1bc8aeecb34ff:tests/unit/test_app_relation_service.py:generic-api-key:230

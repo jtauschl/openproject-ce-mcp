@@ -2015,10 +2015,9 @@ def _flat_call_targets_in(source: str, *, allow_bare_self: bool) -> set[str]:
 
 
 def test_client_pure_delegation_methods_have_a_production_caller() -> None:
-    """OPM-462: a method can be a structurally pure Service delegation (passing
-    the sibling test above) while having zero real callers under src/ --
-    OPM-394's cleanup missed exactly this shape 7 times (OPM-461), because
-    "is this a pure delegation" and "does anything still call it" are
+    """A method can be a structurally pure Service delegation while having
+    zero real callers under src/, because "is this a pure delegation" and
+    "does anything still call it" are
     independent questions. A delegation method that only tests call is
     exactly as dead as one nothing calls at all: production code has already
     moved on to `client.<domain>.<method>(...)` and left the flat wrapper
@@ -2042,9 +2041,8 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
         m for m in public_methods if m.name not in _CLIENT_NON_DELEGATING_METHODS and _is_pure_service_delegation(m)
     ]
     if not pure_delegations:
-        # OPM-461 deleted every one of these; a future domain addition may
-        # reintroduce flat delegations again, at which point this check
-        # resumes doing real work. Nothing to check right now.
+        # A future domain addition may reintroduce flat delegations, at which
+        # point this check resumes doing real work.
         return
 
     called_names: set[str] = set()
@@ -2055,21 +2053,20 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
     assert not orphaned, (
         f"OpenProjectClient methods {orphaned} are pure Service delegations with no caller anywhere under "
         "src/ (only tests still call them, if anything does) -- migrate their test call sites to the facade "
-        "form (client.<domain>.<method>(...)) and delete the method, the same cleanup OPM-461 already did "
-        "for this exact shape."
+        "form (client.<domain>.<method>(...)) and delete the method."
     )
 
 
 @pytest.mark.asyncio
 async def test_client_service_namespaces_are_complete_and_identity_preserving() -> None:
-    """OPM-394: every `self._<domain>_service` attribute OpenProjectClient constructs in
+    """Every `self._<domain>_service` attribute OpenProjectClient constructs in
     __init__ must have a matching read-only `client.<domain>` property returning that exact
     object (not a copy/rebuild) -- the additive namespace facade this ticket introduces.
 
     Built via runtime introspection (`vars(client)` for the private service attributes,
     `vars(type(client))` for declared `property` descriptors) rather than a hardcoded list of
     49 names, so this test automatically fails the moment a NEW Service is added to __init__
-    without a matching property -- the actual failure mode OPM-394 exists to prevent, not just
+    without a matching property, guarding the actual failure mode rather than
     a snapshot of today's domain list."""
     import httpx
 
@@ -2102,7 +2099,7 @@ async def test_client_service_namespaces_are_complete_and_identity_preserving() 
             public_name = private_name[1 : -len("_service")]
             assert public_name in declared_properties, (
                 f"OpenProjectClient constructs {private_name} but has no matching "
-                f"`client.{public_name}` namespace property -- add one (see OPM-394)."
+                f"`client.{public_name}` namespace property -- add one."
             )
             descriptor = declared_properties[public_name]
             assert descriptor.fset is None, f"client.{public_name} must be read-only (no setter)"

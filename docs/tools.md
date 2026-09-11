@@ -290,8 +290,8 @@ has
 > OpenProject 17.6 or later — earlier versions return a `[server_error]`.
 >
 > **Note:** `list_work_package_wiki_links` returns a `[server_error]` whenever
-> the work package actually has one or more wiki page links — a confirmed
-> OpenProject server bug (16.6/17.6/17.7.1, tracked as OPM-399). Only the
+> the work package actually has one or more wiki page links due to an
+> OpenProject server bug in 16.6/17.6/17.7.1. Only the
 > empty-list case reliably works. `delete_work_package_wiki_link` is affected
 > too: it verifies `link_id` actually belongs to `work_package_id` before
 > deleting (a real authorization check, not skippable) by listing the work

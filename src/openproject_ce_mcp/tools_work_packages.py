@@ -5,13 +5,10 @@ create_subtask, add_work_package_comment, list_my_open_work_packages,
 get_work_package_activities, list_work_package_reactions,
 toggle_activity_emoji_reaction.
 
-This is the final OPM-395 Part A domain migration: every other domain
-originally named "work_package_*" (relations, attachments, watchers,
-time_entries, costs, github/gitlab integrations, ...) turned out to be a
-conceptually separate domain and already migrated to its own module in an
-earlier session. What remains here is genuine work-package CRUD/read/comment
-core -- previously deferred pending its own app/-layer CRUD migration, which
-is now complete: twelve of these functions delegate to
+Other resources whose names contain "work_package" (relations, attachments,
+watchers, time entries, costs, and integrations) belong to separate domains.
+This module contains work-package CRUD, reads, comments, activities, and
+reactions. Twelve functions delegate to
 `app/services/work_package_service.py`'s `WorkPackageService`,
 `get_work_package_activities` delegates to `ActivityService`, and the two
 reaction tools delegate to `EmojiReactionService`. Only input validation,

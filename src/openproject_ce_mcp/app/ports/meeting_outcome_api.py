@@ -1,7 +1,7 @@
 """Meeting Outcomes Domain API port -- narrow, no universal gateway.
 
-Requires OpenProject 17.6+ -- verified by directory diff: op-sources/17.4 and
-17.5 have no `modules/meeting/lib/api/v3/meeting_outcomes/` directory at all;
+Requires OpenProject 17.6+ -- the 17.4 and 17.5 source trees have no
+`modules/meeting/lib/api/v3/meeting_outcomes/` directory at all;
 17.6 and 17.7 do.
 
 Verified against OpenProject 17.7 source

@@ -355,7 +355,7 @@ services:
       retries: 40
       start_period: 120s
 
-  # Nextcloud fixture for the OPM-179 (storages/project_storages) read-tool
+  # Nextcloud fixture for the storages/project_storages read-tool
   # tests. SQLite-backed, one-container, non-interactive install via env vars
   # (confirmed against the image's own /entrypoint.sh). Only ever brought up
   # alongside a single OpenProject instance (op-17-7), never with all five —

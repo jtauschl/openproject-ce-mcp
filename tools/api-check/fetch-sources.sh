@@ -22,8 +22,8 @@ REPO="https://github.com/opf/openproject.git"
 # check only flags renamed/removed fields, never a field that starts
 # appearing in a response without being requested (the class of bug behind
 # the targetVersions form-echo regression, found in 17.7 by reading source,
-# not by any automated check). Log findings in
-# openproject-ce-mcp-int/30-implementation/openproject-release-tracking.md.
+# not by any automated check). Record any findings in the project's internal
+# release-tracking documentation.
 VERSIONS=(
     "16.0:v16.0.1"
     "16.1:v16.1.1"
@@ -45,8 +45,8 @@ VERSIONS=(
 
 # Subtrees that hold the API v3 definitions, representers and query filters,
 # plus the models/contracts that define the enums, payload field names, and
-# server-side validation constraints the constant check (check_api.py
-# --constants) and manual verification passes (e.g. OPM-309) rely on.
+# server-side validation constraints used by the constant check
+# (check_api.py --constants) and manual verification passes.
 # app/models and app/contracts are taken whole (not just work_package/queries)
 # so a model like Document/News/WikiPage is available without extending this
 # list again per future check -- these are still small subtrees relative to

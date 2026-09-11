@@ -13,6 +13,7 @@ the selection logic could compare itself to itself and stay green.
 import inspect
 
 import pytest
+from mcp.server.mcpserver import MCPServer
 
 from openproject_ce_mcp import tools
 from openproject_ce_mcp import tools_runtime as _tools_runtime
@@ -172,6 +173,20 @@ def test_every_write_tool_requires_confirm() -> None:
         sig = inspect.signature(_tools_runtime._TOOL_FUNCTIONS[name])
         assert "confirm" in sig.parameters, f"{name} has no confirm parameter"
         assert sig.parameters["confirm"].default is False, f"{name}'s confirm must default to False"
+
+
+def test_registration_normalizes_runtime_dependent_docstring_indentation(monkeypatch) -> None:
+    async def synthetic_tool() -> str:
+        return "ok"
+
+    synthetic_tool.__doc__ = "Summary.\n\n    Detail line one.\n    Detail line two.\n"
+    monkeypatch.setitem(_tools_runtime._TOOL_FUNCTIONS, synthetic_tool.__name__, synthetic_tool)
+
+    mcp = MCPServer("description-normalization-test")
+    _tools_runtime.register_selected_tools(mcp, names=[synthetic_tool.__name__], hide_active=False)
+
+    registered = {tool.name: tool for tool in mcp._tool_manager.list_tools()}
+    assert registered[synthetic_tool.__name__].description == "Summary.\n\nDetail line one.\nDetail line two.\n"
 
 
 # ── enabled_tool_names() behavior ───────────────────────────────────────────

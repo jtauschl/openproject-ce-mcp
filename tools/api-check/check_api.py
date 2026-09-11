@@ -426,9 +426,8 @@ APP_SERVICES = ROOT / "src" / "openproject_ce_mcp" / "app" / "services"
 # documents/file_links/sprints/time_entries used to be listed here too, back
 # when _resource_present only searched the core lib/api/v3 tree and CE
 # feature-module resources (Documents, Storages, Backlogs, Costs) were
-# invisible to it. Fixed in cf803d9 to also search modules/*/lib/api/v3 (see
-# _resource_roots); re-verified live afterwards (OPM-451) that all four are
-# now genuinely found there across the full 16.0-17.7 pinned range (sprints
+# invisible to it. Searching modules/*/lib/api/v3 as well (see
+# _resource_roots) finds all four across the full pinned range (sprints
 # only from 17.3 on, when Backlogs' own sprints_api.rb route lands -- caught
 # and reported correctly by the normal "introduced after 16.0" cell, not a
 # special case), so they no longer need this unconditional exemption. Only

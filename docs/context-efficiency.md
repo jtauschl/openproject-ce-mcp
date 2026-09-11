@@ -19,27 +19,27 @@ target that auto-syncs.
 
 ## Response size
 
-Measured against the same three representative work packages, using
-[tiktoken](https://github.com/openai/tiktoken)'s `cl100k_base` encoding (the
-GPT-4-family tokenizer) as a real-tokenizer stand-in — no public tokenizer
-exists for Claude models, so this is a consistent, reproducible approximation,
-not an exact Claude token count, but a real BPE tokenizer rather than the
-bytes/4 approximation used in earlier revisions of this page. Reproducible with
-[`tools/measure-context.py`](https://github.com/jtauschl/openproject-ce-mcp/blob/main/tools/measure-context.py)
-(`uv sync --extra measure` first) against a local Docker test instance. Covers
-list, single-read, search, a confirmed write, and batch operations — not just
-one call shape — each compared against the equivalent raw OpenProject REST API
-v3 (HAL) call(s):
+Measured on the 0.4.0 release against a local OpenProject 17.8 test
+instance. Token counts use
+[tiktoken](https://github.com/openai/tiktoken)'s `o200k_base` encoding as a
+stable, reproducible BPE proxy; they are not the exact billed count for every
+model, provider, or MCP client. The response figures are a representative
+snapshot of real instance content, so reruns can vary with descriptions,
+populated fields, and accumulated test rows. Reproduce them with
+[`tools/measure-context.py`](../tools/measure-context.py) after installing the
+`measure` extra. The script covers list, single-read, search, a confirmed
+write, and batch operations, each compared with the equivalent raw OpenProject
+REST API v3 (HAL) call or calls:
 
 | Call | Raw API tokens | MCP tokens | vs. raw |
 | --- | ---: | ---: | ---: |
-| `list_work_packages` (3 rows) | ~10,139 | ~713 | **−93%** |
-| `list_work_packages` with `select` (5 fields) | ~10,139 | ~144 | **−99%** |
-| `get_work_package` (single read) | ~3,424 | ~409 | **−88%** |
-| `search_work_packages` (8 rows) | ~21,066 | ~2,067 | **−90%** |
-| `update_work_package` (confirmed write) | ~3,425 | ~461 | **−87%** |
-| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,612 | ~1,173 | **−92%** |
-| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,617 | ~1,208 | **−92%** |
+| `list_work_packages` (3 rows) | ~9,992 | ~861 | **−91%** |
+| `list_work_packages` with `select` (5 fields) | ~9,992 | ~174 | **−98%** |
+| `get_work_package` (single read) | ~3,378 | ~461 | **−86%** |
+| `search_work_packages` (1 row) | ~6,946 | ~329 | **−95%** |
+| `update_work_package` (confirmed write) | ~3,379 | ~512 | **−85%** |
+| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,012 | ~1,354 | **−91%** |
+| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,017 | ~1,389 | **−91%** |
 
 The savings are consistent across call shapes — this isn't a one-off number for
 list responses specifically. `select` remains the largest additional, opt-in
@@ -62,7 +62,7 @@ of this MCP ever shipped a policy that eliminated `None` on select-less tools or
 dropped a selected `null`, so "eliding `None`" is a hypothetical maximal-elision
 counterfactual, not this MCP's actual prior behavior. It quantifies what the
 real, registered null-preserving behavior costs relative to that hypothetical
-baseline. Measured against 50 real seeded work packages (the first page fetched
+baseline. Measured against 20 real seeded work packages (the first page fetched
 by `tools/measure-context.py`, not an invented `None` distribution — real
 field-population patterns are uneven, e.g. `responsible` is unset on nearly
 every seeded row here, `priority` on very few, so a synthetic 50/50 split would
@@ -70,8 +70,8 @@ misrepresent the actual cost):
 
 | Scenario | Maximal elision (hypothetical) | Explicit `null` (real behavior) | Cost |
 | --- | ---: | ---: | ---: |
-| Full rows, simulating a select-less tool (50 rows) | ~7,933 tokens | ~14,421 tokens | **+82%** |
-| `select=[id,subject,responsible]` (50 rows, all 50 with `responsible=None`) | ~793 tokens | ~1,093 tokens | **+38%** |
+| Full rows, simulating a select-less tool (20 rows) | ~3,968 tokens | ~6,669 tokens | **+68%** |
+| `select=[id,subject,responsible]` (20 rows, all with `responsible=None`) | ~356 tokens | ~475 tokens | **+33%** |
 
 Reproducible with the same `tools/measure-context.py` script (its "Cost of
 null-vs-absent distinguishability" section) — it needs the same Docker test
@@ -93,19 +93,57 @@ data).
 ## Tool catalog size
 
 The tool set itself is trimmed too, mainly by not emitting redundant output
-schemas. A fresh, unconfigured install — the actual default state, before
-`OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS` are set — registers
-only the small set of project-independent read tools: 12 tools, ~2.4k tokens
-(project-scoped read tools additionally require a non-empty
-`OPENPROJECT_READ_PROJECTS`, since one that can only ever return an empty result
-or a permission error would just be dead catalog weight). Project-scoped write
-tools are only registered once **both** allowlists are non-empty (same
-reasoning, applied to `OPENPROJECT_WRITE_PROJECTS`); once granted, and with
-every write scope enabled — the worst case — the `tools/list` payload is 121
-tools, ~43k tokens. Turning on the rarely-used `extended` metadata tools
-(`OPENPROJECT_ENABLE_EXTENDED_READ=true`, see
-[Configuration](configuration.md#tool-groups)) on top of that adds 12 more
-tools, ~45k tokens. Confirmed writes also drop the echoed request `payload`.
+schemas. A fresh, unconfigured install registers only project-independent read
+tools. Project-scoped reads require a non-empty `OPENPROJECT_READ_PROJECTS`;
+writes require the corresponding feature flag and a non-empty
+`OPENPROJECT_WRITE_PROJECTS`. This avoids advertising tools that can only
+return an empty result or a permission error.
+
+These figures are exact snapshots of the serialized `tools/list` payload for
+the measured source tree. Unlike response sizes, they do not depend on live
+OpenProject data. They are still a context-size proxy: an MCP client or model
+provider may transform or cache the catalog before billing it.
+
+| Configuration | Tools | Catalog tokens |
+| --- | ---: | ---: |
+| Fresh install, no project scope | 14 | ~3,677 |
+| Project reads, no writes | 85 | ~35,923 |
+| Work-package writes only | 147 | ~56,018 |
+| Every write scope | 168 | ~61,432 |
+| Every write scope plus extended metadata | 180 | ~63,349 |
+
+The extended metadata group adds 12 rarely used tools and is opt-in through
+`OPENPROJECT_ENABLE_EXTENDED_READ=true`; see
+[Configuration](configuration.md#tool-groups). Confirmed writes also omit the
+echoed request `payload` from their response.
+
+### Practical configuration examples
+
+For issue triage, grant only the projects that should be searchable and leave
+all write flags off:
+
+```env
+OPENPROJECT_READ_PROJECTS=OPM,TST
+```
+
+Then request only the fields needed for the next decision, for example:
+
+```text
+list_work_packages(
+  project="OPM",
+  select=["id", "display_id", "subject", "status", "assignee"]
+)
+```
+
+For an automation that updates work packages, add a narrow write allowlist and
+enable only `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`. Admin, personal-data, and
+extended metadata tools can remain disabled. Enable extended metadata only
+while exploring uncommon reference data, then disable it again if its tools
+are not part of the normal workflow.
+
+Tool enablement reduces the fixed catalog cost; `select` reduces the variable
+response cost. They address different parts of the context budget and work
+best together.
 
 ### Server instructions are sent once, not per tool
 
@@ -135,7 +173,7 @@ The tool-catalog part needs no live instance. The response-size table and the
 null-vs-absent cost section both need a local Docker test instance:
 
 ```bash
-docker/test/up.sh 17
+docker/test/up.sh 178
 ```
 
 then point the script at it as described in the script's own docstring

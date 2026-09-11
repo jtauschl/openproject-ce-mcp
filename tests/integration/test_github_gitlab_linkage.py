@@ -3,8 +3,8 @@
 
 Entirely read-only mirror rows populated only by an actual configured GitHub
 App / GitLab webhook integration -- never creatable via any API (see
-`app/ports/github_gitlab_link_api.py`'s module docstring). This project's
-test OpenProject instance (op.nutrilytics.de) has neither integration
+`app/ports/github_gitlab_link_api.py`'s module docstring). The configured
+test OpenProject instance has neither integration
 configured, so the live test suite cannot exercise the "has linked
 PRs/issues/MRs" case at all -- a structural coverage gap, not an oversight.
 Tests below verify only the empty-collection shape (a work package with

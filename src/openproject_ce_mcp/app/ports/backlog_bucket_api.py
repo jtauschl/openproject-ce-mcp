@@ -29,7 +29,7 @@ class BacklogBucketRecord:
     object (no top-level `_links.definingWorkspace`) is present on the raw
     payload -- the `BacklogBucketRepresenter` uses the same
     `API::V3::Workspaces::LinkedResource#associated_project` helper Sprints'
-    representer uses (verified against op-sources/17.7).
+    representer uses in OpenProject's source.
 
     `defining_workspace_payload` carries the raw `_embedded.definingWorkspace`
     object when present (None otherwise) -- the Policy layer's embedded-object
@@ -59,8 +59,8 @@ class BacklogBucketApi(Protocol):
 
     Read-only: no commit_create/update/delete methods exist on this
     Protocol -- OpenProject's `backlog_buckets` API mounts only Index (global
-    and project-scoped) and Show (global-only); confirmed against
-    op-sources/17.7 (`backlog_buckets_api.rb`, `backlog_buckets_by_project_api.rb`):
+    and project-scoped) and Show (global-only); OpenProject's
+    `backlog_buckets_api.rb` and `backlog_buckets_by_project_api.rb`
     neither file defines a Create/Update/Delete endpoint.
 
     Two list methods, not one, mirroring Sprints: `list_all` hits the global

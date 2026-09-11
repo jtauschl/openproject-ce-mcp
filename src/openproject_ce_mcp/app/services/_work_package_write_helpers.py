@@ -1,4 +1,4 @@
-"""Pure write-payload helpers extracted from WorkPackageService (OPM-395 Part B).
+"""Pure write-payload helpers extracted from WorkPackageService.
 
 Only the genuinely self-free pieces of WorkPackageService's write path live
 here: resolving a schema's allowed-values href for a field, normalizing a

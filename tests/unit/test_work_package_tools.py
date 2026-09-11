@@ -1442,18 +1442,18 @@ async def test_bulk_work_packages_accept_semantic_refs() -> None:
     # TypeError from the int validator.
     await bulk_update_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        items=[{"work_package_id": "OPM-61", "subject": "X", "parent_work_package_id": "OPM-7"}],
+        items=[{"work_package_id": "DEMO-61", "subject": "X", "parent_work_package_id": "DEMO-7"}],
         confirm=True,
     )
-    assert received["update"][0]["work_package_id"] == "OPM-61"
-    assert received["update"][0]["parent_work_package_id"] == "OPM-7"
+    assert received["update"][0]["work_package_id"] == "DEMO-61"
+    assert received["update"][0]["parent_work_package_id"] == "DEMO-7"
 
     await bulk_create_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        items=[{"project": "demo", "type": "Task", "subject": "X", "parent_work_package_id": "OPM-7"}],
+        items=[{"project": "demo", "type": "Task", "subject": "X", "parent_work_package_id": "DEMO-7"}],
         confirm=True,
     )
-    assert received["create"][0]["parent_work_package_id"] == "OPM-7"
+    assert received["create"][0]["parent_work_package_id"] == "DEMO-7"
     with pytest.raises(ValueError, match="must be at least 1"):
         _validate_work_package_ref("0")
 
@@ -1485,11 +1485,11 @@ async def test_bulk_create_work_packages_tool_accepts_parent_alias() -> None:
 
     await bulk_create_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        items=[{"project": "demo", "type": "Task", "subject": "X", "parent": "OPM-7"}],
+        items=[{"project": "demo", "type": "Task", "subject": "X", "parent": "DEMO-7"}],
         confirm=True,
     )
 
-    assert received[0]["parent_work_package_id"] == "OPM-7"
+    assert received[0]["parent_work_package_id"] == "DEMO-7"
 
 
 @pytest.mark.asyncio

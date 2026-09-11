@@ -154,6 +154,29 @@ def test_clients_only_offers_detected(monkeypatch, tmp_path: Path) -> None:
     assert [cl for cl in c._clients() if cl.detected()] == []
 
 
+@pytest.mark.parametrize(
+    ("is_windows", "is_macos", "expected_root"),
+    [
+        (True, False, Path("AppData") / "Roaming"),
+        (False, True, Path("Library") / "Application Support"),
+        (False, False, Path(".config")),
+    ],
+)
+def test_claude_desktop_path_uses_platform_config_root(
+    monkeypatch,
+    tmp_path: Path,
+    is_windows: bool,
+    is_macos: bool,
+    expected_root: Path,
+) -> None:
+    monkeypatch.setattr(c, "_IS_WINDOWS", is_windows)
+    monkeypatch.setattr(c, "_IS_MACOS", is_macos)
+    monkeypatch.setattr(c, "_home", lambda: tmp_path)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+
+    assert c._claude_desktop_path() == (tmp_path / expected_root / "Claude" / "claude_desktop_config.json")
+
+
 # ── write + backup ──────────────────────────────────────────────────────────────
 
 
@@ -1769,7 +1792,7 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
                         "env": {
                             "OPENPROJECT_BASE_URL": "https://old.example.com",
                             "OPENPROJECT_API_TOKEN": "old-token",
-                            "OPENPROJECT_READ_PROJECTS": "OPM, TST",
+                            "OPENPROJECT_READ_PROJECTS": "DEMO, TEST",
                             "OPENPROJECT_WRITE_PROJECTS": "TST",
                             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
                             "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
@@ -1805,7 +1828,7 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
+    assert env["OPENPROJECT_READ_PROJECTS"] == "DEMO, TEST"
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
     settings = c.Settings.from_env(env)
     assert settings.enable_work_package_write is True
@@ -1869,7 +1892,7 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
-        "Readable projects": "OPM, TST",
+        "Readable projects": "DEMO, TEST",
         "Enable write access?": "y",
         "Writable projects": "TST",
         "Work packages (create": "y",
@@ -1882,7 +1905,7 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
+    assert env["OPENPROJECT_READ_PROJECTS"] == "DEMO, TEST"
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
     # All 5 flags equal Settings' own True default, so minimal-diff writing
     # omits them — assert the resolved effective values instead.
@@ -1976,9 +1999,9 @@ def test_main_quick_write_scope_work_packages_only(monkeypatch, tmp_path: Path) 
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
-        "Readable projects": "OPM",
+        "Readable projects": "DEMO",
         "Enable write access?": "y",
-        "Writable projects": "OPM",
+        "Writable projects": "DEMO",
         "Work packages (create": "y",
         "Versions (create": "n",
         "Projects (create": "n",
@@ -1989,7 +2012,7 @@ def test_main_quick_write_scope_work_packages_only(monkeypatch, tmp_path: Path) 
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_WRITE_PROJECTS"] == "OPM"
+    assert env["OPENPROJECT_WRITE_PROJECTS"] == "DEMO"
     settings = c.Settings.from_env(env)
     assert settings.enable_work_package_write is True
     assert settings.enable_project_write is False
@@ -2118,7 +2141,7 @@ def test_main_quick_write_scope_custom_combo_prefill_reproduced(monkeypatch, tmp
                         "env": {
                             "OPENPROJECT_BASE_URL": "https://old.example.com",
                             "OPENPROJECT_API_TOKEN": "old-token",
-                            "OPENPROJECT_WRITE_PROJECTS": "OPM,TST",
+                            "OPENPROJECT_WRITE_PROJECTS": "DEMO,TEST",
                             "OPENPROJECT_ENABLE_VERSION_WRITE": "true",
                             "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
                             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
@@ -2149,7 +2172,7 @@ def test_main_quick_write_scope_custom_combo_prefill_reproduced(monkeypatch, tmp
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_WRITE_PROJECTS"] == "OPM,TST"
+    assert env["OPENPROJECT_WRITE_PROJECTS"] == "DEMO,TEST"
     settings = c.Settings.from_env(env)
     assert settings.enable_version_write is True
     assert settings.enable_board_write is True
@@ -2169,7 +2192,7 @@ def test_main_quick_write_access_no_overrides_existing_custom_combo(monkeypatch,
                         "env": {
                             "OPENPROJECT_BASE_URL": "https://old.example.com",
                             "OPENPROJECT_API_TOKEN": "old-token",
-                            "OPENPROJECT_WRITE_PROJECTS": "OPM,TST",
+                            "OPENPROJECT_WRITE_PROJECTS": "DEMO,TEST",
                             "OPENPROJECT_ENABLE_VERSION_WRITE": "true",
                             "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
                         },
@@ -2350,7 +2373,7 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
-        "Readable projects": "OPM",
+        "Readable projects": "DEMO",
         "Enable write access?": "y",
         "Writable projects": "TST",
         **_TOOL_EXPOSURE_DEFAULTS,
@@ -2383,7 +2406,7 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_READ_PROJECTS"] == "OPM"
+    assert env["OPENPROJECT_READ_PROJECTS"] == "DEMO"
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
     # work_package_write=true equals Settings' own True default, so
     # minimal-diff writing omits the key — assert the resolved value instead.
@@ -2563,7 +2586,7 @@ def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
-        "Readable projects": "OPM",
+        "Readable projects": "DEMO",
         "Enable write access?": "y",
         "Writable projects": "TST",
         **_TOOL_EXPOSURE_DEFAULTS,
@@ -3021,8 +3044,8 @@ def test_minimal_env_all_defaults_keeps_only_base_url_and_token() -> None:
 @pytest.mark.parametrize(
     ("env_key", "deviated_value"),
     [
-        ("OPENPROJECT_READ_PROJECTS", "OPM"),
-        ("OPENPROJECT_WRITE_PROJECTS", "OPM"),
+        ("OPENPROJECT_READ_PROJECTS", "DEMO"),
+        ("OPENPROJECT_WRITE_PROJECTS", "DEMO"),
         ("OPENPROJECT_ENABLE_PERSONAL_READ", "true"),
         ("OPENPROJECT_ENABLE_EXTENDED_READ", "true"),
         ("OPENPROJECT_ENABLE_ADMIN_READ", "true"),
@@ -3134,7 +3157,7 @@ def test_minimal_env_keeps_original_string_not_a_reformatted_settings_value() ->
     "env",
     [
         _FULL_DEFAULT_ENV,
-        {**_FULL_DEFAULT_ENV, "OPENPROJECT_READ_PROJECTS": "OPM, TST", "OPENPROJECT_ENABLE_BOARD_WRITE": "false"},
+        {**_FULL_DEFAULT_ENV, "OPENPROJECT_READ_PROJECTS": "DEMO, TEST", "OPENPROJECT_ENABLE_BOARD_WRITE": "false"},
         {
             **_FULL_DEFAULT_ENV,
             "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
@@ -3254,8 +3277,8 @@ def test_minimal_env_orders_keys_canonically() -> None:
     # _minimal_env's output can be checked against the exact canonical order,
     # not just set equality.
     env = dict(_FULL_DEFAULT_ENV)
-    env["OPENPROJECT_READ_PROJECTS"] = "OPM"
-    env["OPENPROJECT_WRITE_PROJECTS"] = "OPM"
+    env["OPENPROJECT_READ_PROJECTS"] = "DEMO"
+    env["OPENPROJECT_WRITE_PROJECTS"] = "DEMO"
     env["OPENPROJECT_ENABLE_PROJECT_READ"] = "false"
     env["OPENPROJECT_ENABLE_PROJECT_WRITE"] = "false"
     env["OPENPROJECT_ENABLE_WORK_PACKAGE_READ"] = "false"
@@ -3279,7 +3302,7 @@ def test_minimal_env_orders_keys_canonically() -> None:
     assert actual_scope_keys == present
 
 
-# ── OPM-96: real _clients() end-to-end, not the mock Client fixtures above ──────
+# ── Real _clients() end-to-end, not the mock Client fixtures above ─────────────
 
 
 @_needs_tomllib
@@ -3290,8 +3313,7 @@ def test_configure_writes_valid_project_scoped_config_for_every_real_client(monk
     it writes against that client's real format (JSON or TOML) and the
     top-level key/table this project's own docs promise for each client.
 
-    This is the "MCP client setup paths" item of OPM-96 (RC compatibility
-    matrix) -- every other test in this file proves the wizard's *logic*
+    Every other test in this file proves the wizard's *logic*
     against synthetic clients; this one proves the wizard's output is valid
     for the four real, currently-documented, project-scoped-capable clients
     all at once, in one real run, the way a user actually experiences it.
@@ -3350,7 +3372,7 @@ def test_configure_writes_valid_project_scoped_config_for_every_real_client(monk
         "Configure VS Code": "y",
         "Configure Cursor": "y",
         "OpenProject base URL": "https://op.example.com",
-        "Readable projects": "OPM, TST",
+        "Readable projects": "DEMO, TEST",
         "Enable write access?": "n",
     }
     book = _AnswerBook(answers)
@@ -3386,7 +3408,7 @@ def test_configure_writes_valid_project_scoped_config_for_every_real_client(monk
     # collected answers reached all four writers identically, not just that
     # each file independently parses.
     for entry in (openproject_entry, codex_entry, vscode_entry, cursor_entry):
-        assert entry["env"]["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
+        assert entry["env"]["OPENPROJECT_READ_PROJECTS"] == "DEMO, TEST"
 
 
 def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tmp_path: Path) -> None:
@@ -3414,15 +3436,15 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
     # (see its docstring). Pinning cwd/$PWD here removes the need to trust
     # that reasoning at all.
     monkeypatch.setattr(c, "_home", lambda: tmp_path)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
     real_clients_probe = c._clients()
     claude_desktop_probe = next(client for client in real_clients_probe if client.key == "claude-desktop")
     assert claude_desktop_probe.project_target is None
-    assert (
-        claude_desktop_probe.target
-        == tmp_path / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
-    )
+    desktop_target = c._claude_desktop_path()
+    assert claude_desktop_probe.target == desktop_target
+    assert desktop_target.is_relative_to(tmp_path), f"claude-desktop.target {desktop_target} escaped tmp_path"
     for client in real_clients_probe:
         if client.project_target is not None:
             assert client.project_target.is_relative_to(tmp_path), (
@@ -3457,7 +3479,7 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
         "Configure globally": "y",
         "Configure Claude Desktop app?": "y",
         "OpenProject base URL": "https://op.example.com",
-        "Readable projects": "OPM, TST",
+        "Readable projects": "DEMO, TEST",
         "Enable write access?": "n",
     }
     book = _AnswerBook(answers)
@@ -3466,9 +3488,8 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
     c.main([], interactive=False)
     book.assert_consumed()
 
-    desktop_target = tmp_path / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
     data = json.loads(desktop_target.read_text())
     entry = data["mcpServers"]["openproject"]
     assert entry["env"]["OPENPROJECT_BASE_URL"] == "https://op.example.com"
     assert entry["env"]["OPENPROJECT_API_TOKEN"] == "opapi-desktop-check"
-    assert entry["env"]["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
+    assert entry["env"]["OPENPROJECT_READ_PROJECTS"] == "DEMO, TEST"

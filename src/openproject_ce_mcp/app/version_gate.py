@@ -10,7 +10,7 @@ version-gated domain (Meetings, wiki-page-links, user-schedule) let a plain
 `NotFoundError` bubble up with no version context, contradicting what their
 own docstrings already promise the caller ("Requires OpenProject X.Y+.").
 `call_version_gated` generalizes the one existing pattern instead of leaving
-each domain to reinvent it (OPM-463).
+each domain to reinvent it.
 """
 
 from __future__ import annotations

@@ -121,9 +121,8 @@ CLASSIFICATION: dict[str, str] = {
 }
 
 # Regression guard, not a current-gap list: every one of these 7 resources
-# is now `used` (see OPM-430 — they were implemented in app/adapters/ all
-# along, just undercounted by a scan-scope bug in _client_resources() that
-# predates this set's own reclassification below). `_classify` checks `used`
+# is now `used`. They were implemented in app/adapters/ all along, but were
+# undercounted by a scan-scope bug in _client_resources(). `_classify` checks `used`
 # before consulting this set, so none of these can actually be reported as
 # `GAP (CE)` today. The set stays so that if client usage of one of these
 # resources were ever removed, `_classify` would deterministically fall back

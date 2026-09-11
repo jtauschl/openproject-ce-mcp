@@ -3,9 +3,7 @@ get_work_package_relations, list_relations, update_relation.
 
 These wrap the RELATIONS resource (an edge between two work packages, with a
 type such as blocks/relates/precedes/follows), not work-package CRUD itself
--- they live in their own module rather than alongside the work-package
-tools per OPM-395's own suggested domain boundaries ("... work_packages,
-relations, reminders, ...").
+-- they live in their own module rather than alongside work-package CRUD.
 
 Their `@register_tool` decorators come from `tools_runtime`, never from
 `tools.py` -- see that module's own docstring for why. `tools.py` imports

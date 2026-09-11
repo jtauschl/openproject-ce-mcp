@@ -350,14 +350,8 @@ class ProjectFieldSchema:
 
 @dataclass
 class ProjectRef:
-    """Lightweight project picklist entry — id/identifier/name only.
-
-    Used where a caller needs to pick a project by reference (e.g. a parent
-    project) but not read its full description/status: the full ProjectSummary
-    would cost a description/status_explanation (up to 1200 chars) per
-    candidate for no benefit to that use case.
-    """
-
+    # Lightweight project picklist entry. Keep implementation rationale out of
+    # the class docstring because Pydantic may publish it as schema description.
     id: int
     identifier: str | None
     name: str

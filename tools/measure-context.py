@@ -5,18 +5,18 @@ Backs the numbers in docs/context-efficiency.md (and the short summary table
 in README.md's "How it works" section). Three parts:
 
 1. **Tool catalog size** (`tools/list`) — pure code, no live instance needed.
-   Builds the app with every write scope enabled (the worst case) and, for
-   comparison, with none enabled (read-only), and measures the serialized
-   `tools/list` payload both with and without the opt-in metadata tools.
+   Builds the app for several representative exposure profiles, from a fresh
+   install through every write scope, and measures the serialized `tools/list`
+   payload both with and without the opt-in metadata tools.
 
 2. **Response-size table** (raw API vs. list/get/search/update/bulk, each with
    and without MCP trimming) — needs a live OpenProject instance with a few
    realistic work packages, since payload size depends on real content
    (description length, populated fields, custom fields) that a synthetic
    fixture can't responsibly claim to represent. Point it at the local
-   Docker test harness (``docker/test/up.sh 17``, never production):
+   Docker test harness (``docker/test/up.sh 178``, never production):
 
-    OPENPROJECT_BASE_URL=http://localhost:8175 \\
+    OPENPROJECT_BASE_URL=http://localhost:8178 \\
     OPENPROJECT_API_TOKEN=... \\
     OPENPROJECT_TEST_PROJECT=TST \\
     python tools/measure-context.py
@@ -30,7 +30,7 @@ in README.md's "How it works" section). Three parts:
    measurements. It does not delete any of them afterward — the Docker test
    project is disposable by convention; don't point this at a real instance.
 
-3. **Cost of null-vs-absent distinguishability** (OPM-373 trade-off) — reuses
+3. **Cost of null-vs-absent distinguishability** — reuses
    the live rows from part 2 (real, uneven None-field population, not an
    invented distribution) to measure the token cost of keeping `None` fields
    explicit instead of eliding them: `elide_none`, derived per-tool from
@@ -40,11 +40,10 @@ in README.md's "How it works" section). Three parts:
    deliberate, measured trade-off, not a regression — see part 2's savings
    numbers for what it sits alongside.
 
-Token counts use tiktoken's `cl100k_base` encoding (the GPT-4-family
-tokenizer) as a real-tokenizer stand-in — no public tokenizer for Claude
-models exists, so this is a consistent, reproducible approximation, not an
-exact Claude token count. Requires the `measure` extra (`uv sync --extra
-measure`, or `pip install openproject-ce-mcp[measure]`).
+Token counts use tiktoken's `o200k_base` encoding as a stable, reproducible
+BPE proxy, not an exact billed count for every model, provider, or MCP client.
+Requires the `measure` extra (`uv sync --extra measure`, or
+`pip install openproject-ce-mcp[measure]`).
 """
 
 from __future__ import annotations
@@ -55,6 +54,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -66,7 +66,7 @@ from openproject_ce_mcp.models import SortCriterion  # noqa: E402
 from openproject_ce_mcp.presentation import _to_payload  # noqa: E402
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
 
-_ENCODING = tiktoken.get_encoding("cl100k_base")
+_ENCODING = tiktoken.get_encoding("o200k_base")
 
 
 def _tokens(raw: str) -> int:
@@ -127,6 +127,20 @@ SAMPLE_WORK_PACKAGES = [
 async def measure_tools_list() -> None:
     print("=== Tool catalog (tools/list) ===\n")
     scenarios = [
+        ("fresh install (compatible defaults, no project scope granted)", BASE_ENV),
+        (
+            "project reads enabled, no writes",
+            {**BASE_ENV, "OPENPROJECT_READ_PROJECTS": "*"},
+        ),
+        (
+            "work-package writes enabled",
+            {
+                **BASE_ENV,
+                "OPENPROJECT_READ_PROJECTS": "*",
+                "OPENPROJECT_WRITE_PROJECTS": "*",
+                "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+            },
+        ),
         ("every write scope enabled, extended tools off (worst case)", {**BASE_ENV, **WRITE_ENV}),
         (
             "every write scope enabled, extended tools on",
@@ -136,7 +150,6 @@ async def measure_tools_list() -> None:
                 "OPENPROJECT_ENABLE_EXTENDED_READ": "true",
             },
         ),
-        ("fresh install (compatible defaults, no project scope granted)", BASE_ENV),
     ]
     for label, env in scenarios:
         settings = Settings.from_env(env)
@@ -159,7 +172,7 @@ async def measure_tools_list() -> None:
     app = create_app(settings)
     tools = await app.list_tools()
     payload = [t.model_dump(exclude_none=True, mode="json") for t in tools]
-    server_instructions = app._mcp_server.instructions  # type: ignore[attr-defined]
+    server_instructions = app.instructions
     duplicated_into = [t["name"] for t in payload if _CE_INSTRUCTIONS_NEEDLE in (t.get("description") or "")]
     raw = json.dumps({"tools": payload})
     raw_tokens = _tokens(raw)
@@ -191,7 +204,7 @@ async def measure_response_sizes() -> list | None:
     if not base_url or not token:
         print(
             "Skipped: set OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN "
-            "(docker/test/up.sh 17, never production) to run this part.\n"
+            "(docker/test/up.sh 178, never production) to run this part.\n"
         )
         return None
 
@@ -211,8 +224,12 @@ async def measure_response_sizes() -> list | None:
     auth = httpx.BasicAuth("apikey", token)
 
     created_ids = []
+    project_id: str | None = None
+    run_marker = f"context-measure-{uuid4().hex[:12]}"
     async with httpx.AsyncClient(base_url=base_url, auth=auth, verify=settings.verify_ssl) as http:
-        for subject, description in SAMPLE_WORK_PACKAGES:
+        for index, (subject, description) in enumerate(SAMPLE_WORK_PACKAGES):
+            if index == 0:
+                subject = f"{subject} [{run_marker}]"
             resp = await http.post(
                 f"/api/v3/projects/{project}/work_packages",
                 json={
@@ -222,10 +239,23 @@ async def measure_response_sizes() -> list | None:
                 },
             )
             resp.raise_for_status()
-            created_ids.append(resp.json()["id"])
+            created_payload = resp.json()
+            created_ids.append(created_payload["id"])
+            if project_id is None:
+                project_id = created_payload["_links"]["project"]["href"].rsplit("/", 1)[-1]
 
-        id_filter = json.dumps([{"id": {"operator": "=", "values": [str(i) for i in created_ids]}}])
-        resp = await http.get(f"/api/v3/projects/{project}/work_packages", params={"filters": id_filter})
+        if project_id is None:
+            raise RuntimeError("Measurement setup did not return a project id.")
+        raw_filters = json.dumps([{"project_id": {"operator": "=", "values": [project_id]}}])
+        resp = await http.get(
+            "/api/v3/work_packages",
+            params={
+                "offset": "1",
+                "pageSize": str(len(created_ids)),
+                "filters": raw_filters,
+                "sortBy": json.dumps([["id", "desc"]]),
+            },
+        )
         resp.raise_for_status()
         raw_collection = resp.json()
 
@@ -236,12 +266,19 @@ async def measure_response_sizes() -> list | None:
     # within the first `limit` rows, regardless of how many other work
     # packages already exist in this (disposable, never-cleaned) test
     # project from earlier runs.
-    result = await client.list_work_packages(project=project, limit=50, sort_by=[SortCriterion("id", "desc")])
-    rows = [r for r in result.results if r.id in created_ids]
-    if len(rows) != len(created_ids):
-        print(f"Warning: expected {len(created_ids)} rows, found {len(rows)} — numbers below are partial.\n")
+    result = await client.work_package.list(
+        project=project,
+        limit=len(created_ids),
+        sort_by=[SortCriterion("id", "desc")],
+    )
+    rows = list(result.results)
+    measured_ids = [row.id for row in rows]
+    if set(measured_ids) != set(created_ids):
+        print(
+            f"Warning: expected ids {created_ids}, found {measured_ids} — numbers below may include concurrent writes.\n"
+        )
 
-    full_json = json.dumps({"results": [_to_payload(r) for r in rows]})
+    full_json = json.dumps(_to_payload(result))
     full_tokens = _tokens(full_json)
     # Use the real _select_fields() path (same as a caller passing `select`
     # would exercise via the registered wrapper) rather than filtering an
@@ -250,7 +287,7 @@ async def measure_response_sizes() -> list | None:
     # already gone from _to_payload(r)'s default (elide_none=True) output
     # before the filter ever runs.
     select_fields = frozenset({"id", "display_id", "subject", "status", "assignee"})
-    select_json = json.dumps({"results": [_select_row(r, select_fields) for r in rows]})
+    select_json = json.dumps(_to_payload(result, select=select_fields))
     select_tokens = _tokens(select_json)
 
     print(f"Raw OpenProject REST API v3 (HAL), {len(rows)} rows: {len(raw_json)} bytes, ~{raw_tokens} tokens")
@@ -276,7 +313,7 @@ async def measure_response_sizes() -> list | None:
         raw_single_json = json.dumps(resp.json())
         lock_version = resp.json()["lockVersion"]
 
-        detail = await client.get_work_package(single_id)
+        detail = await client.work_package.get(single_id)
         _report(
             "get_work_package (single read)",
             raw_single_json,
@@ -284,23 +321,25 @@ async def measure_response_sizes() -> list | None:
         )
 
         # --- Search: search_work_packages vs. GET /work_packages?filters=subject_or_id ---
-        query = SAMPLE_WORK_PACKAGES[0][0].split()[0]  # first word of a known subject, guaranteed to match
-        project_href_id = resp.json()["_links"]["project"]["href"].rsplit("/", 1)[-1]
+        query = run_marker
         raw_filters = json.dumps(
             [
                 {"subject_or_id": {"operator": "**", "values": [query]}},
-                {"project_id": {"operator": "=", "values": [project_href_id]}},
+                {"project_id": {"operator": "=", "values": [project_id]}},
             ]
         )
-        resp = await http.get("/api/v3/work_packages", params={"filters": raw_filters})
+        resp = await http.get(
+            "/api/v3/work_packages",
+            params={"offset": "1", "pageSize": "50", "filters": raw_filters},
+        )
         resp.raise_for_status()
         raw_search_json = json.dumps(resp.json())
 
-        search_result = await client.search_work_packages(search=query, project=project)
+        search_result = await client.work_package.search(search=query, project=project, limit=50)
         _report(
             f"search_work_packages ({len(search_result.results)} rows)",
             raw_search_json,
-            json.dumps({"results": [_to_payload(r) for r in search_result.results]}),
+            json.dumps(_to_payload(search_result)),
         )
 
         # --- Confirmed single update: update_work_package vs. PATCH /work_packages/{id} ---
@@ -311,7 +350,7 @@ async def measure_response_sizes() -> list | None:
         resp.raise_for_status()
         raw_update_json = json.dumps(resp.json())
 
-        update_result = await client.update_work_package(work_package_id=single_id, percentage_done=60, confirm=True)
+        update_result = await client.work_package.update(work_package_id=single_id, percentage_done=60, confirm=True)
         _report(
             "update_work_package (confirmed write)",
             raw_update_json,
@@ -334,7 +373,7 @@ async def measure_response_sizes() -> list | None:
             resp.raise_for_status()
             raw_bulk_create_parts.append(resp.json())
 
-        bulk_create_result = await client.bulk_create_work_packages(items=bulk_items, confirm=True)
+        bulk_create_result = await client.work_package.bulk_create(items=bulk_items, confirm=True)
         created_ids.extend(
             item.result.result.id
             for item in bulk_create_result.items
@@ -360,26 +399,28 @@ async def measure_response_sizes() -> list | None:
             raw_bulk_update_parts.append(resp.json())
 
         bulk_update_items = [{"work_package_id": wp_id, "percentage_done": 30} for wp_id in bulk_target_ids]
-        bulk_update_result = await client.bulk_update_work_packages(items=bulk_update_items, confirm=True)
+        bulk_update_result = await client.work_package.bulk_update(items=bulk_update_items, confirm=True)
         _report(
             f"bulk_update_work_packages (x{len(bulk_target_ids)}, vs. {len(bulk_target_ids)} individual raw PATCHes)",
             json.dumps(raw_bulk_update_parts),
             json.dumps(_to_payload(bulk_update_result)),
         )
 
-    # First page (up to OPENPROJECT_MAX_PAGE_SIZE, 50 by default -- `limit`
-    # above is requested but capped server-side) of the project's work
-    # packages (seeded + created above), for Part 3 -- a much richer, real
-    # None-field distribution than just the handful of rows created earlier
-    # in this function. Not the complete project (that would need to page
-    # until next_offset is None), but plenty for a representative sample.
-    page_result = await client.list_work_packages(project=project, limit=200)
+    # A fixed 20-row page of the project's newest work packages for Part 3.
+    # This is a much richer, real None-field distribution than just the three
+    # representative rows above while keeping the sample size stable across
+    # repeated runs against the deliberately non-cleaned test project.
+    page_result = await client.work_package.list(
+        project=project,
+        limit=20,
+        sort_by=[SortCriterion("id", "desc")],
+    )
 
     await client.aclose()
     return list(page_result.results)
 
 
-# ── Part 3: cost of null-vs-absent distinguishability (OPM-373) ──────────────
+# ── Part 3: cost of null-vs-absent distinguishability ───────────────────────
 #
 # elide_none (derived per-tool from whether it accepts `select`) and the
 # always-present next_offset are a deliberate trade-off, not a saving: some
@@ -409,7 +450,7 @@ async def measure_response_sizes() -> list | None:
 
 
 def measure_null_distinguishability_cost(rows: list) -> None:
-    print("=== Cost of null-vs-absent distinguishability (OPM-373 trade-off) ===\n")
+    print("=== Cost of null-vs-absent distinguishability ===\n")
     print(f"Measured on {len(rows)} real seeded work packages (first page, see script docstring).\n")
 
     # (a) elide_none=True (hypothetical maximal-elision policy) vs. False (the
@@ -459,7 +500,7 @@ async def main() -> None:
     if rows is not None:
         measure_null_distinguishability_cost(rows)
     else:
-        print("=== Cost of null-vs-absent distinguishability (OPM-373 trade-off) ===\n")
+        print("=== Cost of null-vs-absent distinguishability ===\n")
         print("Skipped: needs the same live instance as the response-size table above.\n")
 
 

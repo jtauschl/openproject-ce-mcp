@@ -98,10 +98,9 @@ dev-mode-dirs = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-m 'not integration and not launcher'"
+addopts = "-m 'not integration'"
 markers = [
     "integration: tests against a live OpenProject instance (requires env vars)",
-    "launcher: executable tests of the source-install/uninstall launcher scripts (ubuntu-only, see .github/workflows/test.yml's launchers job)",
 ]
 
 [tool.coverage.run]

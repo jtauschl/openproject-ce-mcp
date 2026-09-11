@@ -25,18 +25,18 @@ def test_scope_matches_candidates_glob_and_case_insensitive() -> None:
 
 
 def test_project_candidates_from_link_recovers_identifier_via_cache() -> None:
-    link = {"href": "/api/v3/projects/7", "title": "OPM OpenProject CE MCP"}
-    candidates = scope.project_candidates(project_id_to_identifier={7: "OPM"}, link=link)
-    assert "opm" in candidates
+    link = {"href": "/api/v3/projects/7", "title": "Demo Project"}
+    candidates = scope.project_candidates(project_id_to_identifier={7: "DEMO"}, link=link)
+    assert "demo" in candidates
     assert "7" in candidates
-    assert "opm openproject ce mcp" in candidates
-    assert "opm-openproject-ce-mcp" in candidates
+    assert "demo project" in candidates
+    assert "demo-project" in candidates
 
 
 def test_project_candidates_from_link_without_cache_entry_lacks_identifier() -> None:
-    link = {"href": "/api/v3/projects/7", "title": "OPM OpenProject CE MCP"}
+    link = {"href": "/api/v3/projects/7", "title": "Demo Project"}
     candidates = scope.project_candidates(project_id_to_identifier={}, link=link)
-    assert "opm" not in candidates
+    assert "demo" not in candidates
     assert "7" in candidates
 
 

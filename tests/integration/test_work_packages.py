@@ -953,11 +953,11 @@ async def test_list_work_packages_rejects_hidden_custom_field_filter(
 
 
 # ---------------------------------------------------------------------------
-# target_versions (OPM-468) -- see docker/test/seed.rb for the fixtures this
+# target_versions: see docker/test/seed.rb for the fixtures this
 # section reads, and conftest.py's multi_target_versions_enabled/_disabled
 # fixtures for how Setting::WorkPackageMultipleVersions is forced for the
 # duration of each test (OpenProject 17.8.0 ships this setting with
-# default: true, verified live 2026-09-07, so nothing here may assume either
+# default: true, so nothing here may assume either
 # starting state).
 # ---------------------------------------------------------------------------
 
@@ -1030,8 +1030,8 @@ async def test_round_trip_target_versions_write_on_create_live(
     """target_versions=[...] set directly on create() (not via a follow-up
     update()) also round-trips correctly. The other target_versions tests in
     this section only exercise create() with no version-related args, so the
-    create-path's own echo-restore logic (OPM-468 follow-up fix,
-    2026-09-08) is only indirectly covered elsewhere -- this closes that
+    create-path's own echo-restore logic is only indirectly covered elsewhere.
+    This closes that
     gap against a real OpenProject 17.7/17.8 instance, where the work-package
     form response echoes a stale targetVersions that must be overwritten by
     the client with the caller's actual request before commit."""

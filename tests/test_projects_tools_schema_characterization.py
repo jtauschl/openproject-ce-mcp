@@ -363,6 +363,7 @@ def test_get_project_admin_context_schema() -> None:
         tool.description
         == "Return project admin metadata such as lifecycle statuses, parent options, and writable fields."
     )
+    assert "description" not in tool.output_schema["$defs"]["ProjectRef"]
     assert tool.output_schema == {
         "$defs": {
             "OptionValue": {

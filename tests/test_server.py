@@ -621,11 +621,11 @@ async def _noop_verify_strict_dispatch(mcp) -> None:
 
 
 def test_run_server_ignores_legacy_env_var_with_no_warning(monkeypatch, capsys) -> None:
-    # OPM-136: the warn-only deprecation window (OPM-128) is over -- legacy
-    # names are now unrecognized env vars like any other, no diagnostic emitted.
+    # Removed names are unrecognized env vars like any other, so no diagnostic
+    # is emitted.
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://op.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "tok")
-    monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "OPM")
+    monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "DEMO")
     monkeypatch.setattr(server, "create_app", lambda settings: _StubApp())
     monkeypatch.setattr(server, "verify_strict_dispatch", _noop_verify_strict_dispatch)
 

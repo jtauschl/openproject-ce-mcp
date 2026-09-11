@@ -300,7 +300,7 @@ class Settings:
         default_page_size = _int_env(
             env,
             "OPENPROJECT_DEFAULT_PAGE_SIZE",
-            # 10, not 20: measured OPM lists are ~44% description bytes, so page size
+            # 10, not 20: measured project lists are ~44% description bytes, so page size
             # is the strongest lever on list context. 10 halves it while still showing
             # a useful chunk on one call; raise OPENPROJECT_DEFAULT_PAGE_SIZE if needed.
             default=10,

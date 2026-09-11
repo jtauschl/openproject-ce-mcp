@@ -1,10 +1,8 @@
 """Watchers domain MCP tool handlers: list_work_package_watchers,
 set_work_package_watcher.
 
-The ticket boundary for this file covers watchers only. Notifications
-(`list_notifications`, `mark_notifications_read`) were already migrated to
-`tools_personal.py` in a prior OPM-395 batch -- see that module's own
-docstring.
+This module covers watchers only. Notifications (`list_notifications`,
+`mark_notifications_read`) belong to `tools_personal.py`.
 
 Their `@register_tool` decorators come from `tools_runtime`, never from
 `tools.py` -- see that module's own docstring for why. `tools.py` imports

@@ -3,8 +3,8 @@
 Per-user recurring weekly hours-per-weekday schedule, versioned by
 `valid_from` -- OpenProject's `/api/v3/users/{user_id}/working_hours`
 resource. Requires 17.3+ (feature-flag-guarded 17.3-17.6, generally available
-17.7+ -- same version facts as UserNonWorkingTimeApi, independently verified
-against `working_hours_by_user_api.rb` across op-sources/17.0-17.7). No
+17.7+ -- same version facts as UserNonWorkingTimeApi, verified against
+OpenProject's `working_hours_by_user_api.rb` across versions 17.0-17.7). No
 client-side version check, matching UserNonWorkingTimeApi.
 
 Full CRUD INCLUDING a single-item GET (`GET .../working_hours/{id}` exists,

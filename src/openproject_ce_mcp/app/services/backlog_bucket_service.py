@@ -28,8 +28,8 @@ adapter -- mirrors the existing SprintService/ProjectService NotFoundError-
 rewrap precedent.
 
 Read-only domain: OpenProject's `backlog_buckets` API has no
-Create/Update/Delete endpoint (confirmed against op-sources/17.7's
-`backlog_buckets_api.rb`/`backlog_buckets_by_project_api.rb`, both of which
+Create/Update/Delete endpoint. Its `backlog_buckets_api.rb` and
+`backlog_buckets_by_project_api.rb` route files
 mount only Index/Show) -- unlike Sprints, this Service has no write-tool
 integration to guard, so there is no confirm/preview-ordering concern here.
 """

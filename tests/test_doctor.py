@@ -232,9 +232,8 @@ def test_env_config_no_warning_with_only_current_read_vars(capsys, monkeypatch):
 
 
 def test_env_config_legacy_tool_exposure_var_is_ignored_by_effective_settings(monkeypatch):
-    """OPM-136: legacy env-var names get no special handling any more -- they
-    are just unrecognized keys, silently ignored by Settings.from_env exactly
-    like any other unknown variable."""
+    """Legacy env-var names are unrecognized and silently ignored by
+    Settings.from_env like any other unknown variable."""
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
@@ -267,7 +266,7 @@ def test_env_config_legacy_project_scope_vars_are_ignored_by_effective_settings(
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
-    monkeypatch.setenv(legacy_var, "OPM")
+    monkeypatch.setenv(legacy_var, "DEMO")
 
     env_ok, settings = _check_env_config(None, {})
 

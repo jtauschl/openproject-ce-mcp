@@ -3,7 +3,7 @@
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter).
 
-Route verification (op-sources/17.7/modules/{github_integration,gitlab_integration}/lib/api/v3/):
+Route verification (`modules/{github_integration,gitlab_integration}/lib/api/v3/` in OpenProject):
 - `GET github_pull_requests/{id}`                -- github_pull_requests/github_pull_requests_api.rb
 - `GET work_packages/{id}/github_pull_requests`   -- github_pull_requests/github_pull_requests_by_work_package_api.rb
 - `GET work_packages/{id}/gitlab_issues`          -- gitlab_issues/gitlab_issues_by_work_package_api.rb

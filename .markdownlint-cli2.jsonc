@@ -1,6 +1,6 @@
 {
   // Scoped to docs/*.md and CHANGELOG.md -- this project's remaining
-  // Markdown (README.md, openproject-ce-mcp-int/, etc.) is not covered by
+  // Markdown outside docs/ (including README.md) is not covered by
   // this config or by the cleanup pass that introduced it.
   "globs": ["docs/*.md", "CHANGELOG.md"],
 

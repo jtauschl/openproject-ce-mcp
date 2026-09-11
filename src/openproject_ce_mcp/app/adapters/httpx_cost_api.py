@@ -3,7 +3,7 @@
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter).
 
-Route verification (op-sources/17.7/modules/costs/lib/api/v3/):
+Route verification (`modules/costs/lib/api/v3/` in OpenProject):
 - `GET cost_entries/{id}`                          -- cost_entries/cost_entries_api.rb
 - `GET work_packages/{id}/cost_entries`             -- cost_entries/cost_entries_by_work_package_api.rb
 - `GET work_packages/{id}/summarized_costs_by_type` -- cost_entries/cost_entries_by_work_package_api.rb

@@ -46,7 +46,7 @@ async def test_search_work_packages_uses_supported_subject_or_id_operator() -> N
 @pytest.mark.asyncio
 async def test_search_work_packages_resolves_exact_match_by_display_id() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/work_packages/OPM-394":
+        if request.url.path == "/api/v3/work_packages/DEMO-394":
             return httpx.Response(
                 200,
                 json={
@@ -80,7 +80,7 @@ async def test_search_work_packages_resolves_exact_match_by_display_id() -> None
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.work_package.search(search="OPM-394")
+    result = await client.work_package.search(search="DEMO-394")
 
     assert result.count == 0
     assert result.exact_match is not None
@@ -94,7 +94,7 @@ async def test_search_work_packages_exact_match_respects_other_filters() -> None
     # The resolved work package belongs to a different project than the
     # caller scoped the search to -- must not surface as an exact match.
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/work_packages/OPM-394":
+        if request.url.path == "/api/v3/work_packages/DEMO-394":
             return httpx.Response(
                 200,
                 json={
@@ -116,7 +116,7 @@ async def test_search_work_packages_exact_match_respects_other_filters() -> None
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.work_package.search(search="OPM-394", project="demo")
+    result = await client.work_package.search(search="DEMO-394", project="demo")
 
     assert result.exact_match is None
 
@@ -128,12 +128,12 @@ async def test_search_work_packages_exact_match_deduplicated_against_results() -
     # The text search already found the same work package by subject match --
     # exact_match must not duplicate it.
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/work_packages/OPM-394":
+        if request.url.path == "/api/v3/work_packages/DEMO-394":
             return httpx.Response(
                 200,
                 json={
                     "id": 394,
-                    "subject": "OPM-394 fix the thing",
+                    "subject": "DEMO-394 fix the thing",
                     "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
                 },
                 request=request,
@@ -147,7 +147,7 @@ async def test_search_work_packages_exact_match_deduplicated_against_results() -
                         "elements": [
                             {
                                 "id": 394,
-                                "subject": "OPM-394 fix the thing",
+                                "subject": "DEMO-394 fix the thing",
                                 "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
                             }
                         ]
@@ -159,7 +159,7 @@ async def test_search_work_packages_exact_match_deduplicated_against_results() -
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.work_package.search(search="OPM-394")
+    result = await client.work_package.search(search="DEMO-394")
 
     assert result.count == 1
     assert result.results[0].id == 394

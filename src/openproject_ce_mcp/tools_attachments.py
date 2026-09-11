@@ -2,10 +2,8 @@
 get_attachment, create_work_package_attachment, delete_attachment,
 list_work_package_file_links, delete_file_link.
 
-Attachments and Nextcloud file links share a domain -- both are file-ish
-artifacts hung off a work package -- per OPM-395's own suggested domain
-boundary ("attachments_file_links"); one file, since nothing in either half
-argues for a split.
+Attachments and Nextcloud file links share a domain because both are file
+artifacts attached to a work package and neither requires a separate boundary.
 
 Their `@register_tool` decorators come from `tools_runtime`, never from
 `tools.py` -- see that module's own docstring for why. `tools.py` imports

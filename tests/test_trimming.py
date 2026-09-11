@@ -49,7 +49,7 @@ from openproject_ce_mcp.tools_validation import _validate_select
 def _wp_summary(**overrides) -> m.WorkPackageSummary:
     defaults = {
         "id": 5,
-        "display_id": "OPM-5",
+        "display_id": "DEMO-5",
         "subject": "Subject",
         "type": "Task",
         "status": "New",
@@ -57,7 +57,7 @@ def _wp_summary(**overrides) -> m.WorkPackageSummary:
         "project_phase": None,
         "assignee": None,
         "responsible": None,
-        "project": "OPM",
+        "project": "Demo",
         "version": None,
         "target_versions": [],
         "sprint": None,
@@ -88,7 +88,7 @@ def _wp_list(results=None) -> m.WorkPackageListResult:
 def _wp_detail(**overrides) -> m.WorkPackageDetail:
     defaults = {
         "id": 5,
-        "display_id": "OPM-5",
+        "display_id": "DEMO-5",
         "subject": "Subject",
         "type": "Task",
         "status": "New",
@@ -96,7 +96,7 @@ def _wp_detail(**overrides) -> m.WorkPackageDetail:
         "project_phase": None,
         "assignee": None,
         "responsible": None,
-        "project": "OPM",
+        "project": "Demo",
         "version": None,
         "target_versions": [],
         "sprint": None,
@@ -135,12 +135,12 @@ def _wp_write(*, state: m.WriteResultState) -> m.WorkPackageWriteResult:
         ready=True,
         message="ok" if confirmed else "preview",
         work_package_id=9 if confirmed else None,
-        project="OPM",
+        project="Demo",
         payload={"subject": "x", "description": {"format": "markdown", "raw": "long text"}},
         validation_errors={},
         # A confirmed write's committed detail is non-None in practice (the
         # server just returned it); preview writes have no detail yet.
-        result=_wp_detail(id=9, display_id="OPM-9") if confirmed else None,
+        result=_wp_detail(id=9, display_id="DEMO-9") if confirmed else None,
     )
 
 
@@ -720,10 +720,10 @@ async def test_select_capable_list_tool_still_elides_none_without_select_through
                                 # has a `select` param, so without `select` this must still
                                 # be elided (unlike the select-less list_statuses above).
                                 "_links": {
-                                    "self": {"href": "/api/v3/work_packages/5", "title": "OPM-5"},
+                                    "self": {"href": "/api/v3/work_packages/5", "title": "DEMO-5"},
                                     "type": {"title": "Task"},
                                     "status": {"title": "New"},
-                                    "project": {"href": "/api/v3/projects/1", "title": "OPM"},
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                 },
                             }
                         ]

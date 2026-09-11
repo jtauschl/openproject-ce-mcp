@@ -160,8 +160,8 @@ BATCH_READ_MAX_IDS = 100
 FORMATTABLE_LIMIT = 1_200
 
 # Per-CE-realistic-format legal filter operator sets for
-# custom_field_filters, verified against OpenProject CE source
-# (op-sources/full-17.6): app/models/queries/filters/shared/custom_field_filter.rb
+# custom_field_filters, verified against OpenProject CE source:
+# app/models/queries/filters/shared/custom_field_filter.rb
 # (format -> subfilter_class dispatch), custom_fields/base.rb (type dispatch +
 # strategies override table), custom_fields/{list_optional,user,bool}.rb, and
 # strategies/{string,text,date,cf_integer,cf_float,cf_list_optional,
@@ -258,9 +258,8 @@ def _strip_unrequested_target_versions(payload: dict[str, Any]) -> dict[str, Any
     response adds even when the request never set it, so committing the
     form's own payload back verbatim -- this client's normal write pattern
     -- doesn't collide with the `version` field the caller actually asked to
-    change. Upstream bug, tracking status/version scope in
-    openproject-ce-mcp-int's upstream-openproject-bugs.md (entry 11) --
-    remove this once that entry marks the upstream form-echo fixed.
+    change. This works around an upstream form-echo bug and can be removed
+    once supported OpenProject versions return only the requested link.
 
     Call only when the caller's own request set `_links.version` -- a
     create/update that never touches version passes its payload through
@@ -281,10 +280,9 @@ def _restore_requested_target_versions(
     docstring for the shared root cause) with the caller's own actually-
     requested value, so committing the form's own payload back verbatim --
     this client's normal write pattern -- doesn't silently discard a
-    target_versions=[...] write the caller explicitly asked for. Upstream
-    bug, same as entry 11 in openproject-ce-mcp-int's
-    upstream-openproject-bugs.md, opposite direction -- remove this once
-    that entry marks the upstream form-echo fixed.
+    target_versions=[...] write the caller explicitly asked for. This is the
+    opposite direction of the same upstream form-echo bug and can be removed
+    once supported OpenProject versions preserve the requested links.
 
     Call only when the caller's own request set `target_versions` (not
     `None`) -- a create/update that never touches target_versions passes

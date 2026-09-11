@@ -518,14 +518,13 @@ def test_empty_attachment_root_is_accepted_at_config_time() -> None:
 
 
 def test_legacy_env_var_names_have_no_effect_on_settings() -> None:
-    # OPM-136: the warn-only deprecation window (OPM-128) is over -- legacy
-    # names are now unrecognized env vars like any other, silently ignored by
+    # Removed names are unrecognized env vars like any other, silently ignored by
     # Settings.from_env with no warning and no special-cased adoption.
     env = {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "token-value",
-        "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM",
-        "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "OPM",
+        "OPENPROJECT_ALLOWED_PROJECTS_READ": "DEMO",
+        "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "DEMO",
         "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
         "OPENPROJECT_PERSONAL_WRITE": "true",
         "OPENPROJECT_TOOLS": "projects,work-packages",

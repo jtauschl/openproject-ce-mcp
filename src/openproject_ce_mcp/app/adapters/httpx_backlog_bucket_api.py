@@ -30,7 +30,7 @@ def _defining_workspace_link(payload: dict[str, Any]) -> Any:
     fallback). Verbatim port of httpx_sprint_api.py's helper of the same
     name -- `BacklogBucketRepresenter` uses the identical
     `associated_project as: :definingWorkspace` mechanism Sprints' representer
-    uses (verified against op-sources/17.7).
+    uses in OpenProject's source.
     """
     links = payload.get("_links", {})
     link = links.get("definingWorkspace")
@@ -49,7 +49,7 @@ def normalize_backlog_bucket(payload: dict[str, Any]) -> BacklogBucketSummary:
 
     Excludes hidden-field masking -- that is a Service decision applied
     after this returns (mirrors Sprints' adapter). No `status`/`startDate`/
-    `finishDate` fields -- `BacklogBucketRepresenter` (op-sources/17.7) only
+    `finishDate` fields -- OpenProject's `BacklogBucketRepresenter` only
     renders `id`, `name`, `definingWorkspace`, `createdAt`, `updatedAt`.
     """
     workspace_link = _defining_workspace_link(payload)

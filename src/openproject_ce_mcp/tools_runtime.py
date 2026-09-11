@@ -85,10 +85,18 @@ def register_selected_tools(mcp: MCPServer, *, names: Iterable[str], hide_active
     """
 
     def tool(fn):
-        if not (_returns_trimmable(fn) or (hide_active and _returns_dataclass(fn))):
-            return mcp.tool()(_categorize_tool_errors(fn))
-
         wrapped = _categorize_tool_errors(fn)
+        # Python 3.13 dedents function docstrings at compile time; older
+        # supported interpreters preserve indentation after blank lines.
+        # Normalize at the public registration boundary so one source exposes
+        # one MCP description on every supported interpreter.
+        description = wrapped.__doc__ or ""
+        trailing_newline = "\n" if description.rstrip(" \t").endswith("\n") else ""
+        wrapped.__doc__ = inspect.cleandoc(description) + trailing_newline
+
+        if not (_returns_trimmable(fn) or (hide_active and _returns_dataclass(fn))):
+            return mcp.tool()(wrapped)
+
         # Whether this tool's own signature accepts `select` -- NOT whether its
         # return model happens to carry a `results`/`items` field. Some list
         # tools (e.g. list_statuses) return a `results`-bearing model but have

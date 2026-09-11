@@ -1,7 +1,7 @@
 """Costs Domain API port (cost_entries + cost_types -- entirely read-only).
 
-Costs module has NO create/update/delete anywhere in its API (verified against
-op-sources/17.7/modules/costs/lib/api/v3/{cost_entries,cost_types}/ -- see
+Costs module has NO create/update/delete anywhere in its API (see OpenProject's
+`modules/costs/lib/api/v3/{cost_entries,cost_types}/` and
 app/adapters/httpx_cost_api.py's module docstring for the full route/
 representer citation). This Port therefore exposes only GETs, unlike
 `TimeEntryApi`'s Protocol.

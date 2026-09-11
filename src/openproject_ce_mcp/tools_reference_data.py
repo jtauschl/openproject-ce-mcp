@@ -1,13 +1,9 @@
 """Reference-data tool handlers: list_statuses, get_status, list_priorities,
 get_priority, list_types, get_type.
 
-OPM-395's ticket originally labelled this boundary "principals_capabilities",
-but list_principals and list_capabilities were already migrated in a prior
-session -- list_principals to tools_admin.py, list_capabilities to
-tools_memberships.py (see those modules' own docstrings). The six functions
-left behind are a different real domain: read-only lookups for work-package
-statuses, priorities, and types. This module is named for what it actually
-contains rather than the stale ticket label.
+The six functions form one domain of read-only lookups for work-package
+statuses, priorities, and types. Principal and capability tools belong to
+their respective admin and membership modules.
 
 All three sub-resources are entirely read-only in OpenProject's API
 (Community Edition) -- there is no create/update/delete endpoint for

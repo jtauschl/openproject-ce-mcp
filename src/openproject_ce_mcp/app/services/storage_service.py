@@ -105,7 +105,7 @@ _PROVIDER_TYPE_URN = {
 }
 
 # authenticationMethod is a `link_without_resource` on StorageRepresenter
-# (op-sources/full-17.6/.../storage_representer.rb), not a plain top-level
+# (`modules/storages/app/representers/.../storage_representer.rb`), not a plain top-level
 # JSON property -- its setter reads ONLY `_links.authenticationMethod.href`
 # (a full URN) via `AUTHENTICATION_METHOD_MAP.fetch(href)`, breaking on
 # (silently ignoring) any other shape, including a bare top-level string.

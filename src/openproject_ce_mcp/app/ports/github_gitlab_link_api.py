@@ -1,8 +1,8 @@
 """GitHub/GitLab work-package linkage Domain API port
 (github_pull_requests + gitlab_issues + gitlab_merge_requests -- entirely read-only).
 
-Verified directly against op-sources/17.7/modules/{github_integration,gitlab_integration}/
-lib/api/v3/ -- no EnterpriseToken/enterprise gating anywhere in either module's
+Verified against OpenProject's `modules/{github_integration,gitlab_integration}/
+lib/api/v3/` -- no EnterpriseToken/enterprise gating anywhere in either module's
 api/v3 tree (this is a Community Edition-compatible domain).
 
 github_pull_requests has TWO read shapes:

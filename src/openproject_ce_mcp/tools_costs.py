@@ -4,9 +4,8 @@ get_work_package_costs_by_type, get_cost_type.
 A small, entirely read-only domain -- cost entries and cost types have no
 create/update/delete endpoint in OpenProject's API (Community Edition), and
 cost types have no collection GET either (no list_cost_types tool exists
-because the endpoint does not exist upstream). Not one of the ticket's
-original 15 suggested domain boundaries (OPM-395) -- costs is a newer
-OpenProject Costs-module surface with its own service/port/adapter
+because the endpoint does not exist upstream). Costs is an OpenProject
+Costs-module surface with its own service, port, and adapter
 (app/services/cost_service.py, app/ports/cost_api.py), and forms a clean
 standalone domain distinct from Time Entries despite sharing the
 "work_package" read scope, matching tools_categories.py's precedent of a

@@ -2,8 +2,9 @@
 
 Sprints has no create/update/delete endpoint in the OpenProject v3 API
 (list x2 + single-item GET only) -- sprint assignment happens via
-work-package writes, not here. Confirmed by source (op-sources/full-17.6/
-modules/backlogs/lib/api/v3/sprints/{sprints_api,sprints_by_project_api}.rb):
+work-package writes, not here. OpenProject's
+`modules/backlogs/lib/api/v3/sprints/{sprints_api,sprints_by_project_api}.rb`
+files
 both route files mount only Index/Show endpoints, no Create/Update/Delete
 anywhere in the module. get_sprint is exercised against a pre-existing
 sprint sourced via list_sprints -- if the test project/instance has none (or

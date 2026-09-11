@@ -129,7 +129,7 @@ Some filters extend their base strategy with custom operators via
 | o | Open | Open status/version | status_id o |
 | c | Closed | Closed version | version_id c |
 | l | Locked | Locked version | version_id l |
-| ** | Everywhere | Search everywhere | subject_or_id ** "OPM-123" |
+| ** | Everywhere | Search everywhere | subject_or_id ** "PROJ-123" |
 | >= | Greater or equal | Numeric/date lower bound | cf_5 >= 3.14 |
 | <= | Less or equal | Numeric/date upper bound | cf_5 <= 100 |
 | &= | Contains all | List/user/version CF has ALL given values | cf_8 &= [1, 2] |
@@ -139,11 +139,8 @@ no built-in filter in the table at the top of this document uses them.
 
 ## Custom-Field Filters
 
-Added in OPM-109, as a distinct follow-up to OPM-94 (custom-field read-value
-exposure) — see OPM-90's design audit for why filtering and value exposure are
-kept separate.
-
-Verified against OpenProject CE source code (`op-sources/full-17.6`):
+Filtering and read-value exposure are separate concerns. The implementation
+was verified against these locations in the OpenProject CE source:
 `app/models/queries/filters/shared/custom_field_filter.rb` (dispatch),
 `app/models/queries/filters/shared/custom_fields/{base,list_optional,user,bool}.rb`
 (per-format strategy selection), and
@@ -169,9 +166,8 @@ the **JSON/PATCH key** used for reading/writing a field's value (the
 `custom_fields` dict on `list_work_packages`/`get_work_package` results, and the
 `custom_fields` write-path parameter on
 `create_work_package`/`update_work_package`). These are two different strings
-identifying the same field — using `customField<N>` as a filter key would
-silently fail or be misinterpreted, which is exactly why OPM-109 exists as a
-distinct piece of work from OPM-94.
+identifying the same field. Using `customField<N>` as a filter key would
+silently fail or be misinterpreted without the client's normalization.
 
 ### Custom-Field Format → Filter Strategy Table
 
@@ -234,41 +230,36 @@ path, list/search calls have no single project+type context guaranteeing one
 probe suffices. An operator that is syntactically valid but illegal for a
 specific field's format is rejected by OpenProject itself with a clean `400
 InvalidQuery` response, mapped by this MCP to a `ValueError`/`InvalidInputError`
-carrying OpenProject's own message — not a raw/opaque failure, satisfying
-OPM-109's "fail clearly" requirement without the added round trip. This is a
-deliberate scope decision for this ticket; a future ticket could add real
-client-side format-aware validation via the query-filter-schema endpoint above.
+carrying OpenProject's own message, rather than a raw or opaque failure. A
+future implementation could add client-side format-aware validation via the
+query-filter-schema endpoint above.
 
 ### Hidden custom fields
 
 A custom field matched by `OPENPROJECT_HIDE_CUSTOM_FIELDS` cannot be used in
 `custom_field_filters` — the call is rejected with a clear error before any
 network request, not silently dropped from the filter list (unlike the read-side
-value-masking behavior, which silently omits rather than rejects — a
-deliberately different UX for filtering, per the ticket's explicit requirement).
+value-masking behavior, which silently omits rather than rejects).
 Both canonical spellings of the field's key (`cf_<N>` and `customField<N>`) are
 checked against configured hide patterns, since a pattern might have been
 written using either form.
 
 ### Friendly names not supported
 
-Only raw `cf_<N>`/`customField<N>` keys are accepted — friendly-name resolution
+Only raw `cf_<N>`/`customField<N>` keys are accepted. Friendly-name resolution
 (as supported on the write path's `custom_fields` parameter, resolved against a
-project+type schema probe) is deliberately out of scope for this ticket.
+project+type schema probe) is not supported here.
 `list_work_packages`/`search_work_packages` have no reliable single project+type
 context to resolve a name against safely: `project` is optional, two projects
 can define same-named-but-different custom fields, and a friendly name might not
 even be enabled on every project in scope. Learn a field's `cf_<N>` id from any
-prior `get_work_package`/`list_work_packages` call's `custom_fields` dict keys
-(they are `customField<N>`-keyed per OPM-94 — strip the `customField` prefix and
-use `cf_<N>`).
+prior `get_work_package`/`list_work_packages` call's `custom_fields` dict keys.
+They use `customField<N>`; strip the `customField` prefix and use `cf_<N>`.
 
 ### Custom-field sort/group
 
 Custom fields are also sortable/groupable via their `cf_<N>` key on
-`sort_by`/`group_by` — this predates OPM-109 (landed in commit `740a250`,
-2026-07-20, live-verified against a real OpenProject instance) and required no
-change for this ticket. See `_CUSTOM_FIELD_PATTERN` in `tools_validation.py` and
+`sort_by`/`group_by`. See `_CUSTOM_FIELD_PATTERN` in `tools_validation.py` and
 the `sort_by`/`group_by` parameter docs on `list_work_packages`. Note this
 pass-through is intentionally permissive at the MCP layer (any `cf_\d+`-shaped
 string is accepted locally): OpenProject itself builds the real sort/group SQL
@@ -314,15 +305,13 @@ Date filter parameters are mutually exclusive per field:
 
 ## Source Verification
 
-All filter keys and operators verified against OpenProject CE 17.6 source code:
+Filter keys and operators are cross-checked against OpenProject CE source code:
 
 - **Filter definitions:** `app/models/queries/work_packages/filter/*.rb`
 - **Strategy definitions:** `app/models/queries/filters/strategies/*.rb`
-- **Last verified:** 2026-07-17 (unchanged between 17.5 and 17.6, confirmed
-  byte-identical against OpenProject's own source)
 - **Test coverage:** payload-shape contract tests in `tests/unit/`
 
-Custom-field filtering (OPM-109) additionally verified against:
+Custom-field filtering is additionally cross-checked against:
 
 - **Filter dispatch:**
   `app/models/queries/filters/shared/custom_field_filter.rb`,
@@ -334,17 +323,15 @@ Custom-field filtering (OPM-109) additionally verified against:
   `config/initializers/custom_field_format.rb`
 - **Global-scope constraint:**
   `app/models/queries/work_packages/filter/custom_field_context.rb`
-- **17.7 `calculated_value` divergence:**
-  `op-sources/17.7/app/models/queries/filters/shared/custom_fields/base.rb` and
-  `strategies/cf_calculated_value.rb`
-- **Last verified:** 2026-08-13 against `op-sources/full-17.6` and
-  `op-sources/17.7`
+- **`calculated_value` divergence:**
+  `app/models/queries/filters/shared/custom_fields/base.rb` and
+  `app/models/queries/filters/strategies/cf_calculated_value.rb`
 - **Test coverage:** `tests/unit/test_tool_validation.py` (key/shape
   validation), `tests/unit/test_app_work_package_service.py` (per-format
   filter-shape + hide-field rejection), `tests/unit/test_work_package_tools.py`
   and `tests/unit/test_work_package_reads.py` (tool → client → httpx
-  wire-payload forwarding), `tests/integration/test_work_packages.py` (live
-  round trip against the OPM-94 seeded custom field)
+  wire-payload forwarding), `tests/integration/test_work_packages.py`
+  (round trip against the seeded custom field)
 
 ## See Also
 

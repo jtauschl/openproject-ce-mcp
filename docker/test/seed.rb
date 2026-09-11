@@ -316,7 +316,7 @@ else
   log("project TST already has a forum")
 end
 
-# get_work_package/list_work_packages custom_fields (OPM-94) need at least
+# get_work_package/list_work_packages custom_fields need at least
 # one real, activated CE-compatible custom field on the TST project's work
 # packages -- a fresh instance has none. Create one simple "string"-format
 # field (is_for_all: true so it applies without a per-type
@@ -332,15 +332,14 @@ end
 # (only app/models/project.rb does: `comments: true, admin_only_allowed:
 # true`). So customComment<N> is Project-only, structurally impossible on a
 # WorkPackage on this codebase, regardless of OpenProject version -- not
-# merely gated to 17.2+ as OPM-94's original plan assumed from
+# merely gated to 17.2+ as might be inferred from
 # CustomFieldInjector#inject_comment_value alone (that method is generic
 # over any customizable resource; it never fires for WorkPackage because
 # has_comment? is always false there). custom_comments/
 # custom_comments_truncated on WorkPackageSummary/WorkPackageDetail are kept
 # regardless (harmless, forward-compatible if a future OpenProject version
 # ever changes this), but will always be None in practice for this
-# resource -- see this project's own docs/field-hiding.md and the OPM-94
-# implementation report for this finding.
+# resource. See this project's own docs/field-hiding.md.
 custom_field = WorkPackageCustomField.find_by(name: "Seed Text Field") || WorkPackageCustomField.create!(
   name: "Seed Text Field",
   field_format: "string",
@@ -395,7 +394,7 @@ else
   log("project TST already has a project phase (or Project::Phase model unavailable)")
 end
 
-# --- target_versions fixtures (17.7+, OPM-468) ---------------------------------
+# --- target_versions fixtures (17.7+) ------------------------------------------
 # Both fixtures below write via a direct ActiveRecord model save, which runs
 # Rails model-level validations/callbacks (including the
 # persist_version_associations after_save hook) but does NOT run
@@ -547,8 +546,7 @@ else
   log("semantic mode not requested (classic identifiers)")
 end
 
-# --- Nextcloud storage fixture (opt-in, for OPM-179 storages/project_storages
-# read-tool tests) -------------------------------------------------------------
+# --- Nextcloud storage fixture (opt-in, for storage read-tool tests) -----------
 # Creates a Storages::NextcloudStorage + Storages::ProjectStorage row directly,
 # bypassing the live host-reachability/app-installed contract validation
 # (NextcloudCompatibleHostValidator probes the host for the Nextcloud-side
@@ -557,7 +555,7 @@ end
 # storage -- no OAuth handshake happens, storage_files browsing does not work
 # against it. It exists only so GET /api/v3/storages and
 # GET /api/v3/project_storages have a real row to return, for the read-only
-# OPM-179 MCP tools' integration tests. See docker/test/README.md.
+# MCP integration tests. See docker/test/README.md.
 if ENV["SEED_NEXTCLOUD_STORAGE"] == "1"
   if defined?(Storages::NextcloudStorage)
     storage = Storages::NextcloudStorage.find_by(name: "Seed Nextcloud Storage")
@@ -593,7 +591,7 @@ else
   log("nextcloud storage seed not requested (SEED_NEXTCLOUD_STORAGE unset)")
 end
 
-# --- File link fixtures (opt-in, for OPM-360 delete_file_link coverage) --------
+# --- File link fixtures (opt-in, for delete_file_link coverage) ----------------
 # Requires the Nextcloud storage fixture above (SEED_NEXTCLOUD_STORAGE=1) to
 # already have created a Storages::Storage + Storages::ProjectStorage on this
 # project -- a FileLink's create contract requires the work package's project

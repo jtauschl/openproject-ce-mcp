@@ -10,13 +10,13 @@ The version-specific API behavior that actually matters to this client:
 
 | minor range | why it matters |
 |-------------|-----------------|
-| 16.0–16.5   | classic baseline (no displayId, no semantic); emoji reactions and project phase definitions don't exist as routes at all until 16.1 (reminders exist since 16.0); documents PATCH doesn't exist until 16.6; the `entity` HAL link key (time/cost entries) doesn't exist until 16.6, only `workPackage` does (OPM-466) |
+| 16.0–16.5   | classic baseline (no displayId, no semantic); emoji reactions and project phase definitions don't exist as routes at all until 16.1 (reminders exist since 16.0); documents PATCH doesn't exist until 16.6; the `entity` HAL link key (time/cost entries) doesn't exist until 16.6, only `workPackage` does |
 | 16.6        | classic baseline with documents PATCH and the `entity` link key now present |
 | 17.0–17.3   | workspaces (17.0); storages' `forbiddenFileNameCharacters` field (17.1); sprints/meetings/user-schedule domains (17.3) |
 | 17.4        | displayId field introduced, semantic identifiers still off |
 | 17.5–17.8   | project-based semantic identifiers active + workspaces (favorites); 17.7 makes user working-times generally available (no longer feature-flag-gated) |
 
-`targetVersions` (multi-value successor to `version`, OPM-468) and
+`targetVersions` (multi-value successor to `version`) and
 `Setting::WorkPackageMultipleVersions` (which gates whether more than one
 `target_versions` entry can be written; reading is never gated) already exist
 in 17.7, not first in 17.8 — verified directly against the pinned 17.7
@@ -32,8 +32,8 @@ reached the requested state after writing it (not just that the write call
 succeeded) and skips the multi-version fixture with a clear warning if not,
 rather than seeding data the server would reject.
 
-Verified live (2026-09-07) against the actual `openproject/openproject:17.8.0`
-image: `Setting::WorkPackageMultipleVersions` ships with `default: true`
+The `openproject/openproject:17.8.0` image ships
+`Setting::WorkPackageMultipleVersions` with `default: true`
 (`config/constants/settings/definition.rb`) there, not off by default as
 might be assumed. `seed.rb` always forces it to a known state (`false` unless
 `SEED_MULTI_VERSIONS=1`, `true` when it is) rather than trusting the image's
@@ -79,7 +79,7 @@ before the next starts.
 
 ## Nextcloud storage fixture (seeded on every instance)
 
-For the `storages`/`project_storages` MCP tools (OPM-179), every `up.sh`
+For the `storages`/`project_storages` MCP tools, every `up.sh`
 invocation — single-version and every "all" batch — also brings up a
 `nextcloud` service (plain `nextcloud:30-apache` image, SQLite backend,
 non-interactive install via `NEXTCLOUD_ADMIN_USER`/`NEXTCLOUD_ADMIN_PASSWORD`
@@ -103,8 +103,8 @@ does not depend on the Nextcloud container actually finishing its own setup.
 `GET /api/v3/storages/{id}`, `GET /api/v3/project_storages`,
 `GET /api/v3/project_storages/{id}` all return a real row.
 
-**What this fixture deliberately does NOT support** (out of scope for
-OPM-179's read-only tools): a live, OAuth-authenticated "connected" storage —
+**What this fixture deliberately does NOT support**: a live,
+OAuth-authenticated "connected" storage —
 no browser-driven OAuth handshake happens, so `configured?` stays false and
 `storage_files` browsing does not work against it. If deeper write/browsing
 testing is ever wanted, that needs a real interactive OAuth round-trip
@@ -112,7 +112,7 @@ testing is ever wanted, that needs a real interactive OAuth round-trip
 via its admin UI or `occ`, then completing the OAuth exchange through a
 browser) — treated as a known, explicitly out-of-scope gap, not a bug.
 
-**Any `PATCH` to this storage always 422s (OPM-429)**: the seeded `host:
+**Any `PATCH` to this storage always 422s**: the seeded `host:
 "http://nextcloud/"` is plain HTTP on a non-localhost hostname, which
 OpenProject's core `SecureContextUriValidator` always rejects — and PATCH
 re-validates the whole model, not just the fields the request touched, so
@@ -121,16 +121,16 @@ version regression or a client bug; see `CLAUDE.md`'s "Known API quirks" for
 the full explanation. Write tests against this storage should assert the
 expected `InvalidInputError`, not a successful update.
 
-**File link fixtures (OPM-360)**: with the `Storages::ProjectStorage` row
-above in place, `up.sh 177nc` also seeds two `Storages::FileLink` rows
+**File link fixtures**: with the `Storages::ProjectStorage` row above in
+place, `up.sh` also seeds two `Storages::FileLink` rows
 (`save(validate: false)`, same bypass as the storage rows — no live
 Nextcloud file actually exists at either fabricated `origin_id`):
 `seed-file-link-persistent.txt` (read/deny-only,
 `tests/integration/test_write_denials.py` targets this one and never deletes
 it) and `seed-file-link-deletable.txt` (consumed by
 `tests/integration/test_storages.py::test_delete_file_link_deletes_seeded_link`,
-which actually calls `delete_file_link` and destroys it — a repeat `up.sh
-177nc` reseeds it via `find_or_create`, since deleting it is the whole point
+which actually calls `delete_file_link` and destroys it — a repeat `up.sh`
+reseeds it via `find_or_create`, since deleting it is the whole point
 of that test). This is what gives `delete_file_link`'s successful-delete
 path deterministic live coverage; previously it only ran when a file link
 happened to already exist, which the default seed never provides.

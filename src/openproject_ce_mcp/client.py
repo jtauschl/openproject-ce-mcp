@@ -767,7 +767,7 @@ class OpenProjectClient:
         # _project_id_to_identifier is consulted for BOTH read and write link-based
         # allowlist matching (see _project_candidates), so population must not skip
         # just because read_projects is wide-open — a wide-open read scope combined
-        # with a restricted write_projects (e.g. READ="*", WRITE="OPM") still needs
+        # with a restricted write_projects (e.g. READ="*", WRITE="DEMO") still needs
         # this cache, or write-side identifier matching on an embedded project link
         # silently fails to recognize a valid identifier candidate.
         read_scope = self.settings.read_projects
@@ -847,13 +847,13 @@ class OpenProjectClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    # ── Service namespace properties (OPM-394) ─────────────────────────────────
+    # ── Service namespace properties ───────────────────────────────────────────
     #
     # Read-only views onto the same Service instances constructed in __init__ --
     # a named alias, not a second implementation. All call sites have migrated
     # to the namespaced form (e.g. `client.project.list(...)`); the flat
     # delegation methods this comment used to describe (e.g. a former
-    # `client.list_projects(...)`) have been deleted (OPM-394) except for a
+    # `client.list_projects(...)`) have been deleted except for a
     # small number of remaining flat methods still called directly (see their
     # own docstrings/callers) or composed into a handful of multi-Service
     # convenience methods below (e.g. `get_my_project_access`,

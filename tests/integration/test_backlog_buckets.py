@@ -2,8 +2,8 @@
 
 Backlog Buckets has no create/update/delete endpoint in the OpenProject v3
 API (list x2 + single-item GET only, global-only for the single-item route)
--- confirmed by source (op-sources/17.7/modules/backlogs/lib/api/v3/
-backlog_buckets/{backlog_buckets_api,backlog_buckets_by_project_api}.rb):
+-- see OpenProject's `modules/backlogs/lib/api/v3/backlog_buckets/
+{backlog_buckets_api,backlog_buckets_by_project_api}.rb`:
 both route files mount only Index (and Show, global-only) endpoints, no
 Create/Update/Delete anywhere in the directory.
 
@@ -17,8 +17,8 @@ there is no API to seed a backlog bucket.
 NOTE on `update_work_package`: unlike Sprints (whose `sprint` field on
 `update_work_package` landed separately, after the read-only
 Sprints domain landed first), OpenProject 17.6 *does* expose
-`backlogBucket` as a writable work-package HAL link (confirmed against
-op-sources/full-17.6's `work_package_representer.rb`/
+`backlogBucket` as a writable work-package HAL link (see OpenProject's
+`work_package_representer.rb`/
 `work_package_schema_representer.rb`, plus an XOR-with-`sprint_id` DB
 constraint) -- but wiring a `backlog_bucket` field onto `update_work_package`
 is out of scope for this read-only pass, mirroring the
