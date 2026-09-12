@@ -1,6 +1,9 @@
-# GitHub only reads this file from the default branch (main) — this copy
-# is not read by Dependabot. See main's .github/dependabot.yml for the
-# actual config, which targets this branch via target-branch.
+# GitHub only reads this file from the default branch (main) -- a copy on
+# any other branch is never read by Dependabot. Each update block below
+# without target-branch opens PRs against main itself; the release/0.4.1
+# and release/0.5.0 blocks additionally target those active branches so
+# their own dependency pins (which can drift from main's, e.g. after a
+# 0.5.0-only bump) get their own Dependabot PRs too.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -10,6 +13,38 @@ updates:
 
   - package-ecosystem: pip
     directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: release/0.4.1
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: /
+    target-branch: release/0.4.1
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: release/0.5.0
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: /
+    target-branch: release/0.5.0
     schedule:
       interval: weekly
     groups:
