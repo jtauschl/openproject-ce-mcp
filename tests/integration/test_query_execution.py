@@ -3,7 +3,9 @@
 Uses a Board's underlying Query resource as the target -- Boards ARE
 OpenProject Query resources (`_type: "Query"`), so a board's id doubles as a
 valid query_id with a real, server-resolvable filter set (its default,
-unfiltered board query matches every work package in the project).
+unfiltered board query matches every work package in the project, sorted
+server-side -- oldest first, observed live -- unless a sort order is set
+explicitly).
 """
 
 from __future__ import annotations
@@ -30,16 +32,27 @@ async def test_execute_query_returns_resolved_work_packages(
     assert wp_result.ready, wp_result.validation_errors
     wp_ids.append(wp_result.work_package_id)
 
+    # Sort newest-first: the shared test project accumulates work packages
+    # across every integration-test run over time, and the server's own
+    # default (unset) sort order returns oldest first -- a small page would
+    # otherwise never include a work package just created here once the
+    # project has grown past that page size (found live once the shared
+    # project passed 60 work packages; an id-based filter was tried first
+    # but the server rejects an "id" filter on a saved Query's own form,
+    # even though the same filter works on the plain work-package list).
+    # Sorting newest-first makes a small page reliable regardless of how
+    # large the shared project grows.
     board_result = await client.board.create(
         name=f"[integration-test] query {uuid.uuid4().hex[:8]}",
         project=test_project,
         public=False,
+        sort_by=["id:desc"],
         confirm=True,
     )
     assert board_result.ready, board_result.validation_errors
     board_ids.append(board_result.board_id)
 
-    result = await client.query_execution.execute(board_result.board_id)
+    result = await client.query_execution.execute(board_result.board_id, limit=5)
     assert any(wp.id == wp_result.work_package_id for wp in result.results)
 
 
