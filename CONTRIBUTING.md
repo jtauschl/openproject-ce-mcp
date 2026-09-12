@@ -7,19 +7,16 @@
 ## Where to send a pull request
 
 `main` is not the active development branch — it stays frozen at the last
-finalized release. Active work happens on three parallel release branches:
-the current `release/0.3.x` maintenance branch (the original flat-`client.py`
-architecture; check the repo's branch list for the exact version, it drifts),
-the current `release/0.4.x` bugfix branch (the layered `app/` architecture,
-fixes for the released version; check the repo's branch list for the exact
-version), and `release/0.5.0` (the layered `app/` architecture, new
-development for the next release). Clone and base your PR on whichever of
-these matches the code you're touching, not `main` — a checkout of `main`
-(or a PR against it) leaves you on a frozen snapshot and needing manual
-re-application onto the correct release branch. A fix landing on the
-current `release/0.4.x` branch is forward-merged into `release/0.5.0`
-(never cherry-picked, unless explicitly justified) so the next release
-always carries every prior bugfix.
+finalized release. Active work happens on two parallel release branches:
+the current `release/0.4.x` bugfix branch (fixes for the released version;
+check the repo's branch list for the exact version) and `release/0.5.0`
+(new development for the next release). Clone and base your PR on
+whichever of these matches the code you're touching, not `main` — a
+checkout of `main` (or a PR against it) leaves you on a frozen snapshot
+and needing manual re-application onto the correct release branch. A fix
+landing on the current `release/0.4.x` branch is forward-merged into
+`release/0.5.0` (never cherry-picked, unless explicitly justified) so the
+next release always carries every prior bugfix.
 
 ## Set up
 
