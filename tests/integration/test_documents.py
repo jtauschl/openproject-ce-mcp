@@ -64,8 +64,12 @@ async def test_get_and_update_document(client: OpenProjectClient, test_project: 
     # See module docstring: this MCP server sends a well-formed request
     # (title-only, no description) here specifically to avoid triggering
     # the known upstream description-corruption bug -- this still proves
-    # update_document's title path works end to end.
-    new_title = f"{document.title} (updated)"
+    # update_document's title path works end to end. A fixed title, not
+    # document.title with a suffix appended: the seed project is never reset
+    # between runs, so an appended suffix grows without bound across repeated
+    # runs against the same instance and eventually exceeds OpenProject's
+    # 60-character title limit.
+    new_title = "Integration test document title"
     try:
         update_result = await client.document.update(
             document_id=document_id,
