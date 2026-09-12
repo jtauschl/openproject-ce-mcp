@@ -6,7 +6,13 @@ on:
       - "v*"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # A distinct, prefixed group name -- not the shared `${{ github.workflow
+  # }}-${{ github.ref }}` default -- because the called test.yml's own
+  # concurrency group resolves `github.workflow` to *this* (caller)
+  # workflow's name inside a reusable-workflow call, colliding with this
+  # group and self-cancelling the test job before it starts (GitHub docs:
+  # reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow).
+  group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
