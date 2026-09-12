@@ -7,7 +7,9 @@ development baseline.
 
 ---
 
-## [0.4.0] - Unreleased
+## [Unreleased]
+
+## [0.4.0] - 2026-09-12
 
 Complete the layered `app/` architecture migration so the codebase can scale
 beyond a monolithic client while expanding and hardening the Community Edition
