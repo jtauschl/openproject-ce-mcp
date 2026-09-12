@@ -1,25 +1,11 @@
 # GitHub only reads this file from the default branch (main) -- a copy on
-# any other branch is never read by Dependabot. Each update block below
-# without target-branch opens PRs against main itself; the release/0.4.1
-# and release/0.5.0 blocks additionally target those active branches so
-# their own dependency pins (which can drift from main's, e.g. after a
-# 0.5.0-only bump) get their own Dependabot PRs too.
+# any other branch is never read by Dependabot. main itself is a frozen
+# release snapshot (see README.md/CONTRIBUTING.md), never a PR target, so
+# every block below has an explicit target-branch pointing at an actual
+# active release branch -- an unscoped block would open unmergeable PRs
+# against main.
 version: 2
 updates:
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-
-  - package-ecosystem: pip
-    directory: /
-    schedule:
-      interval: weekly
-    groups:
-      python-dependencies:
-        patterns:
-          - "*"
-
   - package-ecosystem: github-actions
     directory: /
     target-branch: release/0.4.1

@@ -2,16 +2,14 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/0.4.1, release/0.5.0]
   pull_request:
   workflow_call:
   workflow_dispatch:
   # GitHub only fires `schedule` from a workflow file that exists on the
-  # repo's default branch (main), regardless of which branch it's checked
-  # out on here (see secret-scan.yml, which hits the same constraint) —
-  # until this file is promoted to main, this trigger is inert. A manual
-  # `workflow_dispatch` run against this branch already works today, since
-  # that lets you pick the ref to run against.
+  # repo's default branch (main) — this file is on main, so this trigger
+  # is live. A manual `workflow_dispatch` run against any branch also
+  # works, since that lets you pick the ref to run against.
   schedule:
     - cron: "17 5 * * 1" # weekly, Monday ~05:17 UTC (off the hour, less likely to be delayed/dropped)
 
