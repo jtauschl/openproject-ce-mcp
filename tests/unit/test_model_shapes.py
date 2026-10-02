@@ -31,6 +31,7 @@ from openproject_ce_mcp.presentation import _to_payload
 EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
     "ActionListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "ActivityListResult": ["count", "results"],
+    "BudgetListResult": ["count", "results"],
     "AttachmentListResult": [
         "offset",
         "limit",
@@ -111,6 +112,8 @@ EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
         "total_sums",
         "exact_match",
     ],
+    "RelationCandidateListResult": ["count", "results"],
+    "RevisionListResult": ["count", "results"],
     "WorkingDayListResult": ["count", "results"],
 }
 
@@ -219,6 +222,18 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "message",
         "attachment_id",
         "work_package_id",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "ContainerAttachmentWriteResult": [
+        "action",
+        "state",
+        "ready",
+        "message",
+        "attachment_id",
+        "container_type",
+        "container_id",
         "payload",
         "validation_errors",
         "result",

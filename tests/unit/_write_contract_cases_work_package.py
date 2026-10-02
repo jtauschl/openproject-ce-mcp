@@ -257,6 +257,23 @@ def _add_work_package_comment_handler(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
 
+def _set_query_starred_handler(request: httpx.Request) -> httpx.Response:
+    if request.method == "GET" and request.url.path == "/api/v3/queries/31":
+        return httpx.Response(
+            200,
+            json={
+                "id": 31,
+                "name": "Open bugs",
+                "starred": False,
+                "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+            },
+            request=request,
+        )
+    if request.method == "PATCH" and request.url.path == "/api/v3/queries/31/star":
+        return httpx.Response(200, json={"id": 31, "name": "Open bugs", "starred": True}, request=request)
+    raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+
 def _toggle_activity_emoji_reaction_handler(request: httpx.Request) -> httpx.Response:
     if request.method == "GET" and request.url.path == "/api/v3/activities/1988":
         return httpx.Response(
@@ -728,6 +745,14 @@ WORK_PACKAGE_CASES: dict[str, WriteToolCase] = {
         write_scope="work_package",
         handler=_add_work_package_comment_handler,
         write_request=("POST", "/api/v3/work_packages/42/activities"),
+    ),
+    "set_query_starred": WriteToolCase(
+        tool="set_query_starred",
+        kwargs={"query_id": 31, "starred": True},
+        settings=_SETTINGS,
+        write_scope="work_package",
+        handler=_set_query_starred_handler,
+        write_request=("PATCH", "/api/v3/queries/31/star"),
     ),
     "toggle_activity_emoji_reaction": WriteToolCase(
         tool="toggle_activity_emoji_reaction",

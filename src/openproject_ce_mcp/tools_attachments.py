@@ -1,5 +1,6 @@
 """Attachments/file-links domain MCP tool handlers: list_work_package_attachments,
 get_attachment, create_work_package_attachment, delete_attachment,
+list_container_attachments, create_container_attachment,
 list_work_package_file_links, delete_file_link.
 
 Attachments and Nextcloud file links share a domain because both are file
@@ -14,6 +15,11 @@ six names: `create_work_package_attachment`, `delete_attachment`,
 (`tests/unit/test_project_and_domain_tools.py`) imports all six directly
 from `openproject_ce_mcp.tools`, matching `tools_relations.py`'s and
 `tools_projects.py`'s precedent of re-exporting the full moved set.
+
+`list_container_attachments`/`create_container_attachment` cover the other
+containers OpenProject attaches files to (wiki pages, forum posts, meetings,
+comments). They are registered with the work-package attachment tools; each
+call then checks the container's own scope flag and project allowlist.
 
 `create_work_package_attachment`'s registration gate (`ATTACHMENT_UPLOAD_TOOLS`,
 requiring work-package write scope, a configured `OPENPROJECT_ATTACHMENT_ROOT`,
@@ -34,6 +40,7 @@ from .models import (
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
+    ContainerAttachmentWriteResult,
     FileLinkListResult,
     FileLinkSummary,
     FileLinkWriteResult,
@@ -41,6 +48,7 @@ from .models import (
 from .presentation import ContentBundle
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
+    _validate_choice,
     _validate_limit,
     _validate_offset,
     _validate_optional_text,
@@ -49,6 +57,9 @@ from .tools_validation import (
     _validate_select,
     _validate_work_package_ref,
 )
+
+#: container_type values of list_container_attachments/create_container_attachment.
+ATTACHMENT_CONTAINER_TYPES = {"wiki_page", "post", "meeting", "activity"}
 
 
 def _content_blocks(outcome: AttachmentContentOutcome) -> tuple[ImageContent | TextContent, ...]:
@@ -249,3 +260,73 @@ async def delete_file_link(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(file_link_id, field_name="file_link_id")
     return await _run_tool(client.file_link.delete(safe_id, confirm=confirm))
+
+
+@register_tool
+async def list_container_attachments(
+    ctx: Context,
+    container_type: str,
+    container_id: int,
+    offset: int = 1,
+    limit: int | None = None,
+    select: list[str] | None = None,
+) -> AttachmentListResult:
+    """List attachments on a wiki page, forum post, meeting or comment.
+
+    container_type: wiki_page, post, meeting, or activity (a work package
+    comment, by its activity id from get_work_package_activities).
+    container_id: that container's numeric id. For work packages themselves
+    use list_work_package_attachments. The container's project must be inside
+    OPENPROJECT_READ_PROJECTS (a comment's is its work package's).
+    get_attachment/get_attachment_content/delete_attachment stay limited to
+    work package attachments; download_url opens any of these in a browser.
+
+    select fields: id, title, file_name, description (see server instructions
+    for select's general semantics).
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
+    client = _client_from_context(ctx)
+    safe_type = _validate_choice(container_type, field_name="container_type", allowed_values=ATTACHMENT_CONTAINER_TYPES)
+    safe_id = _validate_positive_int(container_id, field_name="container_id")
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=AttachmentSummary)
+    return await _run_tool(
+        client.attachment.list_for_container(safe_type, safe_id, offset=safe_offset, limit=safe_limit)
+    )
+
+
+@register_tool
+async def create_container_attachment(
+    ctx: Context,
+    container_type: str,
+    container_id: int,
+    file_path: str,
+    description: str | None = None,
+    confirm: bool = False,
+) -> ContainerAttachmentWriteResult:
+    """Prepare or upload an attachment to a wiki page, forum post, meeting or comment.
+
+    container_type/container_id: as for list_container_attachments. For work
+    packages themselves use create_work_package_attachment. The file must be
+    inside OPENPROJECT_ATTACHMENT_ROOT, and the container's project inside
+    OPENPROJECT_WRITE_PROJECTS; the write flag checked is the container's own
+    (project for wiki pages and posts, meeting for meetings, work package for
+    comments).
+    """
+    client = _client_from_context(ctx)
+    safe_type = _validate_choice(container_type, field_name="container_type", allowed_values=ATTACHMENT_CONTAINER_TYPES)
+    safe_id = _validate_positive_int(container_id, field_name="container_id")
+    safe_file_path = _validate_required_text(file_path, field_name="file_path", max_length=4096)
+    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
+    return await _run_tool(
+        client.attachment.create_for_container(
+            container_type=safe_type,
+            container_id=safe_id,
+            file_path=safe_file_path,
+            description=safe_description,
+            confirm=confirm,
+        )
+    )

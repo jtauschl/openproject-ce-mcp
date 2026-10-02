@@ -27,7 +27,11 @@ work-package hrefs concurrently via `WorkPackageProjectAllowedBulkCheck`
 call per record -- the skip-counting/`limit + 1`-lookahead consumption logic
 itself is unchanged, it just reads pre-resolved `bool | Exception` outcomes.
 
-`mark_read()`/`mark_all_read()` each stay a single flat method (not the
+`get()` applies the same three-way allowlist branch to its one record (via
+`_resolve_page_allowed`), denying rather than returning a notification about
+a project the caller cannot read.
+
+`mark_read()`/`mark_all_read()` (and their `unread` twins) each stay a single flat method (not the
 shared `_write_outcome.py` state machine): neither goes through a
 `<domain>/form` endpoint, and OpenProject's response carries no body to
 report back as `result` -- `_finalize_write` assumes a form-produced
@@ -52,6 +56,7 @@ from __future__ import annotations
 
 from ...config import Settings
 from ...models import NotificationListResult, NotificationMarkResult, NotificationSummary
+from ..errors import ProjectScopeDeniedError
 from ..pagination import effective_limit
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
@@ -237,6 +242,22 @@ class NotificationService:
     def _stamp(self, summary: NotificationSummary) -> NotificationSummary:
         return hidden_fields.apply_hidden_fields("notification", summary, settings=self._settings)
 
+    async def get(self, notification_id: int) -> NotificationSummary:
+        access.ensure_read_enabled("personal", settings=self._settings)
+        record = await self._api.get(notification_id)
+        if scope_policy.classify_project_link(record.project_link) is scope_policy.LinkState.MALFORMED:
+            raise ProjectScopeDeniedError(
+                "OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS."
+            )
+        (outcome,) = await self._resolve_page_allowed([record], cache=WorkPackageAllowedContext())
+        if isinstance(outcome, Exception):
+            raise outcome
+        if not outcome:
+            raise ProjectScopeDeniedError(
+                "OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS."
+            )
+        return self._stamp(record.summary())
+
     async def mark_read(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
         access.ensure_write_enabled("personal", settings=self._settings)
         if not confirm:
@@ -282,5 +303,50 @@ class NotificationService:
             state="confirmed",
             ready=True,
             message="All unread notifications marked read.",
+            notification_id=None,
+        )
+
+    async def mark_unread(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
+        access.ensure_write_enabled("personal", settings=self._settings)
+        if not confirm:
+            # Client-side preview only, as for mark_read.
+            return NotificationMarkResult(
+                action="mark_unread",
+                state="preview",
+                ready=True,
+                message=(
+                    f"Ask for confirmation, then call again with confirm=true to mark "
+                    f"notification {notification_id} unread."
+                ),
+                notification_id=notification_id,
+            )
+        await self._api.mark_unread(notification_id)
+        return NotificationMarkResult(
+            action="mark_unread",
+            state="confirmed",
+            ready=True,
+            message=f"Notification {notification_id} marked unread.",
+            notification_id=notification_id,
+        )
+
+    async def mark_all_unread(self, *, confirm: bool = False) -> NotificationMarkResult:
+        access.ensure_write_enabled("personal", settings=self._settings)
+        if not confirm:
+            return NotificationMarkResult(
+                action="mark_all_unread",
+                state="preview",
+                ready=True,
+                message=(
+                    "Marks all read notifications unread. Ask for confirmation, "
+                    "then call again with confirm=true to apply it."
+                ),
+                notification_id=None,
+            )
+        await self._api.mark_all_unread()
+        return NotificationMarkResult(
+            action="mark_all_unread",
+            state="confirmed",
+            ready=True,
+            message="All read notifications marked unread.",
             notification_id=None,
         )

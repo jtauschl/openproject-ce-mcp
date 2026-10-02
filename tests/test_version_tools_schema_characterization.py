@@ -113,6 +113,31 @@ def test_get_version_schema() -> None:
     assert list(tool.parameters["properties"]) == ["version_id", "text_limit"]
 
 
+def test_list_version_projects_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["list_version_projects"]
+    assert (
+        tool.description
+        == "List the projects a version is shared with (where it can be assigned).\n\nIncludes the defining project. Projects outside OPENPROJECT_READ_PROJECTS\nare left out.\n\nselect fields: id, name, identifier (see server instructions for\nselect's general semantics).\n"
+    )
+    assert tool.output_schema is None
+    assert tool.parameters == {
+        "properties": {
+            "version_id": {"title": "Version Id", "type": "integer"},
+            "select": {
+                "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                "default": None,
+                "title": "Select",
+            },
+        },
+        "required": ["version_id"],
+        "title": "list_version_projectsArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == ["version_id", "select"]
+
+
 def test_create_version_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_version"]
     assert tool.description == (

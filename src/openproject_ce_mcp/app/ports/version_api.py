@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from ...models import VersionDetail, VersionSummary
+from ...models import ProjectSummary, VersionDetail, VersionSummary
 from ..form_result import FormResult
 
 # Deliberately duplicated from httpx_version_api.py's constant of the same
@@ -78,6 +78,12 @@ class VersionApi(Protocol):
         self, *, offset: int, page_size: int, text_limit: int | None = FORMATTABLE_LIMIT
     ) -> VersionPage: ...
     async def get(self, version_id: int, *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionRecord: ...
+    async def list_projects(self, version_id: int) -> list[tuple[ProjectSummary, dict[str, Any]]]:
+        """GET `versions/{version_id}/projects`: every project the version is
+        shared with, each beside its raw payload for the Service's read-allowlist
+        filter."""
+        ...
+
     async def create_form(self, payload: dict[str, Any]) -> VersionFormResult: ...
     async def update_form(self, version_id: int, payload: dict[str, Any]) -> VersionFormResult: ...
     async def commit_create(self, payload: dict[str, Any]) -> VersionDetail: ...

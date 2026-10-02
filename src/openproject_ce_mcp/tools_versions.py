@@ -1,10 +1,10 @@
-"""Versions domain MCP tool handlers: list_versions, get_version, create_version,
-update_version, delete_version.
+"""Versions domain MCP tool handlers: list_versions, get_version,
+list_version_projects, create_version, update_version, delete_version.
 
 Their `@register_tool` decorators come from `tools_runtime`, never from
 `tools.py` -- see that module's own docstring for why. `tools.py` imports
 this module for the decorator's registration side effect and, for now,
-re-exports these five names so existing test imports keep working unchanged
+re-exports these names so existing test imports keep working unchanged
 (a deliberate, temporary transition step, not the long-term shape).
 """
 
@@ -14,7 +14,14 @@ from typing import Any
 
 from mcp.server.mcpserver import Context
 
-from .models import VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
+from .models import (
+    ProjectCollectionResult,
+    ProjectSummary,
+    VersionDetail,
+    VersionListResult,
+    VersionSummary,
+    VersionWriteResult,
+)
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _require_at_least_one,
@@ -103,6 +110,26 @@ def _validate_version_schedule_fields(
             allowed_values={"none", "descendants", "hierarchy", "tree"},
         ),
     }
+
+
+@register_tool
+async def list_version_projects(
+    ctx: Context,
+    version_id: int,
+    select: list[str] | None = None,
+) -> ProjectCollectionResult:
+    """List the projects a version is shared with (where it can be assigned).
+
+    Includes the defining project. Projects outside OPENPROJECT_READ_PROJECTS
+    are left out.
+
+    select fields: id, name, identifier (see server instructions for
+    select's general semantics).
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(version_id, field_name="version_id")
+    _validate_select(select, row_type=ProjectSummary)
+    return await _run_tool(client.version.list_projects(safe_id))
 
 
 @register_tool

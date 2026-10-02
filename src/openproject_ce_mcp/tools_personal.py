@@ -1,12 +1,13 @@
-"""Personal domain MCP tool handlers: list_notifications,
-mark_notifications_read, get_my_preferences, update_my_preferences.
+"""Personal domain MCP tool handlers: list_notifications, get_notification,
+mark_notifications_read, mark_notifications_unread, get_my_preferences,
+update_my_preferences.
 
 Their `@register_tool` decorators come from `tools_runtime`, never from
 `tools.py` -- see that module's own docstring for why. `tools.py` imports
 this module for the decorator's registration side effect and re-exports all
-four names: `list_notifications` and `mark_notifications_read` because
+six names: `list_notifications` and `mark_notifications_read` because
 existing tests (`tests/unit/test_project_and_domain_tools.py`) import them
-directly from `openproject_ce_mcp.tools`; the other two are re-exported
+directly from `openproject_ce_mcp.tools`; the others are re-exported
 alongside for consistency.
 """
 
@@ -68,6 +69,36 @@ async def mark_notifications_read(
         return await _run_tool(client.notification.mark_all_read(confirm=confirm))
     safe_id = _validate_positive_int(notification_id, field_name="notification_id")
     return await _run_tool(client.notification.mark_read(safe_id, confirm=confirm))
+
+
+@register_tool
+async def get_notification(ctx: Context, notification_id: int) -> NotificationSummary:
+    """Return one in-app notification of the current user by id.
+
+    Same fields as a list_notifications row. A notification about a work
+    package or project outside OPENPROJECT_READ_PROJECTS is refused.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(notification_id, field_name="notification_id")
+    return await _run_tool(client.notification.get(safe_id))
+
+
+@register_tool
+async def mark_notifications_unread(
+    ctx: Context, notification_id: int | None = None, confirm: bool = False
+) -> NotificationMarkResult:
+    """Mark a single notification, or all read notifications, as unread.
+
+    The reverse of mark_notifications_read. notification_id: mark just this
+    notification unread. Omit it (default) to mark every read notification
+    unread instead.
+    Set confirm=true to write, or call without confirm=true first for a preview.
+    """
+    client = _client_from_context(ctx)
+    if notification_id is None:
+        return await _run_tool(client.notification.mark_all_unread(confirm=confirm))
+    safe_id = _validate_positive_int(notification_id, field_name="notification_id")
+    return await _run_tool(client.notification.mark_unread(safe_id, confirm=confirm))
 
 
 @register_tool

@@ -169,13 +169,30 @@ def test_normalize_attachment_title_falls_back_to_placeholder_when_file_name_mis
     assert summary.title == "Attachment 5"
 
 
-def test_normalize_attachment_container_type_falls_back_to_slug_for_non_work_package_container() -> None:
-    payload = _attachment_payload(container_href="/api/v3/wiki_pages/3")
+@pytest.mark.parametrize(
+    ("href", "expected"),
+    [
+        ("/api/v3/wiki_pages/3", "WikiPage"),
+        ("/api/v3/posts/3", "Post"),
+        ("/api/v3/meetings/3", "Meeting"),
+        ("/api/v3/activities/3", "Activity"),
+    ],
+)
+def test_normalize_attachment_names_the_other_known_container_types(href: str, expected: str) -> None:
+    summary = normalize_attachment(_attachment_payload(container_href=href), base_url=BASE_URL, origin=BASE_URL)
+
+    assert summary.container_type == expected
+    assert summary.container_id == 3
+
+
+def test_normalize_attachment_container_type_falls_back_to_slug_for_an_unknown_container() -> None:
+    payload = _attachment_payload(container_href="/api/v3/documents/3")
 
     summary = normalize_attachment(payload, base_url=BASE_URL, origin=BASE_URL)
 
     # slug_from_href returns the href's last path segment (the slug/id), not
-    # a resource-type name -- verbatim of client.py's original fallback.
+    # a resource-type name -- verbatim of client.py's original fallback, kept
+    # for containers this client does not know.
     assert summary.container_type == "3"
     assert summary.container_id == 3
 

@@ -6,7 +6,7 @@ from `app/adapters/_text.py`, used by `normalize_notification` for
 `trim_text` (subject/reason truncation), `link_title` (project/reason link
 titles), and `id_from_href` (project/work-package ids from their links).
 
-`mark_read`/`mark_all_read` use `Transport.request_raw`, not `post_json`:
+`mark_read`/`mark_all_read` (and their `unread` twins) use `Transport.request_raw`, not `post_json`:
 both endpoints return 204/200/201 with no JSON body to parse.
 `HttpxTransport._request` already raises via `raise_for_status` on any
 status >= 400 before `request_raw` returns, so a successful return already
@@ -92,6 +92,9 @@ class HttpxNotificationApi:
         exhausted = offset * limit >= total
         return NotificationPage(records=records, total=total, exhausted=exhausted)
 
+    async def get(self, notification_id: int) -> NotificationRecord:
+        return self._record(await self._transport.get_json(f"notifications/{notification_id}"))
+
     async def mark_read(self, notification_id: int) -> None:
         # An empty dict, not None -- a bodyless POST here sends no Content-Type
         # header at all (httpx only sets one when `json` is non-None), and
@@ -102,3 +105,10 @@ class HttpxNotificationApi:
 
     async def mark_all_read(self) -> None:
         await self._transport.request_raw("POST", "notifications/read_ian", json_body={})
+
+    async def mark_unread(self, notification_id: int) -> None:
+        # json_body={} for the same missing-Content-Type reason as mark_read.
+        await self._transport.request_raw("POST", f"notifications/{notification_id}/unread_ian", json_body={})
+
+    async def mark_all_unread(self) -> None:
+        await self._transport.request_raw("POST", "notifications/unread_ian", json_body={})

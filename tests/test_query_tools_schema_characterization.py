@@ -81,3 +81,38 @@ def test_execute_query_schema() -> None:
     }
     # Dict equality above doesn't check key order -- assert it separately.
     assert list(tool.parameters["properties"]) == ["query_id", "offset", "limit"]
+
+
+def test_set_query_starred_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["set_query_starred"]
+    assert (
+        tool.description
+        == "Prepare or star/unstar a saved OpenProject query.\n\nstarred=true stars it (OpenProject lists starred queries first, as\nfavorites); starred=false removes the star. query_id: as for\nexecute_query. A query in a project outside OPENPROJECT_WRITE_PROJECTS is\nrefused, in preview too. Set confirm=true to write, or call without\nconfirm=true first for a preview.\n"
+    )
+    assert tool.output_schema == {
+        "properties": {
+            "action": {"title": "Action", "type": "string"},
+            "state": {"enum": ["rejected", "invalid", "preview", "confirmed"], "title": "State", "type": "string"},
+            "ready": {"title": "Ready", "type": "boolean"},
+            "message": {"title": "Message", "type": "string"},
+            "query_id": {"title": "Query Id", "type": "integer"},
+            "query_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Query Name"},
+            "starred": {"title": "Starred", "type": "boolean"},
+        },
+        "required": ["action", "state", "ready", "message", "query_id", "query_name", "starred"],
+        "title": "QueryStarResult",
+        "type": "object",
+    }
+    assert tool.parameters == {
+        "properties": {
+            "query_id": {"title": "Query Id", "type": "integer"},
+            "starred": {"title": "Starred", "type": "boolean"},
+            "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+        },
+        "required": ["query_id", "starred"],
+        "title": "set_query_starredArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == ["query_id", "starred", "confirm"]

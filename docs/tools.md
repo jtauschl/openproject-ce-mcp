@@ -218,6 +218,8 @@ user exists.
 | --- | --- |
 | `list_notifications` | List the current user's unread notifications |
 | `mark_notifications_read` | Mark a single notification as read (pass `notification_id`), or every unread notification as read (omit it) |
+| `get_notification` | Fetch one notification by id; refused when it concerns a project outside `OPENPROJECT_READ_PROJECTS` |
+| `mark_notifications_unread` | Mark a single notification as unread (pass `notification_id`), or every read notification as unread (omit it) |
 
 ## Actions & capabilities
 
@@ -252,6 +254,7 @@ user exists.
 | `list_views` | List saved OpenProject views, optionally filtered by project, view subtype, or name search |
 | `get_view` | Fetch a single OpenProject view by id |
 | `execute_query` | Execute a saved OpenProject query by id and return its resolved work packages, filtered against `OPENPROJECT_READ_PROJECTS` |
+| `set_query_starred` | Validate and then star (`starred=true`) or unstar a saved query; only writes when called again with `confirm=true` |
 
 ## Documents
 
@@ -353,6 +356,12 @@ has
 | `list_my_open_work_packages` | List the current user's open assigned work packages |
 | `list_work_package_watchers` | List watchers on a work package |
 | `set_work_package_watcher` | Add or remove a user as a watcher on a work package, based on `watching` |
+| `list_work_package_available_watchers` | List the users OpenProject accepts as a new watcher of a work package |
+| `list_available_assignees` | List the users and groups OpenProject accepts as assignee, for a work package or (before it exists) for a project |
+| `list_work_package_available_projects` | List the projects a work package can be moved to, filtered against `OPENPROJECT_READ_PROJECTS` |
+| `list_work_package_relation_candidates` | List work packages that can be the other end of a new relation, optionally by text and relation type |
+| `list_work_package_revisions` | List the repository revisions (commits) linked to a work package |
+| `get_revision` | Fetch one repository revision by id |
 | `list_work_package_file_links` | List Nextcloud file links attached to a work package (Community Edition) |
 | `delete_file_link` | Validate and then delete a Nextcloud file link; only deletes when called again with `confirm=true` |
 
@@ -415,12 +424,21 @@ saving over N individual `update_work_package` calls is real but modest.
 | `get_attachment_content` | Read an attachment's content: images come back as images the model can see, text-like files as text, anything else as metadata explaining why it wasn't inlined |
 | `create_work_package_attachment` | Validate and then upload an attachment to a work package; only writes when called again with `confirm=true` |
 | `delete_attachment` | Validate and then delete an attachment; only deletes when called again with `confirm=true` |
+| `list_container_attachments` | List attachments on a wiki page, forum post, meeting or comment (`container_type` + `container_id`) |
+| `create_container_attachment` | Validate and then upload an attachment to a wiki page, forum post, meeting or comment; only writes when called again with `confirm=true` |
 
 `OPENPROJECT_ATTACHMENT_ROOT` must be set to an absolute directory for local
-uploads to work at all — `create_work_package_attachment` isn't even registered
-otherwise, no working-directory fallback. Once set, files outside it — and
+uploads to work at all — `create_work_package_attachment` and
+`create_container_attachment` aren't even registered otherwise, no
+working-directory fallback. Once set, files outside it — and
 credential/config files such as `.mcp.json`, `.env`, or private keys even inside
 it — are refused, so a tool call cannot exfiltrate local secrets.
+
+`list_container_attachments`/`create_container_attachment` check the
+container's own scope flag (project for wiki pages and posts, meeting for
+meetings, work package for comments) and its project against the allowlists.
+`get_attachment`, `get_attachment_content` and `delete_attachment` still accept
+work package attachments only.
 
 ### Reading attachment content
 
@@ -460,6 +478,7 @@ needs credentials the MCP client does not carry.
 | --- | --- |
 | `list_versions` | List versions globally or scoped to a specific project, with an optional name filter |
 | `get_version` | Fetch a compact version summary by id |
+| `list_version_projects` | List the projects a version is shared with, filtered against `OPENPROJECT_READ_PROJECTS` |
 | `create_version` | Validate and then create a version; only writes when called again with `confirm=true` |
 | `update_version` | Validate and then update a version; only writes when called again with `confirm=true` |
 | `delete_version` | Validate and then delete a version; only deletes when called again with `confirm=true` |
@@ -557,6 +576,7 @@ later still). Meeting Outcomes require 17.6+ throughout.
 | `list_work_package_cost_entries` | List all cost entries recorded against a work package |
 | `get_work_package_costs_by_type` | Get a work package's costs aggregated by cost type |
 | `get_cost_type` | Fetch a cost type by id |
+| `list_project_budgets` | List a project's budgets (id and subject) |
 
 > **Note:** the Costs module is entirely read-only in OpenProject's API —
 > there is no create/update/delete endpoint for cost entries or cost types,

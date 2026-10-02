@@ -23,6 +23,8 @@ extra round-trip to every call.
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..ports.query_execution_api import QueryResultPage
 from ..transport.protocol import Transport
 
@@ -39,3 +41,12 @@ class HttpxQueryExecutionApi:
         results = payload.get("_embedded", {}).get("results", {})
         elements = [item for item in results.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
         return QueryResultPage(raw_elements=elements)
+
+    async def get_raw(self, query_id: int) -> dict[str, Any]:
+        return await self._transport.get_json(f"queries/{query_id}", params={"pageSize": "1"})
+
+    async def set_starred(self, query_id: int, starred: bool) -> dict[str, Any]:
+        # json_body={}, not None: a bodyless PATCH sends no Content-Type and
+        # OpenProject answers 406 (see HttpxNotificationApi.mark_read).
+        action = "star" if starred else "unstar"
+        return await self._transport.patch_json(f"queries/{query_id}/{action}", json_body={})

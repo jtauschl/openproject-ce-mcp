@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...models import VersionDetail, VersionSummary
+from ...models import ProjectSummary, VersionDetail, VersionSummary
 from ..ports.version_api import VersionFormResult, VersionPage, VersionRecord, summary_to_detail
 from ..transport.protocol import Transport
 from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
@@ -23,6 +23,7 @@ from ._text import has_usable_id as _has_usable_id
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_validation_errors
 from ._text import trim_text as _trim_text
+from .httpx_project_api import normalize_project
 
 
 def normalize_version(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionSummary:
@@ -96,6 +97,11 @@ class HttpxVersionApi:
 
     async def get(self, version_id: int, *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionRecord:
         return self._record(await self._transport.get_json(f"versions/{version_id}"), text_limit=text_limit)
+
+    async def list_projects(self, version_id: int) -> list[tuple[ProjectSummary, dict[str, Any]]]:
+        payload = await self._transport.get_json(f"versions/{version_id}/projects")
+        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        return [(normalize_project(item), item) for item in elements]
 
     async def create_form(self, payload: dict[str, Any]) -> VersionFormResult:
         return self._form_result(await self._transport.post_json("versions/form", json_body=payload))

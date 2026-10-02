@@ -46,6 +46,16 @@ def _extract_formattable_text(value: Any) -> str | None:
     return value.get("raw") or value.get("html")
 
 
+#: HAL type names of the other containers OpenProject attaches files to,
+#: keyed by their collection's path segment.
+_CONTAINER_TYPE_BY_SEGMENT = {
+    "wiki_pages": "WikiPage",
+    "posts": "Post",
+    "meetings": "Meeting",
+    "activities": "Activity",
+}
+
+
 def normalize_attachment(payload: dict[str, Any], *, base_url: str, origin: str) -> AttachmentSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
@@ -57,8 +67,11 @@ def normalize_attachment(payload: dict[str, Any], *, base_url: str, origin: str)
     container_href = container_link.get("href") if isinstance(container_link, dict) else None
     container_type = None
     if isinstance(container_href, str):
+        segments = container_href.rstrip("/").split("/")
         if "work_packages/" in container_href:
             container_type = "WorkPackage"
+        elif len(segments) >= 2 and segments[-2] in _CONTAINER_TYPE_BY_SEGMENT:
+            container_type = _CONTAINER_TYPE_BY_SEGMENT[segments[-2]]
         else:
             container_type = _slug_from_href(container_href)
     download_href = None
@@ -114,6 +127,21 @@ class HttpxAttachmentApi:
         total = int(payload.get("total", len(records)))
         return records, total
 
+    async def list_for_container(
+        self, container_path: str, *, offset: int, page_size: int
+    ) -> tuple[list[AttachmentRecord], int]:
+        # Same page shape and `total` fallback as list_for_work_package.
+        payload = await self._transport.get_json(
+            f"{container_path}/attachments",
+            params={"offset": str(offset), "pageSize": str(page_size)},
+        )
+        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        records = [self._record(item) for item in elements]
+        return records, int(payload.get("total", len(records)))
+
+    async def get_container(self, container_path: str) -> dict[str, Any]:
+        return await self._transport.get_json(container_path)
+
     async def get(self, attachment_id: int) -> AttachmentRecord:
         return self._record(await self._transport.get_json(f"attachments/{attachment_id}"))
 
@@ -139,8 +167,25 @@ class HttpxAttachmentApi:
         file_bytes: bytes,
         content_type: str,
     ) -> AttachmentRecord:
+        return await self.create_for_container(
+            f"work_packages/{work_package_id}",
+            metadata=metadata,
+            file_name=file_name,
+            file_bytes=file_bytes,
+            content_type=content_type,
+        )
+
+    async def create_for_container(
+        self,
+        container_path: str,
+        *,
+        metadata: dict[str, Any],
+        file_name: str,
+        file_bytes: bytes,
+        content_type: str,
+    ) -> AttachmentRecord:
         response = await self._transport.post_multipart(
-            f"work_packages/{work_package_id}/attachments",
+            f"{container_path}/attachments",
             metadata=metadata,
             file_name=file_name,
             file_bytes=file_bytes,

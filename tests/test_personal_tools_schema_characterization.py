@@ -117,6 +117,84 @@ def test_mark_notifications_read_schema() -> None:
     assert list(tool.parameters["properties"]) == ["notification_id", "confirm"]
 
 
+def test_mark_notifications_unread_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["mark_notifications_unread"]
+    assert (
+        tool.description
+        == "Mark a single notification, or all read notifications, as unread.\n\nThe reverse of mark_notifications_read. notification_id: mark just this\nnotification unread. Omit it (default) to mark every read notification\nunread instead.\nSet confirm=true to write, or call without confirm=true first for a preview.\n"
+    )
+    assert tool.output_schema == {
+        "properties": {
+            "action": {"title": "Action", "type": "string"},
+            "state": {"enum": ["rejected", "invalid", "preview", "confirmed"], "title": "State", "type": "string"},
+            "ready": {"title": "Ready", "type": "boolean"},
+            "message": {"title": "Message", "type": "string"},
+            "notification_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Notification Id"},
+        },
+        "required": ["action", "state", "ready", "message", "notification_id"],
+        "title": "NotificationMarkResult",
+        "type": "object",
+    }
+    assert tool.parameters == {
+        "properties": {
+            "notification_id": {
+                "anyOf": [{"type": "integer"}, {"type": "null"}],
+                "default": None,
+                "title": "Notification Id",
+            },
+            "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+        },
+        "title": "mark_notifications_unreadArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == ["notification_id", "confirm"]
+
+
+def test_get_notification_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["get_notification"]
+    assert (
+        tool.description
+        == "Return one in-app notification of the current user by id.\n\nSame fields as a list_notifications row. A notification about a work\npackage or project outside OPENPROJECT_READ_PROJECTS is refused.\n"
+    )
+    assert tool.output_schema == {
+        "properties": {
+            "id": {"title": "Id", "type": "integer"},
+            "subject": {"title": "Subject", "type": "string"},
+            "reason": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Reason"},
+            "read": {"title": "Read", "type": "boolean"},
+            "project_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Project Id"},
+            "project_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Project Name"},
+            "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Work Package Id"},
+            "work_package_subject": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Work Package Subject"},
+            "created_at": {"title": "Created At", "type": "string"},
+        },
+        "required": [
+            "id",
+            "subject",
+            "reason",
+            "read",
+            "project_id",
+            "project_name",
+            "work_package_id",
+            "work_package_subject",
+            "created_at",
+        ],
+        "title": "NotificationSummary",
+        "type": "object",
+    }
+    assert tool.parameters == {
+        "properties": {"notification_id": {"title": "Notification Id", "type": "integer"}},
+        "required": ["notification_id"],
+        "title": "get_notificationArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == ["notification_id"]
+
+
 def test_get_my_preferences_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_my_preferences"]
     assert tool.description == (

@@ -12,10 +12,10 @@ from dataclasses import replace
 from typing import Any
 
 from ...config import Settings
-from ...models import VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
+from ...models import ProjectCollectionResult, VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
 from ..api_href import api_href as _api_href
 from ..pagination import clamp_limit
-from ..policies import access, hidden_fields
+from ..policies import access, hidden_fields, project_policy
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
@@ -118,6 +118,34 @@ class VersionService:
             project_id_to_identifier=self._project_id_to_identifier,
         )
         return self._stamp(record.to_detail())
+
+    def _project_readable(self, payload: dict[str, Any]) -> bool:
+        def ensure() -> None:
+            project_policy.ensure_project_read_allowed(
+                payload, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+            )
+
+        return scope_policy.payload_allowed(ensure)
+
+    async def list_projects(self, version_id: int) -> ProjectCollectionResult:
+        """Projects the version is shared with. The version itself must be
+        readable (by its defining project, as in `get`); each listed project
+        is then filtered against OPENPROJECT_READ_PROJECTS on its own, since a
+        shared version reaches projects outside the defining one."""
+        access.ensure_read_enabled("version", settings=self._settings)
+        record = await self._api.get(version_id)
+        scope_policy.ensure_project_link_allowed(
+            record.defining_project_link,
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+        pairs = await self._api.list_projects(version_id)
+        results = [
+            hidden_fields.apply_hidden_fields("project", summary, settings=self._settings)
+            for summary, raw in pairs
+            if self._project_readable(raw)
+        ]
+        return ProjectCollectionResult(count=len(results), results=results)
 
     async def create(
         self,

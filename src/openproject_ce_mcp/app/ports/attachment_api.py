@@ -84,11 +84,33 @@ class AttachmentApi(Protocol):
     async def list_for_work_package(
         self, work_package_id: int, *, offset: int, page_size: int
     ) -> tuple[list[AttachmentRecord], int]: ...
+    async def list_for_container(
+        self, container_path: str, *, offset: int, page_size: int
+    ) -> tuple[list[AttachmentRecord], int]:
+        """GET `{container_path}/attachments` for a container other than a
+        work package (`wiki_pages/12`, `meetings/3`, ...), one page at a time
+        like `list_for_work_package`."""
+        ...
+
+    async def get_container(self, container_path: str) -> dict[str, Any]:
+        """Raw GET of the container itself -- the Service reads its project
+        (or, for a comment, its work package) link to authorize it."""
+        ...
+
     async def get(self, attachment_id: int) -> AttachmentRecord: ...
     async def get_content(self, attachment_id: int, *, max_bytes: int) -> AttachmentContent: ...
     async def create(
         self,
         work_package_id: int,
+        *,
+        metadata: dict[str, Any],
+        file_name: str,
+        file_bytes: bytes,
+        content_type: str,
+    ) -> AttachmentRecord: ...
+    async def create_for_container(
+        self,
+        container_path: str,
         *,
         metadata: dict[str, Any],
         file_name: str,

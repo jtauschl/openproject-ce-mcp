@@ -1,4 +1,4 @@
-"""Query Execution domain MCP tool handler: execute_query.
+"""Query Execution domain MCP tool handlers: execute_query, set_query_starred.
 
 Deliberately a separate file from `tools_query_schema.py`, despite the
 similar module name -- the two hold unrelated concerns. `tools_query_schema.py`
@@ -22,11 +22,11 @@ they share no domain-specific validator or return model, so folding
 schema/metadata tool it is not; a separate one-function file keeps the
 domain boundary honest.
 
-Its `@register_tool` decorator comes from `tools_runtime`, never from
+Their `@register_tool` decorators come from `tools_runtime`, never from
 `tools.py` -- see that module's own docstring for why. `tools.py` imports
 this module for the decorator's registration side effect only, matching the
-`tools_misc`/`tools_user_schedule` precedent: it does not re-export
-`execute_query`, because no existing test imports it directly from
+`tools_misc`/`tools_user_schedule` precedent: it re-exports neither
+tool, because no existing test imports them directly from
 `openproject_ce_mcp.tools` (integration tests call `OpenProjectClient.execute_query`
 instead).
 """
@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from mcp.server.mcpserver import Context
 
-from .models import WorkPackageListResult
+from .models import QueryStarResult, WorkPackageListResult
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import _validate_limit, _validate_offset, _validate_positive_int
 
@@ -68,3 +68,23 @@ async def execute_query(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     return await _run_tool(client.query_execution.execute(safe_query_id, offset=safe_offset, limit=safe_limit))
+
+
+@register_tool
+async def set_query_starred(
+    ctx: Context,
+    query_id: int,
+    starred: bool,
+    confirm: bool = False,
+) -> QueryStarResult:
+    """Prepare or star/unstar a saved OpenProject query.
+
+    starred=true stars it (OpenProject lists starred queries first, as
+    favorites); starred=false removes the star. query_id: as for
+    execute_query. A query in a project outside OPENPROJECT_WRITE_PROJECTS is
+    refused, in preview too. Set confirm=true to write, or call without
+    confirm=true first for a preview.
+    """
+    client = _client_from_context(ctx)
+    safe_query_id = _validate_positive_int(query_id, field_name="query_id")
+    return await _run_tool(client.query_execution.set_starred(safe_query_id, starred=starred, confirm=confirm))

@@ -11,6 +11,18 @@ development baseline.
 
 ### Added
 
+- Thirteen tools for Community Edition API endpoints the server did not use
+  yet: `get_notification` and `mark_notifications_unread`; the work-package
+  pickers `list_available_assignees` (per work package or per project),
+  `list_work_package_available_watchers`, `list_work_package_available_projects`
+  and `list_work_package_relation_candidates`; `list_work_package_revisions`
+  and `get_revision`; `list_project_budgets`; `list_version_projects`;
+  `set_query_starred`; and `list_container_attachments` /
+  `create_container_attachment` for attachments on wiki pages, forum posts,
+  meetings and comments. Everything that carries a project is filtered or
+  checked against `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`,
+  and every write is confirm-gated. New hideable entities:
+  `OPENPROJECT_HIDE_REVISION_FIELDS`, `OPENPROJECT_HIDE_BUDGET_FIELDS`.
 - CI now installs the built wheel via both `pipx` and `uv tool install` in
   an isolated environment outside the repository, checks `--version`,
   `configure --help`, `doctor --help`, and a bounded MCP stdio startup, and
@@ -106,6 +118,9 @@ development baseline.
 
 ### Fixed
 
+- An attachment on a wiki page, post, meeting or comment reported its
+  container id as `container_type` (e.g. `"3"`); it now reports `WikiPage`,
+  `Post`, `Meeting` or `Activity`.
 - The `http_requests`/`project_scope`/`policy_decision` structured-log
   fields could silently come back wrong (typically 0/null) for any tool
   call whose execution fanned out through concurrent work internally (batch

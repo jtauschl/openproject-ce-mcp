@@ -54,6 +54,7 @@ scope).
 from __future__ import annotations
 
 import mimetypes
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,7 @@ from ...models import (
     AttachmentListWithImages,
     AttachmentSummary,
     AttachmentWriteResult,
+    ContainerAttachmentWriteResult,
 )
 from ..errors import CapabilityDisabledError, InvalidInputError, OpenProjectServerError
 from ..pagination import clamp_limit, scan_records_and_paginate
@@ -90,6 +92,17 @@ _ATTACHMENT_DENY_NAMES = frozenset(
     }
 )
 _ATTACHMENT_DENY_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+
+#: Containers other than work packages whose attachments can be listed and
+#: uploaded: tool-facing name -> (API collection segment, the read/write scope
+#: that governs the container). A comment is its own container ("activity"),
+#: reached through its work package's project.
+ATTACHMENT_CONTAINERS: dict[str, tuple[str, str]] = {
+    "wiki_page": ("wiki_pages", "project"),
+    "post": ("posts", "project"),
+    "meeting": ("meetings", "meeting"),
+    "activity": ("activities", "work_package"),
+}
 
 # The only image types inlined as an ImageContent block. Deliberately an
 # explicit allowlist, not `image/*`: SVG is a scripted document rather than a
@@ -263,6 +276,79 @@ class AttachmentService:
         if len(known_sizes) != len(sizes):
             return None
         return sum(known_sizes)
+
+    async def list_for_container(
+        self, container_type: str, container_id: int, *, offset: int = 1, limit: int | None = None
+    ) -> AttachmentListResult:
+        container_path, _scope = await self._authorize_container(container_type, container_id, write=False)
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
+        )
+        segment = container_path.split("/")[0]
+
+        def _record_allowed(record: Any) -> bool:
+            # Same guard as list_for_work_package: only attachments whose own
+            # container link is this container, by path-segment pair.
+            href = record.container_link.get("href") if isinstance(record.container_link, dict) else None
+            if not isinstance(href, str):
+                return False
+            parts = href.rstrip("/").split("/")
+            return len(parts) >= 2 and parts[-2] == segment and id_from_href(href) == container_id
+
+        raw_items, truncated = await scan_records_and_paginate(
+            lambda o, ps: self._api.list_for_container(container_path, offset=o, page_size=ps),
+            item_allowed=_record_allowed,
+            server_page_size=self._settings.max_page_size,
+            offset=offset,
+            limit=effective_limit,
+            key=lambda r: r.summary.id,
+        )
+        results = [self._stamp(record.summary) for record in raw_items]
+        return AttachmentListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=len(results),
+            count=len(results),
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
+
+    async def _authorize_container(self, container_type: str, container_id: int, *, write: bool) -> tuple[str, str]:
+        """Check a non-work-package container against its own scope flag and
+        the read (or write) project allowlist; returns its API path and scope.
+
+        The project comes from the container itself: its `_links.project`, or
+        for a comment its work package's. A comment without a work package
+        link fails closed rather than being treated as unscoped."""
+        if container_type not in ATTACHMENT_CONTAINERS:
+            raise InvalidInputError(f"container_type must be one of: {', '.join(sorted(ATTACHMENT_CONTAINERS))}.")
+        segment, scope = ATTACHMENT_CONTAINERS[container_type]
+        access.ensure_read_enabled(scope, settings=self._settings)
+        container_path = f"{segment}/{container_id}"
+        links = (await self._api.get_container(container_path)).get("_links", {})
+        if container_type == "activity":
+            work_package_id = id_from_href((links.get("workPackage") or {}).get("href"))
+            if work_package_id is None:
+                raise OpenProjectServerError(
+                    "OpenProject activity is missing a work package link; cannot verify project access."
+                )
+            work_package = await self._work_package_lookup_api.get(str(work_package_id))
+            project_link = work_package.get("_links", {}).get("project")
+        else:
+            project_link = links.get("project")
+        if write:
+            scope_policy.ensure_project_write_link_allowed(
+                project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+            )
+        else:
+            scope_policy.ensure_project_link_allowed(
+                project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+            )
+        return container_path, scope
 
     async def get(self, attachment_id: int) -> AttachmentSummary:
         access.ensure_read_enabled("work_package", settings=self._settings)
@@ -505,6 +591,62 @@ class AttachmentService:
     ) -> AttachmentWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        outcome = await self._upload(
+            file_path=file_path,
+            description=description,
+            confirm=confirm,
+            upload=lambda **kwargs: self._api.create(resolved_id, **kwargs),
+            scope="work_package",
+            identity={"attachment_id": None, "work_package_id": resolved_id},
+            committed_identity=lambda d: {"attachment_id": d.id, "work_package_id": resolved_id},
+        )
+        return self._to_write_result("create", outcome)
+
+    async def create_for_container(
+        self,
+        *,
+        container_type: str,
+        container_id: int,
+        file_path: str,
+        description: str | None = None,
+        confirm: bool = False,
+    ) -> ContainerAttachmentWriteResult:
+        container_path, scope = await self._authorize_container(container_type, container_id, write=True)
+        outcome = await self._upload(
+            file_path=file_path,
+            description=description,
+            confirm=confirm,
+            upload=lambda **kwargs: self._api.create_for_container(container_path, **kwargs),
+            scope=scope,
+            identity={"attachment_id": None},
+            committed_identity=lambda d: {"attachment_id": d.id},
+        )
+        return ContainerAttachmentWriteResult(
+            action="create",
+            state=outcome.state,
+            ready=outcome.ready,
+            message=outcome.message,
+            container_type=container_type,
+            container_id=container_id,
+            payload=outcome.payload,
+            validation_errors=outcome.validation_errors,
+            result=outcome.detail,
+            **outcome.identity,
+        )
+
+    async def _upload(
+        self,
+        *,
+        file_path: str,
+        description: str | None,
+        confirm: bool,
+        upload: Callable[..., Awaitable[Any]],
+        scope: str,
+        identity: dict[str, Any],
+        committed_identity: Callable[[AttachmentSummary], dict[str, Any]],
+    ) -> _WriteOutcome[AttachmentSummary | None]:
+        """The upload state machine shared by work-package and other-container
+        uploads, run after the caller has authorized the target container."""
         hidden_fields.ensure_field_writable("attachment", "file_name", settings=self._settings)
         if description is not None:
             hidden_fields.ensure_field_writable("attachment", "description", settings=self._settings)
@@ -538,8 +680,7 @@ class AttachmentService:
             committed_payload["fileName"] = confirmed_file_info.file_name
             committed_payload["fileSize"] = len(confirmed_file_info.file_bytes)
             committed_payload["description"] = description
-            record = await self._api.create(
-                resolved_id,
+            record = await upload(
                 metadata={
                     "fileName": confirmed_file_info.file_name,
                     **({"description": {"format": "markdown", "raw": description}} if description is not None else {}),
@@ -554,17 +695,17 @@ class AttachmentService:
             confirm=confirm,
             payload=payload,
             validation_errors={},
-            identity={"attachment_id": None, "work_package_id": resolved_id},
-            ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
+            identity=identity,
+            ensure_write_enabled=lambda: access.ensure_write_enabled(scope, settings=self._settings),
             commit=_commit,
-            committed_identity=lambda d: {"attachment_id": d.id, "work_package_id": resolved_id},
+            committed_identity=committed_identity,
             rejected_message="",
             preview_message="OpenProject is ready to upload this attachment. Ask for confirmation, then call again with confirm=true.",
             success_message="Attachment uploaded successfully.",
         )
         if committed_payload:
             outcome = replace(outcome, payload=committed_payload)
-        return self._to_write_result("create", outcome)
+        return outcome
 
     async def delete(self, attachment_id: int, *, confirm: bool = False) -> AttachmentWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)

@@ -379,6 +379,64 @@ def test_delete_attachment_schema() -> None:
     assert list(tool.parameters["properties"]) == ["attachment_id", "confirm"]
 
 
+def test_list_container_attachments_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["list_container_attachments"]
+    assert (
+        tool.description
+        == "List attachments on a wiki page, forum post, meeting or comment.\n\ncontainer_type: wiki_page, post, meeting, or activity (a work package\ncomment, by its activity id from get_work_package_activities).\ncontainer_id: that container's numeric id. For work packages themselves\nuse list_work_package_attachments. The container's project must be inside\nOPENPROJECT_READ_PROJECTS (a comment's is its work package's).\nget_attachment/get_attachment_content/delete_attachment stay limited to\nwork package attachments; download_url opens any of these in a browser.\n\nselect fields: id, title, file_name, description (see server instructions\nfor select's general semantics).\n\nlimit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned\nnext_offset as the next call's offset to page past the cap.\n"
+    )
+    assert tool.output_schema is None
+    assert tool.parameters == {
+        "properties": {
+            "container_type": {"title": "Container Type", "type": "string"},
+            "container_id": {"title": "Container Id", "type": "integer"},
+            "offset": {"default": 1, "title": "Offset", "type": "integer"},
+            "limit": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Limit"},
+            "select": {
+                "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                "default": None,
+                "title": "Select",
+            },
+        },
+        "required": ["container_type", "container_id"],
+        "title": "list_container_attachmentsArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == ["container_type", "container_id", "offset", "limit", "select"]
+
+
+def test_create_container_attachment_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["create_container_attachment"]
+    assert (
+        tool.description
+        == "Prepare or upload an attachment to a wiki page, forum post, meeting or comment.\n\ncontainer_type/container_id: as for list_container_attachments. For work\npackages themselves use create_work_package_attachment. The file must be\ninside OPENPROJECT_ATTACHMENT_ROOT, and the container's project inside\nOPENPROJECT_WRITE_PROJECTS; the write flag checked is the container's own\n(project for wiki pages and posts, meeting for meetings, work package for\ncomments).\n"
+    )
+    assert tool.output_schema is None
+    assert tool.parameters == {
+        "properties": {
+            "container_type": {"title": "Container Type", "type": "string"},
+            "container_id": {"title": "Container Id", "type": "integer"},
+            "file_path": {"title": "File Path", "type": "string"},
+            "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Description"},
+            "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+        },
+        "required": ["container_type", "container_id", "file_path"],
+        "title": "create_container_attachmentArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == [
+        "container_type",
+        "container_id",
+        "file_path",
+        "description",
+        "confirm",
+    ]
+
+
 def test_list_work_package_file_links_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_work_package_file_links"]
     assert (

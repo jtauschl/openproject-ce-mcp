@@ -314,3 +314,21 @@ def test_get_cost_type_schema() -> None:
     }
     # Dict equality above doesn't check key order -- assert it separately.
     assert list(tool.parameters["properties"]) == ["cost_type_id"]
+
+
+def test_list_project_budgets_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["list_project_budgets"]
+    assert (
+        tool.description
+        == "List the budgets of a project (id and subject).\n\nproject: id or identifier. A budget id is what a work package's budget\nfield refers to.\n"
+    )
+    assert tool.output_schema is None
+    assert tool.parameters == {
+        "properties": {"project": {"title": "Project", "type": "string"}},
+        "required": ["project"],
+        "title": "list_project_budgetsArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == ["project"]

@@ -29,11 +29,13 @@ from .tools_admin import (  # noqa: F401 -- @register_tool side effect; re-expor
     update_user,
 )
 from .tools_attachments import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports all six of these from here
+    create_container_attachment,
     create_work_package_attachment,
     delete_attachment,
     delete_file_link,
     get_attachment,
     get_attachment_content,
+    list_container_attachments,
     list_work_package_attachments,
     list_work_package_file_links,
 )
@@ -43,6 +45,9 @@ from .tools_boards import (  # noqa: F401 -- @register_tool side effect; re-expo
     get_board,
     list_boards,
     update_board,
+)
+from .tools_budgets import (  # noqa: F401 -- @register_tool side effect; re-exported for consistency
+    list_project_budgets,
 )
 from .tools_categories import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports get_category/list_categories from here
     get_category,
@@ -100,8 +105,10 @@ from .tools_memberships import (  # noqa: F401 -- @register_tool side effect; re
 )
 from .tools_personal import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports list_notifications/mark_notifications_read from here
     get_my_preferences,
+    get_notification,
     list_notifications,
     mark_notifications_read,
+    mark_notifications_unread,
     update_my_preferences,
 )
 from .tools_projects import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py/test_work_package_tools.py import several of these from here
@@ -145,6 +152,10 @@ from .tools_reminders import (  # noqa: F401 -- @register_tool side effect; re-e
     list_reminders,
     update_reminder,
 )
+from .tools_revisions import (  # noqa: F401 -- @register_tool side effect; re-exported for consistency
+    get_revision,
+    list_work_package_revisions,
+)
 from .tools_runtime import (
     register_selected_tools,
 )
@@ -172,6 +183,7 @@ from .tools_versions import (  # noqa: F401 -- @register_tool side effect; re-ex
     create_version,
     delete_version,
     get_version,
+    list_version_projects,
     list_versions,
     update_version,
 )
@@ -182,6 +194,12 @@ from .tools_views import (  # noqa: F401 -- @register_tool side effect; re-expor
 from .tools_watchers import (  # noqa: F401 -- @register_tool side effect; re-exported, test_work_package_tools.py imports both of these from here
     list_work_package_watchers,
     set_work_package_watcher,
+)
+from .tools_work_package_pickers import (  # noqa: F401 -- @register_tool side effect; re-exported for consistency
+    list_available_assignees,
+    list_work_package_available_projects,
+    list_work_package_available_watchers,
+    list_work_package_relation_candidates,
 )
 from .tools_work_packages import (  # noqa: F401 -- @register_tool side effect; re-exported, test_trimming.py/test_tool_validation.py/test_work_package_tools.py import several of these from here
     add_work_package_comment,
@@ -234,6 +252,7 @@ from .tools_work_packages import (  # noqa: F401 -- @register_tool side effect; 
 PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
     "update_my_preferences",
     "mark_notifications_read",
+    "mark_notifications_unread",
 )
 
 READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
@@ -260,6 +279,7 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_grid",
         "list_categories",
         "get_category",
+        "list_project_budgets",
         "list_project_phase_definitions",
         "get_project_phase_definition",
         "get_project_phase",
@@ -281,8 +301,15 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "list_work_package_attachments",
         "get_attachment",
         "get_attachment_content",
+        "list_container_attachments",
         "list_work_package_file_links",
         "list_work_package_watchers",
+        "list_available_assignees",
+        "list_work_package_available_watchers",
+        "list_work_package_available_projects",
+        "list_work_package_relation_candidates",
+        "list_work_package_revisions",
+        "get_revision",
         "list_statuses",
         "get_status",
         "list_priorities",
@@ -312,7 +339,7 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "list_actions",
         "list_capabilities",
     ),
-    "version": ("list_versions", "get_version"),
+    "version": ("list_versions", "get_version", "list_version_projects"),
     "board": ("list_boards", "get_board"),
     "meeting": (
         "list_meetings",
@@ -328,7 +355,7 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_recurring_meeting",
         "list_recurring_meeting_occurrences",
     ),
-    "personal": ("get_my_preferences", "list_notifications"),
+    "personal": ("get_my_preferences", "list_notifications", "get_notification"),
     "admin": (
         "list_principals",
         "list_users",
@@ -396,6 +423,7 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "delete_work_package",
         "add_work_package_comment",
         "toggle_activity_emoji_reaction",
+        "set_query_starred",
         "create_work_package_reminder",
         "update_reminder",
         "delete_reminder",
@@ -500,6 +528,7 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_grid",
         "list_categories",
         "get_category",
+        "list_project_budgets",
         "get_project_phase",
         "get_my_project_access",
         "get_project_work_package_context",
@@ -516,8 +545,15 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "list_work_package_attachments",
         "get_attachment",
         "get_attachment_content",
+        "list_container_attachments",
         "list_work_package_file_links",
         "list_work_package_watchers",
+        "list_available_assignees",
+        "list_work_package_available_watchers",
+        "list_work_package_available_projects",
+        "list_work_package_relation_candidates",
+        "list_work_package_revisions",
+        "get_revision",
         "list_time_entry_activities",
         "list_time_entries",
         "get_time_entry",
@@ -533,6 +569,7 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "list_capabilities",
         "list_versions",
         "get_version",
+        "list_version_projects",
         "list_boards",
         "get_board",
         "list_work_package_wiki_links",
@@ -561,7 +598,10 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
 # below (mirroring the "personal" bespoke branch), rather than a generic
 # mechanism — this is currently the only scope-flag-AND-config-value gate in
 # the codebase.
-ATTACHMENT_UPLOAD_TOOLS: tuple[str, ...] = ("create_work_package_attachment",)
+# create_container_attachment shares the gate: its uploads need the same
+# root, and each call additionally checks its container's own write flag
+# (project, meeting or work_package) at runtime.
+ATTACHMENT_UPLOAD_TOOLS: tuple[str, ...] = ("create_work_package_attachment", "create_container_attachment")
 
 # Additional read scopes required by tools whose home group above is not
 # sufficient on its own (verified against each client method, not guessed).

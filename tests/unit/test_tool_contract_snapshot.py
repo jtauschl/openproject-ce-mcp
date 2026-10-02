@@ -1,13 +1,13 @@
 """OPM-2707: schema-drift gate for the full MCP tool catalog.
 
-Treats the ~190-tool MCP surface as a de facto public API ahead of a future
+Treats the ~200-tool MCP surface as a de facto public API ahead of a future
 1.0. Captures name, inputSchema, output structure, read/write classification,
 and required capability (env var) for every registered tool, and fails until
 the fixture below is deliberately updated to match an intentional change.
 
 This complements, and deliberately does not duplicate, the existing
 `tests/test_*_tools_schema_characterization.py` suite (one file per domain,
-already exhaustive at 190/190 tools, each asserting a tool's full
+already exhaustive at 203/203 tools, each asserting a tool's full
 description/parameters/output_schema verbatim). That suite exists to freeze
 each domain's own contract in place across refactors (e.g. moving a tool
 between files); this one exists to make "the whole catalog is one contract"
@@ -15,7 +15,7 @@ an explicit, single, versioned artifact with read/write classification and
 capability metadata neither that suite nor anything else in this project
 currently captures.
 
-Captured from `release/0.5.0` (190 tools) via a live MCPServer built through
+Captured from `release/0.5.0` (203 tools) via a live MCPServer built through
 `server.create_app()` under maximally-permissive Settings (every scope
 enabled, `attachment_root` set) -- the source of truth this test protects.
 Do not "fix" this fixture to match a future change without confirming the
@@ -23,7 +23,7 @@ new tool-contract shape is actually intended.
 
 Fixture format per tool:
 - `description_hash`: sha256 of the tool's full docstring/description, not
-  the text itself. Storing ~190 multi-line docstrings verbatim would make
+  the text itself. Storing ~200 multi-line docstrings verbatim would make
   every prose wording improvement (typo fix, clarity pass) trip this gate --
   noise that trains reviewers to rubber-stamp updates, defeating its purpose.
   Hashing still catches presence/absence and any edit; the actual current
@@ -179,13 +179,13 @@ def _live_catalog() -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def live_catalog() -> dict[str, Any]:
-    # Built once per test run, not once per parametrized case (190 of them) --
+    # Built once per test run, not once per parametrized case (203 of them) --
     # constructing a full MCPServer registers every tool with the SDK, which
     # is real work, not free introspection.
     return _live_catalog()
 
 
-# Captured from `release/0.5.0` (190 tools) via a live MCPServer built through
+# Captured from `release/0.5.0` (203 tools) via a live MCPServer built through
 # server.create_app() under maximally-permissive Settings -- the source of
 # truth this test protects. Do not "fix" this fixture to match a future
 # change without confirming the new tool-contract shape is actually intended.
@@ -364,6 +364,34 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "write",
         "scope": "board",
         "capability_env_vars": ("OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
+    },
+    "create_container_attachment": {
+        "description_hash": "49e26c0cb5bfecb5fdfc895203e2345442315d9d9e218f6428116860263b0564",
+        "input_schema": {
+            "properties": {
+                "container_type": {"title": "Container Type", "type": "string"},
+                "container_id": {"title": "Container Id", "type": "integer"},
+                "file_path": {"title": "File Path", "type": "string"},
+                "description": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Description",
+                },
+                "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+            },
+            "required": ["container_type", "container_id", "file_path"],
+            "title": "create_container_attachmentArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "write",
+        "scope": "work_package",
+        "capability_env_vars": (
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
+            "OPENPROJECT_ATTACHMENT_ROOT",
+        ),
     },
     "create_grid": {
         "description_hash": "96246e5c63693292e339c34b0c93ddb8ed9cef01d74410b35b4518fb799aa2bc",
@@ -2556,6 +2584,48 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "project",
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
     },
+    "get_notification": {
+        "description_hash": "09a40b73ea9a57434edc2483a33f0a92e62ddd117aa567cd9868aeef619fde19",
+        "input_schema": {
+            "properties": {"notification_id": {"title": "Notification Id", "type": "integer"}},
+            "required": ["notification_id"],
+            "title": "get_notificationArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": {
+            "properties": {
+                "id": {"title": "Id", "type": "integer"},
+                "subject": {"title": "Subject", "type": "string"},
+                "reason": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Reason"},
+                "read": {"title": "Read", "type": "boolean"},
+                "project_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Project Id"},
+                "project_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Project Name"},
+                "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Work Package Id"},
+                "work_package_subject": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "title": "Work Package Subject",
+                },
+                "created_at": {"title": "Created At", "type": "string"},
+            },
+            "required": [
+                "id",
+                "subject",
+                "reason",
+                "read",
+                "project_id",
+                "project_name",
+                "work_package_id",
+                "work_package_subject",
+                "created_at",
+            ],
+            "title": "NotificationSummary",
+            "type": "object",
+        },
+        "classification": "read",
+        "scope": "personal",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ",),
+    },
     "get_post": {
         "description_hash": "ab7a167c534a68ef559ce34c9bac0b44736146b2271ce776ff5463f11ca0d155",
         "input_schema": {
@@ -3371,6 +3441,47 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "meeting",
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_READ",),
     },
+    "get_revision": {
+        "description_hash": "0f731e4bcefd0409f809cd017c8cd636200dba3371f444874cab3e6746c22302",
+        "input_schema": {
+            "properties": {"revision_id": {"title": "Revision Id", "type": "integer"}},
+            "required": ["revision_id"],
+            "title": "get_revisionArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": {
+            "properties": {
+                "id": {"title": "Id", "type": "integer"},
+                "identifier": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Identifier"},
+                "formatted_identifier": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "title": "Formatted Identifier",
+                },
+                "author_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Author Name"},
+                "author": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Author"},
+                "message": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Message"},
+                "project": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Project"},
+                "created_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Created At"},
+                "message_truncated": {"default": False, "title": "Message Truncated", "type": "boolean"},
+            },
+            "required": [
+                "id",
+                "identifier",
+                "formatted_identifier",
+                "author_name",
+                "author",
+                "message",
+                "project",
+                "created_at",
+            ],
+            "title": "RevisionSummary",
+            "type": "object",
+        },
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
     "get_sprint": {
         "description_hash": "c411eb75141875a804cf5027901d89a79582cedd4920909e24b143d3d60e7d56",
         "input_schema": {
@@ -3981,6 +4092,31 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "membership",
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEMBERSHIP_READ",),
     },
+    "list_available_assignees": {
+        "description_hash": "9e1b6eab64c6fe00e7df6c93ec7d635edebaebab453625572696408dd4a8f632",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Work Package Id",
+                },
+                "project": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Project"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "title": "list_available_assigneesArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
     "list_backlog_buckets": {
         "description_hash": "080add4781d9746b589239e78c75c2b5883c1e489183cf8550061852d74e64f4",
         "input_schema": {
@@ -4074,6 +4210,30 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "read",
         "scope": "project",
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
+    },
+    "list_container_attachments": {
+        "description_hash": "ca63734596cd2e71c9b787725d190640423306362125f3c02e74ec3c7dad157d",
+        "input_schema": {
+            "properties": {
+                "container_type": {"title": "Container Type", "type": "string"},
+                "container_id": {"title": "Container Id", "type": "integer"},
+                "offset": {"default": 1, "title": "Offset", "type": "integer"},
+                "limit": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Limit"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "required": ["container_type", "container_id"],
+            "title": "list_container_attachmentsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
     },
     "list_documents": {
         "description_hash": "f15f200e5938f1d20b0e522c2c15dd6cc72c558bcd90e71ad2a35921247e4cf9",
@@ -4371,6 +4531,20 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "read",
         "scope": "work_package",
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
+    "list_project_budgets": {
+        "description_hash": "608d1185b0f5a8eaef1dd911b5b386f65cdb1cbc86b455f8b8e06e4a85eef769",
+        "input_schema": {
+            "properties": {"project": {"title": "Project", "type": "string"}},
+            "required": ["project"],
+            "title": "list_project_budgetsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "project",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
     },
     "list_project_memberships": {
         "description_hash": "89e11f4e0067afba850efacd0e50ab148e904a3c7ee86bead775e453b57d3cb5",
@@ -4751,6 +4925,27 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "admin",
         "capability_env_vars": ("OPENPROJECT_ENABLE_ADMIN_READ",),
     },
+    "list_version_projects": {
+        "description_hash": "ef1abd290f68e8ae7b5f172013beb34ebeff2c084bacee9dac3f363fc4392287",
+        "input_schema": {
+            "properties": {
+                "version_id": {"title": "Version Id", "type": "integer"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "required": ["version_id"],
+            "title": "list_version_projectsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "version",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_READ",),
+    },
     "list_versions": {
         "description_hash": "a76b2a4ddc5d42b0d959f0621c53a9975885b3dbcf8d8233f861b6d02b5957b0",
         "input_schema": {
@@ -4815,6 +5010,48 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
             },
             "required": ["work_package_id"],
             "title": "list_work_package_attachmentsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
+    "list_work_package_available_watchers": {
+        "description_hash": "3cfa9692758b54a4ac3835d86e3d0a1429396eb9339b2d44fe07ad06cefa1c74",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Work Package Id"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_available_watchersArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
+    "list_work_package_available_projects": {
+        "description_hash": "8d579854cbeff624bfd846af5cc55be0a844975fda32bff968bae51e02dbc20d",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Work Package Id"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_available_projectsArguments",
             "type": "object",
             "additionalProperties": False,
         },
@@ -4949,6 +5186,55 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
             },
             "required": ["work_package_id"],
             "title": "list_work_package_reactionsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
+    "list_work_package_relation_candidates": {
+        "description_hash": "7a1e4507b5997234e285e6c17ee83ffa458f6e6d593a9f1acc14884ae516340f",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Work Package Id"},
+                "query": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Query"},
+                "relation_type": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Relation Type",
+                },
+                "limit": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Limit"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_relation_candidatesArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
+    "list_work_package_revisions": {
+        "description_hash": "f91e64dcc0fcd85e4471d953efe07ed2a7399b607dbbce77bd936a023dd4fe15",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Work Package Id"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_revisionsArguments",
             "type": "object",
             "additionalProperties": False,
         },
@@ -5113,6 +5399,37 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "personal",
         "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ", "OPENPROJECT_ENABLE_PERSONAL_WRITE"),
     },
+    "mark_notifications_unread": {
+        "description_hash": "77b0829f3922fce90ae5d26c1e19991523ced8186af7bbbaef322d236fcdb7a4",
+        "input_schema": {
+            "properties": {
+                "notification_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Notification Id",
+                },
+                "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+            },
+            "title": "mark_notifications_unreadArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": {
+            "properties": {
+                "action": {"title": "Action", "type": "string"},
+                "state": {"enum": ["rejected", "invalid", "preview", "confirmed"], "title": "State", "type": "string"},
+                "ready": {"title": "Ready", "type": "boolean"},
+                "message": {"title": "Message", "type": "string"},
+                "notification_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Notification Id"},
+            },
+            "required": ["action", "state", "ready", "message", "notification_id"],
+            "title": "NotificationMarkResult",
+            "type": "object",
+        },
+        "classification": "write",
+        "scope": "personal",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ", "OPENPROJECT_ENABLE_PERSONAL_WRITE"),
+    },
     "render_text": {
         "description_hash": "de1e269b742dc43b729016558c44daeb9ff07c685f67eeaf1150ea3427aab86b",
         "input_schema": {
@@ -5236,6 +5553,37 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "write",
         "scope": "project",
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
+    },
+    "set_query_starred": {
+        "description_hash": "fc6fc1becd9a72f6059a6218ab5e4a90c9eea9cc5dc0b0b130560d32b238c022",
+        "input_schema": {
+            "properties": {
+                "query_id": {"title": "Query Id", "type": "integer"},
+                "starred": {"title": "Starred", "type": "boolean"},
+                "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+            },
+            "required": ["query_id", "starred"],
+            "title": "set_query_starredArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": {
+            "properties": {
+                "action": {"title": "Action", "type": "string"},
+                "state": {"enum": ["rejected", "invalid", "preview", "confirmed"], "title": "State", "type": "string"},
+                "ready": {"title": "Ready", "type": "boolean"},
+                "message": {"title": "Message", "type": "string"},
+                "query_id": {"title": "Query Id", "type": "integer"},
+                "query_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Query Name"},
+                "starred": {"title": "Starred", "type": "boolean"},
+            },
+            "required": ["action", "state", "ready", "message", "query_id", "query_name", "starred"],
+            "title": "QueryStarResult",
+            "type": "object",
+        },
+        "classification": "write",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "set_user_locked": {
         "description_hash": "a0bdd427d809f4076aafdc1790a08d0c387668fa91ee1a5e5fcc3c80234de7bf",

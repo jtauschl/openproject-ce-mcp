@@ -40,3 +40,13 @@ class QueryExecutionApi(Protocol):
     """
 
     async def execute(self, query_id: int, *, offset: int, page_size: int) -> QueryResultPage: ...
+
+    async def get_raw(self, query_id: int) -> dict[str, Any]:
+        """Raw GET `queries/{query_id}` for the query's own attributes and
+        links (its results trimmed to a single row) -- read by
+        `set_starred` for the project link and the current star state."""
+        ...
+
+    async def set_starred(self, query_id: int, starred: bool) -> dict[str, Any]:
+        """PATCH `queries/{query_id}/star` or `/unstar`; returns the raw query."""
+        ...

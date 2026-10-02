@@ -14,6 +14,7 @@ from .app.adapters.httpx_activity_api import HttpxActivityApi
 from .app.adapters.httpx_attachment_api import HttpxAttachmentApi
 from .app.adapters.httpx_backlog_bucket_api import HttpxBacklogBucketApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
+from .app.adapters.httpx_budget_api import HttpxBudgetApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_cost_api import HttpxCostApi
 from .app.adapters.httpx_current_user_api import HttpxCurrentUserApi
@@ -44,6 +45,7 @@ from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_recurring_meeting_api import HttpxRecurringMeetingApi
 from .app.adapters.httpx_relation_api import HttpxRelationApi
 from .app.adapters.httpx_reminder_api import HttpxReminderApi
+from .app.adapters.httpx_revision_api import HttpxRevisionApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
@@ -60,6 +62,7 @@ from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
 from .app.adapters.httpx_wiki_page_link_api import HttpxWikiPageLinkApi
 from .app.adapters.httpx_work_package_api import HttpxWorkPackageApi
 from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+from .app.adapters.httpx_work_package_picker_api import HttpxWorkPackagePickerApi
 from .app.caches import SingletonCache
 
 # AuthenticationError/PermissionDeniedError/its three OPM-2708 subclasses
@@ -96,6 +99,7 @@ from .app.ports.activity_api import ActivityApi
 from .app.ports.attachment_api import AttachmentApi
 from .app.ports.backlog_bucket_api import BacklogBucketApi
 from .app.ports.board_api import BoardApi
+from .app.ports.budget_api import BudgetApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.cost_api import CostApi
 from .app.ports.current_user_api import CurrentUserApi, CurrentUserRecord
@@ -125,6 +129,7 @@ from .app.ports.query_metadata_api import QueryMetadataApi
 from .app.ports.recurring_meeting_api import RecurringMeetingApi
 from .app.ports.relation_api import RelationApi
 from .app.ports.reminder_api import ReminderApi
+from .app.ports.revision_api import RevisionApi
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
 from .app.ports.status_priority_type_api import PriorityRecord, StatusPriorityTypeApi, StatusRecord
@@ -141,6 +146,7 @@ from .app.ports.wiki_page_api import WikiPageApi
 from .app.ports.wiki_page_link_api import WikiPageLinkApi
 from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
+from .app.ports.work_package_picker_api import WorkPackagePickerApi
 from .app.resolvers.assignee_resolver import AssigneeResolver
 from .app.resolvers.current_user_resolver import CurrentUserResolver
 from .app.resolvers.principal_resolver import PrincipalResolver
@@ -155,6 +161,7 @@ from .app.services.activity_service import ActivityService
 from .app.services.attachment_service import AttachmentService
 from .app.services.backlog_bucket_service import BacklogBucketService
 from .app.services.board_service import BoardService
+from .app.services.budget_service import BudgetService
 from .app.services.category_service import CategoryService
 from .app.services.cost_service import CostService
 from .app.services.current_user_service import CurrentUserService
@@ -184,6 +191,7 @@ from .app.services.query_metadata_service import QueryMetadataService
 from .app.services.recurring_meeting_service import RecurringMeetingService
 from .app.services.relation_service import RelationService
 from .app.services.reminder_service import ReminderService
+from .app.services.revision_service import RevisionService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.status_priority_type_service import StatusPriorityTypeService
@@ -198,6 +206,7 @@ from .app.services.view_service import ViewService
 from .app.services.watcher_service import WatcherService
 from .app.services.wiki_page_link_service import WikiPageLinkService
 from .app.services.wiki_page_service import WikiPageService
+from .app.services.work_package_picker_service import WorkPackagePickerService
 
 # CLEAR/CLEAR_VERSION/CLEAR_PARENT are canonically defined in
 # app/services/work_package_service.py (this domain's write-path migration
@@ -683,6 +692,28 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
+        self._work_package_picker_api: WorkPackagePickerApi = HttpxWorkPackagePickerApi(HttpxTransport(self._http))
+        self._work_package_picker_service = WorkPackagePickerService(
+            api=self._work_package_picker_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_project_ref=self._get_project_payload,
+        )
+
+        self._revision_api: RevisionApi = HttpxRevisionApi(HttpxTransport(self._http))
+        self._revision_service = RevisionService(
+            api=self._revision_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
+        self._budget_api: BudgetApi = HttpxBudgetApi(HttpxTransport(self._http))
+        self._budget_service = BudgetService(
+            api=self._budget_api, settings=settings, resolve_project_ref=self._get_project_payload
+        )
+
         self._wiki_page_link_api: WikiPageLinkApi = HttpxWikiPageLinkApi(HttpxTransport(self._http))
         self._wiki_page_link_service = WikiPageLinkService(
             api=self._wiki_page_link_api,
@@ -1000,6 +1031,21 @@ class OpenProjectClient:
     def document(self) -> DocumentService:
         """Same object as `self._document_service` -- a named view, not a second implementation."""
         return self._document_service
+
+    @property
+    def revision(self) -> RevisionService:
+        """Same object as `self._revision_service` -- a named view, not a second implementation."""
+        return self._revision_service
+
+    @property
+    def budget(self) -> BudgetService:
+        """Same object as `self._budget_service` -- a named view, not a second implementation."""
+        return self._budget_service
+
+    @property
+    def work_package_picker(self) -> WorkPackagePickerService:
+        """Same object as `self._work_package_picker_service` -- a named view, not a second implementation."""
+        return self._work_package_picker_service
 
     @property
     def emoji_reaction(self) -> EmojiReactionService:

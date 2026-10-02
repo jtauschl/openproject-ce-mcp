@@ -35,9 +35,10 @@ therefore:
 from __future__ import annotations
 
 from ...config import Settings
-from ...models import WorkPackageListResult, WorkPackageSummary
+from ...models import QueryStarResult, WorkPackageListResult, WorkPackageSummary
 from ..pagination import effective_limit, fetch_bounded_and_paginate
 from ..policies import access, hidden_fields
+from ..policies import scope as scope_policy
 from ..policies.work_package_policy import work_package_payload_allowed
 from ..ports.query_execution_api import QueryExecutionApi
 from ..ports.work_package_api import WorkPackageApi
@@ -106,4 +107,45 @@ class QueryExecutionService:
             next_offset=next_offset,
             truncated=truncated,
             results=results,
+        )
+
+    async def set_starred(self, query_id: int, *, starred: bool, confirm: bool = False) -> QueryStarResult:
+        """Star or unstar a saved query. A query's project is optional (a
+        global query has none), so the write allowlist check is the
+        optional-link variant, run in preview too: it is an authorization
+        gate, not the mutation."""
+        access.ensure_read_enabled("work_package", settings=self._settings)
+        query = await self._api.get_raw(query_id)
+        scope_policy.ensure_project_write_link_allowed_if_present(
+            query.get("_links", {}).get("project"),
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+        name = query.get("name") if isinstance(query.get("name"), str) else None
+        verb = "star" if starred else "unstar"
+        if not confirm:
+            already = query.get("starred") is starred
+            return QueryStarResult(
+                action=verb,
+                state="preview",
+                ready=True,
+                message=(
+                    f"Query {query_id} is already {'starred' if starred else 'not starred'}; confirming changes nothing."
+                    if already
+                    else f"Ask for confirmation, then call again with confirm=true to {verb} query {query_id}."
+                ),
+                query_id=query_id,
+                query_name=name,
+                starred=starred,
+            )
+        access.ensure_write_enabled("work_package", settings=self._settings)
+        updated = await self._api.set_starred(query_id, starred)
+        return QueryStarResult(
+            action=verb,
+            state="confirmed",
+            ready=True,
+            message=f"Query {query_id} {'starred' if starred else 'unstarred'}.",
+            query_id=query_id,
+            query_name=updated.get("name") if isinstance(updated.get("name"), str) else name,
+            starred=bool(updated.get("starred", starred)),
         )

@@ -125,6 +125,14 @@ class ProjectListResult(PageResult):
 
 
 @dataclass
+class ProjectCollectionResult(CollectionResult):
+    """Projects OpenProject lists for one purpose (a work package's possible
+    targets, a version's projects), filtered to OPENPROJECT_READ_PROJECTS."""
+
+    results: list[ProjectSummary]
+
+
+@dataclass
 class RoleSummary:
     id: int
     name: str
@@ -219,6 +227,14 @@ class PrincipalSummary:
 
 @dataclass
 class PrincipalListResult(PageResult):
+    results: list[PrincipalSummary]
+
+
+@dataclass
+class PrincipalCollectionResult(CollectionResult):
+    """Principals OpenProject offers for one slot (assignee, watcher, ...) --
+    an unpaginated collection, unlike list_principals' search."""
+
     results: list[PrincipalSummary]
 
 
@@ -1009,6 +1025,19 @@ class AttachmentListWithImages:
 class AttachmentWriteResult(ConfirmationHeader):
     attachment_id: int | None
     work_package_id: int | str | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: AttachmentSummary | None
+
+
+@dataclass
+class ContainerAttachmentWriteResult(ConfirmationHeader):
+    """Upload result for an attachment on a container other than a work
+    package (wiki page, forum post, meeting, comment)."""
+
+    attachment_id: int | None
+    container_type: str
+    container_id: int
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: AttachmentSummary | None
@@ -2076,3 +2105,65 @@ class GitlabMergeRequestSummary:
 @dataclass
 class GitlabMergeRequestListResult(CollectionResult):
     results: list[GitlabMergeRequestSummary]
+
+
+@dataclass
+class RelationCandidateSummary:
+    """A work package OpenProject would accept as the other end of a new
+    relation. Deliberately narrow (no description or custom fields): enough to
+    pick one, then get_work_package for the rest."""
+
+    id: int
+    display_id: str | None
+    subject: str
+    type: str | None
+    status: str | None
+    project: str | None
+
+
+@dataclass
+class RelationCandidateListResult(CollectionResult):
+    results: list[RelationCandidateSummary]
+
+
+@dataclass
+class RevisionSummary:
+    """A repository commit linked to work packages (OpenProject's Revision).
+    author_name is the committer as the repository records it; author is the
+    OpenProject user it maps to, when OpenProject could map it."""
+
+    id: int
+    identifier: str | None
+    formatted_identifier: str | None
+    author_name: str | None
+    author: str | None
+    message: str | None
+    project: str | None
+    created_at: str | None
+    message_truncated: bool = False
+
+
+@dataclass
+class RevisionListResult(CollectionResult):
+    results: list[RevisionSummary]
+
+
+@dataclass
+class BudgetSummary:
+    id: int
+    subject: str
+
+
+@dataclass
+class BudgetListResult(CollectionResult):
+    results: list[BudgetSummary]
+
+
+@dataclass
+class QueryStarResult(ConfirmationHeader):
+    """Confirm-gated star/unstar of a saved query. `starred` is the state
+    asked for; `query_name` comes from the query itself."""
+
+    query_id: int
+    query_name: str | None
+    starred: bool
