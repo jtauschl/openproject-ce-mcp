@@ -22,7 +22,9 @@ shape `ReminderRecord.summary` uses.
 normalizes a just-posted comment's raw activity payload and fetches a
 fallback single activity by id (the `_fill_missing_activity_user`
 best-effort pattern) -- both reuse this Port/Adapter instead of a duplicated
-normalizer on `WorkPackageApi`.
+normalizer on `WorkPackageApi`. `update_comment` (PATCH) lives here too: an
+activity's comment is addressed by the activity id alone, not through its
+work package.
 """
 
 from __future__ import annotations
@@ -63,5 +65,11 @@ class ActivityApi(Protocol):
         reads `_links.user` off the result. Lets errors propagate; the one
         caller that needs a catch-and-log-and-continue behavior does so
         itself, rather than this method swallowing errors for every caller.
+        """
+        ...
+
+    async def update_comment(self, activity_id: int, *, comment: str) -> dict[str, Any]:
+        """PATCH `activities/{activity_id}` with a new comment text. Returns
+        the raw, unnormalized activity payload, like `get_raw`.
         """
         ...

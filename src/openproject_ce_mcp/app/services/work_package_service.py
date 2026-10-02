@@ -117,6 +117,7 @@ from ..errors import (
     InvalidInputError,
     NotFoundError,
     OpenProjectError,
+    OpenProjectPermissionDeniedError,
     OpenProjectServerError,
     PermissionDeniedError,
     ProjectScopeDeniedError,
@@ -2365,4 +2366,71 @@ class WorkPackageService:
             payload=payload,
             validation_errors={},
             result=normalized_activity,
+        )
+
+    async def update_comment(
+        self,
+        *,
+        activity_id: int,
+        comment: str,
+        confirm: bool = False,
+    ) -> ActivityWriteResult:
+        """Replace the text of an existing comment (`PATCH activities/{id}`).
+
+        The authorization gates run in preview mode too, like
+        `EmojiReactionService.toggle()`: the activity's own
+        `_links.workPackage` decides which project's write allowlist applies
+        (fail closed when the link is missing), and a missing `_links.update`
+        means OpenProject will refuse the edit -- only the comment's author,
+        or a role allowed to edit other users' comments, gets that link -- so
+        it is reported before anything is sent rather than as a 403 after.
+        """
+        hidden_fields.ensure_field_writable("activity", "comment", settings=self._settings)
+        activity = await self._activity_api.get_raw(activity_id)
+        links = activity.get("_links", {})
+        work_package_id = _id_from_href((links.get("workPackage") or {}).get("href"))
+        if not work_package_id:
+            raise OpenProjectServerError(
+                "OpenProject activity is missing a work package link; cannot verify project write access."
+            )
+        record = await self._api.get(str(work_package_id))
+        ensure_project_write_link_allowed(
+            record.payload.get("_links", {}).get("project"),
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+        if not links.get("update"):
+            raise OpenProjectPermissionDeniedError(
+                f"OpenProject does not allow the configured user to edit activity {activity_id}: "
+                "only the comment's author, or a role allowed to edit other users' comments, can."
+            )
+        payload: dict[str, Any] = {"comment": comment}
+
+        if not confirm:
+            return ActivityWriteResult(
+                action="update_comment",
+                state="preview",
+                ready=True,
+                message=(
+                    f"OpenProject is ready to replace the text of comment {activity_id}. "
+                    "Ask for confirmation, then call again with confirm=true."
+                ),
+                work_package_id=work_package_id,
+                payload=payload,
+                validation_errors={},
+                result=None,
+            )
+
+        access.ensure_write_enabled("work_package", settings=self._settings)
+        updated = await self._activity_api.update_comment(activity_id, comment=comment)
+        summary = self._activity_api.to_record(updated).to_summary(FORMATTABLE_LIMIT)
+        return ActivityWriteResult(
+            action="update_comment",
+            state="confirmed",
+            ready=True,
+            message="Comment updated successfully.",
+            work_package_id=work_package_id,
+            payload=payload,
+            validation_errors={},
+            result=hidden_fields.apply_hidden_fields("activity", summary, settings=self._settings),
         )

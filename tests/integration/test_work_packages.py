@@ -435,6 +435,44 @@ async def test_add_work_package_comment(client: OpenProjectClient, test_project:
     assert activities.count > 0
 
 
+async def test_update_work_package_comment(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
+    result = await client.work_package.create(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} comment-update-test",
+        confirm=True,
+    )
+    assert result.ready
+    wp_ids.append(result.work_package_id)
+    added = await client.work_package.add_comment(
+        work_package_id=result.work_package_id,
+        comment="Integration test comment, first version",
+        confirm=True,
+    )
+    assert added.ready and added.result is not None
+    # The id may be the "created" journal's own when OpenProject aggregated the
+    # comment into it; that journal then carries the comment and is what gets
+    # edited either way.
+    activity_id = added.result.id
+
+    preview = await client.work_package.update_comment(
+        activity_id=activity_id, comment="Integration test comment, edited"
+    )
+    assert preview.state == "preview"
+    assert preview.work_package_id == result.work_package_id
+
+    updated = await client.work_package.update_comment(
+        activity_id=activity_id, comment="Integration test comment, edited", confirm=True
+    )
+    assert updated.state == "confirmed"
+    assert updated.result is not None
+    assert updated.result.comment == "<user-content>Integration test comment, edited</user-content>"
+
+    activities = await client.activity.list_for_work_package(result.work_package_id)
+    edited = [a for a in activities.results if a.id == activity_id]
+    assert edited and edited[0].comment == "<user-content>Integration test comment, edited</user-content>"
+
+
 async def test_get_work_package_activities_includes_creation_and_comment(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:

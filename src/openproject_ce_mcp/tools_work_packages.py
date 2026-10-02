@@ -1,7 +1,8 @@
 """Work package MCP tool handlers: search_work_packages, list_work_packages,
 get_work_package, get_work_packages, create_work_package, update_work_package,
 bulk_create_work_packages, bulk_update_work_packages, delete_work_package,
-create_subtask, add_work_package_comment, list_my_open_work_packages,
+create_subtask, add_work_package_comment, update_work_package_comment,
+list_my_open_work_packages,
 get_work_package_activities, list_work_package_reactions,
 toggle_activity_emoji_reaction.
 
@@ -1255,6 +1256,36 @@ async def add_work_package_comment(
             comment=safe_comment,
             internal=internal,
             notify=notify,
+            confirm=confirm,
+        )
+    )
+
+
+@register_tool
+async def update_work_package_comment(
+    ctx: Context,
+    activity_id: int,
+    comment: str,
+    confirm: bool = False,
+) -> ActivityWriteResult:
+    """Prepare or replace the text of an existing work package comment.
+
+    The tool only writes when confirm=true. activity_id is the comment's
+    activity id, as returned by get_work_package_activities (or by
+    add_work_package_comment's result). comment replaces the whole text; it is
+    not appended. Whether the comment is internal stays as it was: OpenProject
+    does not change that on edit.
+    OpenProject lets the comment's author edit it, and otherwise only a role
+    allowed to edit other users' comments; the tool reports that before
+    writing, in preview too.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(activity_id, field_name="activity_id")
+    safe_comment = _validate_required_text(comment, field_name="comment", max_length=10_000)
+    return await _run_tool(
+        client.work_package.update_comment(
+            activity_id=safe_id,
+            comment=safe_comment,
             confirm=confirm,
         )
     )

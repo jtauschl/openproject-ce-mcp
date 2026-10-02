@@ -257,6 +257,43 @@ def _add_work_package_comment_handler(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
 
+def _update_work_package_comment_handler(request: httpx.Request) -> httpx.Response:
+    if request.method == "GET" and request.url.path == "/api/v3/activities/77":
+        return httpx.Response(
+            200,
+            json={
+                "id": 77,
+                "_type": "Activity::Comment",
+                "comment": {"raw": "Looks good to me."},
+                "_links": {
+                    "workPackage": {"href": "/api/v3/work_packages/42"},
+                    "update": {"href": "/api/v3/activities/77", "method": "patch"},
+                },
+            },
+            request=request,
+        )
+    if request.method == "GET" and request.url.path == "/api/v3/work_packages/42":
+        return httpx.Response(
+            200,
+            json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+            request=request,
+        )
+    if request.method == "PATCH" and request.url.path == "/api/v3/activities/77":
+        return httpx.Response(
+            200,
+            json={
+                "id": 77,
+                "_type": "Activity::Comment",
+                "version": 3,
+                "comment": {"format": "markdown", "raw": "Looks good to me, after the fix.", "html": ""},
+                "_links": {"user": {"title": "OpenProject Bot"}},
+                "createdAt": "2026-03-20T11:00:00Z",
+            },
+            request=request,
+        )
+    raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+
 def _toggle_activity_emoji_reaction_handler(request: httpx.Request) -> httpx.Response:
     if request.method == "GET" and request.url.path == "/api/v3/activities/1988":
         return httpx.Response(
@@ -728,6 +765,14 @@ WORK_PACKAGE_CASES: dict[str, WriteToolCase] = {
         write_scope="work_package",
         handler=_add_work_package_comment_handler,
         write_request=("POST", "/api/v3/work_packages/42/activities"),
+    ),
+    "update_work_package_comment": WriteToolCase(
+        tool="update_work_package_comment",
+        kwargs={"activity_id": 77, "comment": "Looks good to me, after the fix."},
+        settings=_SETTINGS,
+        write_scope="work_package",
+        handler=_update_work_package_comment_handler,
+        write_request=("PATCH", "/api/v3/activities/77"),
     ),
     "toggle_activity_emoji_reaction": WriteToolCase(
         tool="toggle_activity_emoji_reaction",

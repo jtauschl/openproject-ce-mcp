@@ -6063,6 +6063,24 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "work_package",
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
+    "update_work_package_comment": {
+        "description_hash": "3e7568e4931b920960544db11e2cc9de4dfd2d469b2e7518354d9ba22258ccc5",
+        "input_schema": {
+            "properties": {
+                "activity_id": {"title": "Activity Id", "type": "integer"},
+                "comment": {"title": "Comment", "type": "string"},
+                "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+            },
+            "required": ["activity_id", "comment"],
+            "title": "update_work_package_commentArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "write",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
+    },
 }
 
 

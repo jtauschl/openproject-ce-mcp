@@ -340,6 +340,7 @@ has
 | `bulk_update_work_packages` | Validate and then update multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true` |
 | `delete_work_package` | Validate and then delete a work package; only deletes when called again with `confirm=true` |
 | `add_work_package_comment` | Validate and then add a comment to a work package; `notify=false` by default to avoid change emails; only writes when called again with `confirm=true` |
+| `update_work_package_comment` | Validate and then replace the text of an existing comment (by activity id); reports up front when OpenProject would not let the configured user edit it; only writes when called again with `confirm=true` |
 | `create_work_package_relation` | Validate and then create a relation between work packages; only writes when called again with `confirm=true` |
 | `delete_relation` | Validate and then delete a work package relation; only deletes when called again with `confirm=true` |
 | `get_work_package_relations` | Fetch all relations for a work package (blocks, relates to, duplicates, …); each result also carries `queried_perspective`, a caller-relative reading of the relation from `work_package_id`'s own side (`direction`, `effective_type`, and — only for the precedes/follows pair — `predecessor_id`/`successor_id`), alongside the unchanged raw `type`/`from_id`/`to_id` |

@@ -11,6 +11,15 @@ development baseline.
 
 ### Added
 
+- `update_work_package_comment` replaces the text of an existing work package
+  comment (`PATCH /api/v3/activities/{id}`), confirm-gated like every other
+  write. It checks the activity's own work package against
+  `OPENPROJECT_WRITE_PROJECTS` and reports up front, in preview too, when
+  OpenProject offers no `update` link for the comment (only its author, or a
+  role allowed to edit other users' comments, gets one). The comment is sent
+  as a plain string: the published API spec documents `comment: {raw: ...}`,
+  but the endpoint declares `requires :comment, type: String` on every
+  supported version and rejects the object as "comment is invalid".
 - CI now installs the built wheel via both `pipx` and `uv tool install` in
   an isolated environment outside the repository, checks `--version`,
   `configure --help`, `doctor --help`, and a bounded MCP stdio startup, and

@@ -1682,6 +1682,28 @@ def test_add_work_package_comment_schema() -> None:
     assert list(tool.parameters["properties"]) == ["work_package_id", "comment", "internal", "notify", "confirm"]
 
 
+def test_update_work_package_comment_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["update_work_package_comment"]
+    assert (
+        tool.description
+        == "Prepare or replace the text of an existing work package comment.\n\nThe tool only writes when confirm=true. activity_id is the comment's\nactivity id, as returned by get_work_package_activities (or by\nadd_work_package_comment's result). comment replaces the whole text; it is\nnot appended. Whether the comment is internal stays as it was: OpenProject\ndoes not change that on edit.\nOpenProject lets the comment's author edit it, and otherwise only a role\nallowed to edit other users' comments; the tool reports that before\nwriting, in preview too.\n"
+    )
+    assert tool.output_schema is None
+    assert tool.parameters == {
+        "properties": {
+            "activity_id": {"title": "Activity Id", "type": "integer"},
+            "comment": {"title": "Comment", "type": "string"},
+            "confirm": {"default": False, "title": "Confirm", "type": "boolean"},
+        },
+        "required": ["activity_id", "comment"],
+        "title": "update_work_package_commentArguments",
+        "type": "object",
+        "additionalProperties": False,
+    }
+    # Dict equality above doesn't check key order -- assert it separately.
+    assert list(tool.parameters["properties"]) == ["activity_id", "comment", "confirm"]
+
+
 def test_list_my_open_work_packages_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_my_open_work_packages"]
     assert (

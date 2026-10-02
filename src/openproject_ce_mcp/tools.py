@@ -199,6 +199,7 @@ from .tools_work_packages import (  # noqa: F401 -- @register_tool side effect; 
     search_work_packages,
     toggle_activity_emoji_reaction,
     update_work_package,
+    update_work_package_comment,
 )
 
 # ── Tool classification ──────────────────────────────────────────────────────
@@ -395,6 +396,7 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "bulk_update_work_packages",
         "delete_work_package",
         "add_work_package_comment",
+        "update_work_package_comment",
         "toggle_activity_emoji_reaction",
         "create_work_package_reminder",
         "update_reminder",

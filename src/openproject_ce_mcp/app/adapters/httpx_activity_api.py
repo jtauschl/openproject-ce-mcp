@@ -98,3 +98,11 @@ class HttpxActivityApi:
 
     async def get_raw(self, activity_id: int) -> dict[str, Any]:
         return await self._transport.get_json(f"activities/{activity_id}")
+
+    async def update_comment(self, activity_id: int, *, comment: str) -> dict[str, Any]:
+        # A plain string, not the {"raw": ...} object the published API spec
+        # shows: the endpoint declares `requires :comment, type: String` (16.0
+        # through dev) and rejects the object as "comment is invalid". It maps
+        # the string onto the journal's notes and nothing else, so there is no
+        # internal flag to send here.
+        return await self._transport.patch_json(f"activities/{activity_id}", json_body={"comment": comment})
