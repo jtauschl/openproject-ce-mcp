@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 import pytest
 
 _PATH = Path(__file__).resolve().parents[1] / "tools" / "measure-context.py"
@@ -73,3 +74,11 @@ def test_response_measurement_is_skipped_without_a_live_instance(monkeypatch, ca
         monkeypatch.delenv(name, raising=False)
 
     assert asyncio.run(measure_context.measure_response_sizes()) is None
+
+
+async def test_raw_baseline_waits_as_long_as_the_operator_configured(monkeypatch):
+    monkeypatch.setenv("OPENPROJECT_TIMEOUT", "37")
+    settings = measure_context._measurement_settings("https://op.example.com", "token", "TST")
+
+    async with measure_context._raw_api(settings) as http:
+        assert (settings.timeout, http.timeout) == (37.0, httpx.Timeout(37.0))
