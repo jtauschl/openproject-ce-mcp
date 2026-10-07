@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import Mock, patch
 
 import httpx
@@ -679,12 +680,15 @@ async def test_stdio_handshake_timeout(make_doctor_settings, monkeypatch, capsys
 # Config-file permission tests
 
 
-def test_config_permissions_warns_on_unsafe_mode(tmp_path, monkeypatch, capsys):
-    """A config file readable/writable by group or other should warn."""
-    import openproject_ce_mcp.doctor as doctor_module
-    from openproject_ce_mcp.doctor import _check_config_permissions
+# The POSIX branch only runs where the filesystem keeps POSIX mode bits;
+# Windows ignores chmod, so these could only pass there by accident.
+posix_mode_bits = pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX mode bits")
 
-    monkeypatch.setattr(doctor_module, "_IS_WINDOWS", False)
+
+@posix_mode_bits
+def test_config_permissions_warns_on_unsafe_mode(tmp_path, capsys):
+    """A config file readable/writable by group or other should warn."""
+    from openproject_ce_mcp.doctor import _check_config_permissions
 
     config_file = tmp_path / "config.json"
     config_file.write_text("{}")
@@ -697,12 +701,10 @@ def test_config_permissions_warns_on_unsafe_mode(tmp_path, monkeypatch, capsys):
     assert str(config_file) in captured.err
 
 
-def test_config_permissions_silent_on_safe_mode(tmp_path, monkeypatch, capsys):
+@posix_mode_bits
+def test_config_permissions_silent_on_safe_mode(tmp_path, capsys):
     """A config file restricted to the owner should not warn."""
-    import openproject_ce_mcp.doctor as doctor_module
     from openproject_ce_mcp.doctor import _check_config_permissions
-
-    monkeypatch.setattr(doctor_module, "_IS_WINDOWS", False)
 
     config_file = tmp_path / "config.json"
     config_file.write_text("{}")
