@@ -2091,3 +2091,30 @@ class ContainerAttachmentWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: AttachmentSummary | None
+
+
+@dataclass
+class PrincipalCollectionResult(CollectionResult):
+    """Principals OpenProject offers for one slot (assignee, watcher, ...) --
+    an unpaginated collection, unlike list_principals' search."""
+
+    results: list[PrincipalSummary]
+
+
+@dataclass
+class RelationCandidateSummary:
+    """A work package OpenProject would accept as the other end of a new
+    relation. Deliberately narrow (no description or custom fields): enough to
+    pick one, then get_work_package for the rest."""
+
+    id: int
+    display_id: str | None
+    subject: str
+    type: str | None
+    status: str | None
+    project: str | None
+
+
+@dataclass
+class RelationCandidateListResult(CollectionResult):
+    results: list[RelationCandidateSummary]

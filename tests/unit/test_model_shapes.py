@@ -111,6 +111,7 @@ EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
         "total_sums",
         "exact_match",
     ],
+    "RelationCandidateListResult": ["count", "results"],
     "WorkingDayListResult": ["count", "results"],
 }
 

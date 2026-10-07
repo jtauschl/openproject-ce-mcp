@@ -6152,6 +6152,59 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "work_package",
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
     },
+    "list_work_package_available_relation_candidates": {
+        "description_hash": "30543004ee503611519bcdaab26281025e8af918e8cef8a1987505f426fc54e1",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Work Package Id"},
+                "query": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Query"},
+                "relation_type": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Relation Type",
+                },
+                "limit": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Limit"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_available_relation_candidatesArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
+    "list_available_assignees": {
+        "description_hash": "9e1b6eab64c6fe00e7df6c93ec7d635edebaebab453625572696408dd4a8f632",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Work Package Id",
+                },
+                "project": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Project"},
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Select",
+                },
+            },
+            "title": "list_available_assigneesArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+    },
     "create_container_attachment": {
         "description_hash": "49e26c0cb5bfecb5fdfc895203e2345442315d9d9e218f6428116860263b0564",
         "input_schema": {

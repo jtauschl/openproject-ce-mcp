@@ -360,6 +360,8 @@ has
 | `update_reminder` | Validate and then update a reminder's time or note |
 | `delete_reminder` | Validate and then delete a reminder; only deletes when called again with `confirm=true` |
 | `list_my_open_work_packages` | List the current user's open assigned work packages |
+| `list_available_assignees` | List the users and groups OpenProject accepts as assignee, for a work package or (before it exists) for a project |
+| `list_work_package_available_relation_candidates` | List work packages that can be the other end of a new relation, optionally by text and relation type |
 | `list_work_package_watchers` | List watchers on a work package |
 | `set_work_package_watcher` | Add or remove a user as a watcher on a work package, based on `watching` |
 | `list_work_package_file_links` | List Nextcloud file links attached to a work package (Community Edition) |

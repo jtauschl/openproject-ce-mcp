@@ -60,6 +60,7 @@ from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
 from .app.adapters.httpx_wiki_page_link_api import HttpxWikiPageLinkApi
 from .app.adapters.httpx_work_package_api import HttpxWorkPackageApi
 from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+from .app.adapters.httpx_work_package_picker_api import HttpxWorkPackagePickerApi
 from .app.caches import SingletonCache
 
 # AuthenticationError/PermissionDeniedError/its three OPM-2708 subclasses
@@ -141,6 +142,7 @@ from .app.ports.wiki_page_api import WikiPageApi
 from .app.ports.wiki_page_link_api import WikiPageLinkApi
 from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
+from .app.ports.work_package_picker_api import WorkPackagePickerApi
 from .app.resolvers.assignee_resolver import AssigneeResolver
 from .app.resolvers.current_user_resolver import CurrentUserResolver
 from .app.resolvers.principal_resolver import PrincipalResolver
@@ -198,6 +200,7 @@ from .app.services.view_service import ViewService
 from .app.services.watcher_service import WatcherService
 from .app.services.wiki_page_link_service import WikiPageLinkService
 from .app.services.wiki_page_service import WikiPageService
+from .app.services.work_package_picker_service import WorkPackagePickerService
 
 # CLEAR/CLEAR_VERSION/CLEAR_PARENT are canonically defined in
 # app/services/work_package_service.py (this domain's write-path migration
@@ -683,6 +686,15 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
+        self._work_package_picker_api: WorkPackagePickerApi = HttpxWorkPackagePickerApi(HttpxTransport(self._http))
+        self._work_package_picker_service = WorkPackagePickerService(
+            api=self._work_package_picker_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_project_ref=self._get_project_payload,
+        )
+
         self._wiki_page_link_api: WikiPageLinkApi = HttpxWikiPageLinkApi(HttpxTransport(self._http))
         self._wiki_page_link_service = WikiPageLinkService(
             api=self._wiki_page_link_api,
@@ -1000,6 +1012,11 @@ class OpenProjectClient:
     def document(self) -> DocumentService:
         """Same object as `self._document_service` -- a named view, not a second implementation."""
         return self._document_service
+
+    @property
+    def work_package_picker(self) -> WorkPackagePickerService:
+        """Same object as `self._work_package_picker_service` -- a named view, not a second implementation."""
+        return self._work_package_picker_service
 
     @property
     def emoji_reaction(self) -> EmojiReactionService:

@@ -185,6 +185,10 @@ from .tools_watchers import (  # noqa: F401 -- @register_tool side effect; re-ex
     list_work_package_watchers,
     set_work_package_watcher,
 )
+from .tools_work_package_pickers import (  # noqa: F401 -- @register_tool side effect; re-exported for consistency
+    list_available_assignees,
+    list_work_package_available_relation_candidates,
+)
 from .tools_work_packages import (  # noqa: F401 -- @register_tool side effect; re-exported, test_trimming.py/test_tool_validation.py/test_work_package_tools.py import several of these from here
     add_work_package_comment,
     bulk_create_work_packages,
@@ -287,6 +291,8 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_attachment_content",
         "list_work_package_file_links",
         "list_work_package_watchers",
+        "list_available_assignees",
+        "list_work_package_available_relation_candidates",
         "list_statuses",
         "get_status",
         "list_priorities",
@@ -525,6 +531,8 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_attachment_content",
         "list_work_package_file_links",
         "list_work_package_watchers",
+        "list_available_assignees",
+        "list_work_package_available_relation_candidates",
         "list_time_entry_activities",
         "list_time_entries",
         "get_time_entry",
