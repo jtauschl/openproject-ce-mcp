@@ -9,7 +9,7 @@ categorization, and the return-model/select-trimming machinery.
 
 Strictly one-directional: this module never imports from `tools.py`, any
 `tools_<domain>.py`, or `app/` -- it only imports from `.client`, `.models`,
-`.presentation`, and stdlib/`mcp`. Which tools exist and which scope/policy
+`.presentation`, `.tool_errors`, and stdlib/`mcp`. Which tools exist and which scope/policy
 gates them is Catalog/Policy concern, owned by `tools.py`, not this module --
 `register_selected_tools()` takes an already-decided iterable of tool names,
 never `Settings` or the classification tables themselves.
@@ -39,6 +39,7 @@ from .client import (
     TransportError,
 )
 from .presentation import ContentBundle, _to_payload
+from .tool_errors import ToolCallError, ToolInputError
 
 # Resolves every classified tool name (via @register_tool below) to its
 # actual function object. Explicit registration, not module-namespace
@@ -183,14 +184,13 @@ async def _run_tool(awaitable):
     try:
         return await awaitable
     except InvalidInputError as exc:
-        # Validation failures surface as ValueError; everything else as RuntimeError.
-        raise ValueError(_prefix("validation_error", str(exc))) from exc
+        raise ToolInputError(_prefix("validation_error", str(exc))) from exc
     except OpenProjectError as exc:
         category = next(
             (cat for typ, cat in _ERROR_CATEGORY.items() if isinstance(exc, typ)),
             "openproject_error",
         )
-        raise RuntimeError(_prefix(category, str(exc))) from exc
+        raise ToolCallError(_prefix(category, str(exc))) from exc
 
 
 def _return_model(fn: Any) -> type | None:
@@ -288,6 +288,6 @@ def _categorize_tool_errors(fn):
         try:
             return await fn(*args, **kwargs)
         except ValueError as exc:
-            raise ValueError(_prefix("validation_error", str(exc))) from exc
+            raise ToolInputError(_prefix("validation_error", str(exc))) from exc
 
     return wrapper

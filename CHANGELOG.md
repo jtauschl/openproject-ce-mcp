@@ -23,6 +23,12 @@ development baseline.
 - `list_time_entry_activities` failed outright on servers that answer the
   `time_entries/activities` probe with HTTP 400 instead of 404; the
   per-project fallback now runs in that case too.
+- With `mcp` 2.1 or later installed, rejected input and failed OpenProject
+  calls reached the agent only as "Error executing tool <name>"; the error
+  category and message are shown again.
+- With `mcp` 2.1 or later installed, a call with an unknown argument was
+  logged as a server crash with a traceback; it is now logged as a rejected
+  call.
 
 ## [0.4.1] - 2026-09-22
 

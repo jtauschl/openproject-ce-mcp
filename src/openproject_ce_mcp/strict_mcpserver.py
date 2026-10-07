@@ -8,6 +8,8 @@ from mcp import types
 from mcp.server.mcpserver import MCPServer
 from mcp.types import Icon, ToolAnnotations
 
+from .tool_errors import ToolInputError
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +43,7 @@ class StrictMCPServer(MCPServer):
             allowed = set(tool.parameters.get("properties", {}).keys())
             unknown = sorted(set(arguments.keys()) - allowed)
             if unknown:
-                raise ValueError(
+                raise ToolInputError(
                     f"[validation_error] Unknown argument(s) for tool "
                     f"'{name}': {', '.join(unknown)}. "
                     f"Allowed arguments: {', '.join(sorted(allowed))}"
@@ -97,9 +99,8 @@ async def verify_strict_dispatch(mcp: StrictMCPServer) -> None:
     dispatch path directly), but appropriate for a startup check that must
     run fast and deterministically on every launch. A separate test
     (test_strict_mcpserver.py) additionally exercises the real client-server
-    roundtrip via ``mcp.shared.memory.create_client_server_memory_streams``
-    to catch SDK changes to serialization/dispatch/middleware this direct
-    call cannot see.
+    roundtrip via the SDK's ``mcp.client.Client`` to catch SDK changes to
+    serialization/dispatch/middleware this direct call cannot see.
     """
     probe_name = "__strict_mcpserver_probe__"
 

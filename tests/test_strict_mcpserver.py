@@ -7,14 +7,15 @@ function directly — a raw-function call would TypeError on an unknown kwarg,
 which is a different failure mode than the silent-drop bug being closed here.
 """
 
-import asyncio
+import logging
+from importlib.metadata import version
 from typing import Any
 
 import pytest
 from mcp import types
-from mcp.client.session import ClientSession
+from mcp.client import Client
 from mcp.server.mcpserver import Context
-from mcp.shared.memory import create_client_server_memory_streams
+from packaging.version import Version
 
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
@@ -128,37 +129,34 @@ async def test_tool_schema_has_top_level_additional_properties_false(strict_mcp:
     assert tool.parameters.get("additionalProperties") is False
 
 
-async def test_unknown_argument_rejected_over_a_real_client_server_roundtrip(strict_mcp: StrictMCPServer) -> None:
+@pytest.mark.parametrize("mode", ["legacy", "auto"])
+async def test_unknown_argument_rejected_over_a_real_client_server_roundtrip(
+    strict_mcp: StrictMCPServer, mode: str
+) -> None:
     """Complements the direct-dispatch tests above (which reach into SDK-internal
-    handler registries) with one full, officially-supported client-server
-    roundtrip: a real ClientSession over in-memory streams, real JSON-RPC
-    serialization, real MCPServer.run() request loop. Catches SDK changes to
-    serialization/dispatch/middleware the direct-dispatch tests cannot see."""
-    async with create_client_server_memory_streams() as (client_streams, server_streams):
-        client_read, client_write = client_streams
-        server_read, server_write = server_streams
-        init_options = strict_mcp._lowlevel_server.create_initialization_options()
+    handler registries) with the SDK's own client: real serialization, real
+    request loop. Catches SDK changes to serialization/dispatch/middleware the
+    direct-dispatch tests cannot see. "legacy" is the initialize handshake
+    today's stdio clients use, "auto" the SDK's newer per-request path."""
+    async with Client(strict_mcp, mode=mode) as client:
+        result = await client.call_tool("plain_tool", {"name": "World", "filters": ["x"]})
+        assert result.is_error is True
+        assert "[validation_error]" in _text(result)
 
-        async def run_server() -> None:
-            await strict_mcp._lowlevel_server.run(server_read, server_write, init_options)
+        valid_result = await client.call_tool("plain_tool", {"name": "World"})
+        assert valid_result.is_error is not True
+        assert "hello, World" in _text(valid_result)
 
-        server_task = asyncio.create_task(run_server())
-        try:
-            async with ClientSession(client_read, client_write) as session:
-                await session.initialize()
-                result = await session.call_tool("plain_tool", {"name": "World", "filters": ["x"]})
-                assert result.is_error is True
-                assert "[validation_error]" in _text(result)
 
-                valid_result = await session.call_tool("plain_tool", {"name": "World"})
-                assert valid_result.is_error is not True
-                assert "hello, World" in _text(valid_result)
-        finally:
-            server_task.cancel()
-            try:
-                await server_task
-            except asyncio.CancelledError:
-                pass
+@pytest.mark.skipif(Version(version("mcp")) < Version("2.1"), reason="mcp 2.0 logs no tool failures")
+async def test_unknown_argument_is_logged_as_a_caller_mistake_not_a_crash(
+    strict_mcp: StrictMCPServer, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="mcp.server.mcpserver"):
+        await _dispatch(strict_mcp, "plain_tool", {"name": "World", "filters": ["x"]})
+
+    failures = [record for record in caplog.records if "plain_tool" in record.getMessage()]
+    assert [(record.levelno, record.exc_info) for record in failures] == [(logging.INFO, None)]
 
 
 # ── regression coverage for the two originally reported bugs ──────────────────
