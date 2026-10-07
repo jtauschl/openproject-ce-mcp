@@ -9,6 +9,8 @@ version is installed (CI's newest-deps job runs them against the latest).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 from mcp import types
@@ -17,6 +19,7 @@ from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 
 import openproject_ce_mcp.tools_runtime as tools_runtime
+from openproject_ce_mcp import tools_work_packages
 from openproject_ce_mcp.client import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.strict_mcpserver import StrictMCPServer
 
@@ -51,10 +54,17 @@ def call_tool(request, monkeypatch) -> CallTool:
         {
             "probe_rejects_input": probe_rejects_input,
             "probe_openproject_denies": probe_openproject_denies,
+            "bulk_create_work_packages": tools_work_packages.bulk_create_work_packages,
+            "bulk_update_work_packages": tools_work_packages.bulk_update_work_packages,
         },
     )
 
-    server = StrictMCPServer("test")
+    # The bulk tools reject their input before they would touch the client.
+    @asynccontextmanager
+    async def no_client(_):
+        yield SimpleNamespace(client=None)
+
+    server = StrictMCPServer("test", lifespan=no_client)
     tools_runtime.register_selected_tools(server, names=tools_runtime._TOOL_FUNCTIONS, hide_active=False)
 
     async def call(name: str, arguments: dict) -> types.CallToolResult:
@@ -76,6 +86,20 @@ async def test_client_sees_the_category_and_message_of_a_refused_openproject_cal
 
     assert result.is_error is True
     assert "[permission_denied] denied by OpenProject" in _text(result)
+
+
+@pytest.mark.parametrize(
+    ("tool", "item", "field"),
+    [
+        ("bulk_create_work_packages", {"project": "TST", "type": "Task", "subject": "s"}, "subject"),
+        ("bulk_update_work_packages", {"work_package_id": 1, "subject": "s"}, "status"),
+    ],
+)
+async def test_client_sees_why_a_confirmed_bulk_write_rejects_its_select(call_tool: CallTool, tool, item, field):
+    result = await call_tool(tool, {"items": [item], "select": ["work_package_id", field], "confirm": True})
+
+    assert result.is_error is True
+    assert f"[validation_error] select field '{field}' is not a valid WorkPackageWriteResult field" in _text(result)
 
 
 async def test_categorised_errors_stay_value_and_runtime_errors_for_python_callers():
