@@ -253,3 +253,14 @@ def test_explicit_version_override_wins_over_the_introduction_version():
 
     assert [assumption.expected_present(v) for v in ("16.6", "17.0", "17.2", "17.3")] == [False, True, False, True]
     assert check_api.Assumption("y", "field", "y").expected_present("16.0")
+
+
+def test_filename_search_matches_names_never_paths(tmp_path):
+    # Like find -name: a "/" or a leading ":" in a symbol is part of a name, not path syntax.
+    (tmp_path / "work_packages").mkdir()
+    (tmp_path / "work_packages" / "schema_api.rb").write_text("")
+
+    assert check_api._find_any(tmp_path, "*schema_api*")
+    assert check_api._find_any(tmp_path, "work_packages")
+    assert not check_api._find_any(tmp_path, "*work_packages/schema*")
+    assert not check_api._find_any(tmp_path, "*:displayId*")

@@ -28,10 +28,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from op_sources import SOURCES, MissingCheckoutError, pinned_versions, require_checkouts, version_key
@@ -236,9 +238,12 @@ ASSUMPTIONS: list[Assumption] = [
 
 
 def _find_any(root: Path, name_pattern: str) -> bool:
-    """True if any file or directory under `root` (or `root` itself) matches `name_pattern`."""
-    # pathlib, not find(1): Windows ships an unrelated find.exe.
-    return root.match(name_pattern) or next(root.rglob(name_pattern), None) is not None
+    """True if the name of `root` or of anything under it matches `name_pattern`, like `find -name`."""
+    # Not find(1): Windows ships an unrelated find.exe. Not Path.rglob: it reads
+    # the pattern as a path, so a symbol such as ":displayId" is a drive on Windows.
+    return fnmatchcase(root.name, name_pattern) or any(
+        fnmatchcase(name, name_pattern) for _, dirs, files in os.walk(root) for name in (*dirs, *files)
+    )
 
 
 def _present(version: str, asm: Assumption) -> bool:
