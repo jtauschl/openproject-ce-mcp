@@ -13,6 +13,9 @@ development baseline.
 
 - Bumped `pyjwt` and `urllib3` to fix known vulnerabilities in transitive
   dependencies.
+- `list_work_packages` without a project counted the work packages of
+  projects that matched only `OPENPROJECT_WRITE_PROJECTS` in its total, group
+  counts and sums; the work packages themselves were already left out.
 
 ### Changed
 

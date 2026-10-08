@@ -1141,7 +1141,7 @@ class WorkPackageService:
             total_is_scope_safe = True
         elif not total_is_scope_safe:
             await self._readable_projects.ensure_fresh()
-            allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
+            allowed_ids = [str(pid) for pid in sorted(self._readable_projects.readable_project_ids())]
             if not allowed_ids:
                 raise PermissionDeniedError(
                     "OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS."

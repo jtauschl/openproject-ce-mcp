@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from collections.abc import Iterable
 
 import pytest
 from _client_test_helpers import make_settings
@@ -354,11 +355,15 @@ def _bulk_from_single(single):
 
 
 class _ReadableIds:
-    def __init__(self) -> None:
+    def __init__(self, readable: Iterable[int]) -> None:
+        self._readable = frozenset(readable)
         self.ensure_fresh_calls = 0
 
     async def ensure_fresh(self) -> None:
         self.ensure_fresh_calls += 1
+
+    def readable_project_ids(self) -> frozenset[int]:
+        return self._readable
 
 
 def _service(
@@ -419,7 +424,7 @@ def _service(
         api=fake_api,
         settings=settings or make_settings(),
         project_id_to_identifier=known_projects,
-        readable_projects=readable_projects or _ReadableIds(),
+        readable_projects=readable_projects or _ReadableIds(known_projects),
         resolve_project_ref=resolve_project_ref,
         resolve_type_id=resolve_type_id,
         resolve_version_id=resolve_version_id,
@@ -574,14 +579,15 @@ async def test_list_exposes_real_total_when_restricted_scope_filter_sent() -> No
 
 
 @pytest.mark.asyncio
-async def test_list_rescans_known_projects_before_filtering_on_them() -> None:
-    """A project created elsewhere since the last scan must be able to join the filter."""
+async def test_list_filters_on_freshly_readable_projects_not_on_every_known_one() -> None:
+    """A project allowlisted only for writes is known to the link checks but
+    must not widen the read filter."""
     api = _FakeWorkPackageApi(raw_elements=[_payload(1)], server_total=1)
-    readable_projects = _ReadableIds()
+    readable_projects = _ReadableIds({1})
     service, _ = _service(
         api,
-        settings=dataclasses.replace(make_settings(), read_projects=("demo",)),
-        project_id_to_identifier={1: "demo"},
+        settings=dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("ops",)),
+        project_id_to_identifier={1: "demo", 2: "ops"},
         readable_projects=readable_projects,
     )
 
