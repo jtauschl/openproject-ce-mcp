@@ -126,7 +126,7 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
         )
         if select is not None and is_bare_entity:
             return _select_fields(value, select, elide_none=elide_none)
-        drop_payload = getattr(value, "state", None) == "confirmed" and _has_field(value, "payload")
+        drop_payload = _drops_payload(value)
         is_list_result = row_field_name == "results"
         hidden = getattr(value, "_hidden_keys", ())
         out: dict[str, Any] = {}
@@ -166,6 +166,10 @@ def _has_field(value: Any, name: str) -> bool:
     return any(f.name == name for f in dataclass_fields(value))
 
 
+def _drops_payload(value: Any) -> bool:
+    return getattr(value, "state", None) == "confirmed" and _has_field(value, "payload")
+
+
 # Rows that wrap a single nested entity instead of being the entity itself.
 # `select` trims the nested entity; the row's own non-None wrapper fields
 # (id/success/error, or index/success/error) survive regardless of `select`,
@@ -194,7 +198,10 @@ def _select_fields(row: Any, select: frozenset[str], *, elide_none: bool) -> Any
     always emitted, even when its value is ``None`` — this is what lets a
     caller distinguish "this field is unset" from "this field was never
     requested" for select-capable tools. Fields not in ``select``, or in
-    ``hidden``, are omitted entirely regardless of their value.
+    ``hidden``, are omitted entirely regardless of their value. A
+    ``<field>.<name>`` entry selects ``<name>`` inside the entity held by
+    ``<field>``; naming ``<field>`` itself as well keeps that entity whole. A
+    confirmed write's ``payload`` stays dropped even when selected.
 
     ``elide_none`` has no default, deliberately: it is a required, explicit
     parameter (not silently inherited from ``_to_payload``'s own default) so a
@@ -222,15 +229,24 @@ def _select_fields(row: Any, select: frozenset[str], *, elide_none: bool) -> Any
         else:
             # A name that is only a wrapper field says nothing about the entity,
             # so it must not empty it.
-            entity_select = select & {f.name for f in dataclass_fields(nested)}
+            entity_fields = {f.name for f in dataclass_fields(nested)}
+            entity_select = frozenset(name for name in select if name.partition(".")[0] in entity_fields)
             out[nested_field] = (
                 _select_fields(nested, entity_select, elide_none=elide_none)
                 if entity_select
                 else _to_payload(nested, elide_none=elide_none)
             )
         return out
-    return {
-        f.name: _to_payload(getattr(row, f.name), elide_none=elide_none)
-        for f in dataclass_fields(row)
-        if f.name in select and f.name not in hidden
-    }
+    drop_payload = _drops_payload(row)
+    out = {}
+    for f in dataclass_fields(row):
+        if f.name in hidden or (f.name == "payload" and drop_payload):
+            continue
+        value = getattr(row, f.name)
+        if f.name in select:
+            out[f.name] = _to_payload(value, elide_none=elide_none)
+            continue
+        inner = frozenset(name.partition(".")[2] for name in select if name.startswith(f"{f.name}."))
+        if inner:
+            out[f.name] = None if value is None else _select_fields(value, inner, elide_none=elide_none)
+    return out

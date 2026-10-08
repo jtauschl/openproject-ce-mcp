@@ -500,6 +500,94 @@ def test_bulk_select_skips_failed_items_without_crash() -> None:
     assert out["items"][1]["error"] == "boom"
 
 
+# ── select reaches the written work package as result.<field> ─────────────────
+
+
+def _confirmed_item(**detail_overrides) -> m.BulkWorkPackageItemResult:
+    write = _wp_write(state="confirmed")
+    if detail_overrides:
+        write.result = _wp_detail(id=9, display_id="DEMO-9", **detail_overrides)
+    return m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=write)
+
+
+def _bulk_item_result(item: m.BulkWorkPackageItemResult, select: set[str]) -> object:
+    return _to_payload(_bulk_write(items=[item]), select=frozenset(select))["items"][0]["result"]
+
+
+def test_bulk_select_picks_written_work_package_fields_by_path() -> None:
+    selected = _bulk_item_result(_confirmed_item(), {"work_package_id", "result.status", "result.subject"})
+
+    assert selected == {"work_package_id": 9, "result": {"status": "New", "subject": "Subject"}}
+
+
+def test_bulk_select_path_keeps_a_requested_null_field() -> None:
+    assert _bulk_item_result(_confirmed_item(), {"result.version"}) == {"result": {"version": None}}
+
+
+def test_bulk_select_path_on_a_preview_reports_the_missing_work_package_as_null() -> None:
+    item = m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(state="preview"))
+
+    assert _bulk_item_result(item, {"ready", "result.status"}) == {"ready": True, "result": None}
+
+
+def test_bulk_select_whole_result_wins_over_a_path_into_it() -> None:
+    selected = _bulk_item_result(_confirmed_item(), {"result", "result.status"})
+
+    assert selected == {"result": _to_payload(_wp_detail(id=9, display_id="DEMO-9"))}
+
+
+def test_bulk_select_bare_and_prefixed_project_name_different_levels() -> None:
+    item = _confirmed_item(project="Inner")
+
+    assert _bulk_item_result(item, {"project"}) == {"project": "Demo"}
+    assert _bulk_item_result(item, {"result.project"}) == {"result": {"project": "Inner"}}
+
+
+def test_bulk_select_path_respects_hidden_keys_of_the_written_work_package() -> None:
+    item = _confirmed_item()
+    object.__setattr__(item.result.result, "_hidden_keys", frozenset({"subject"}))
+
+    assert _bulk_item_result(item, {"result.subject", "result.status"}) == {"result": {"status": "New"}}
+
+
+def test_confirmed_write_never_returns_its_payload_even_when_selected() -> None:
+    assert _bulk_item_result(_confirmed_item(), {"payload"}) == {}
+    assert _bulk_item_result(_confirmed_item(), {"payload", "result.status"}) == {"result": {"status": "New"}}
+
+
+def test_preview_write_returns_its_payload_when_selected() -> None:
+    item = m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(state="preview"))
+
+    assert _bulk_item_result(item, {"payload"}) == {"payload": _wp_write(state="preview").payload}
+
+
+def test_bulk_select_path_keeps_both_failure_shapes() -> None:
+    rejected = m.WorkPackageWriteResult(
+        action="create",
+        state="rejected",
+        ready=False,
+        message="rejected",
+        work_package_id=None,
+        project="Demo",
+        payload={"subject": ""},
+        validation_errors={"subject": "can't be blank"},
+        result=None,
+    )
+    items = [
+        m.BulkWorkPackageItemResult(index=0, success=False, error=None, result=rejected),
+        m.BulkWorkPackageItemResult(index=1, success=False, error="boom", result=None),
+    ]
+
+    out = _to_payload(_bulk_write(items=items), select=frozenset({"validation_errors", "result.status"}))
+
+    assert out["items"][0] == {
+        "index": 0,
+        "success": False,
+        "result": {"validation_errors": {"subject": "can't be blank"}, "result": None},
+    }
+    assert out["items"][1] == {"index": 1, "success": False, "error": "boom", "result": None}
+
+
 def test_validate_select_rejects_unknown_field_for_work_package_write_result() -> None:
     with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
         _validate_select(["bogus"], row_type=m.WorkPackageWriteResult)
@@ -669,6 +757,15 @@ async def test_bulk_create_work_packages_select_is_threaded_through_the_register
     # (error=None on this successful item) are still elided -- wrapper fields
     # are never select-targetable.
     assert sorted(k for k in row if k != "result") == ["index", "success"]
+
+    path_result = await fn(
+        _FakeContext(client),
+        items=[{"project": "demo", "type": "Task", "subject": "WP 1"}],
+        select=["ready", "result.status"],
+        confirm=False,
+    )
+
+    assert path_result["items"][0]["result"] == {"ready": True, "result": None}
 
     await client.aclose()
 

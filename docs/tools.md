@@ -58,12 +58,16 @@ raw OpenProject HAL payloads.
 
 Responses are trimmed for context economy: list results omit the derivable
 `count`/`truncated` fields, and a confirmed write omits the echoed request
-`payload` (its normalized `result` carries the same data). `list_work_packages`,
-`search_work_packages`, `list_projects`, `list_users` and the batch-read
-`get_work_packages` accept an optional `select` (a list of field names) to
-return only the fields you need per row (for `get_work_packages`, per fetched
-work package; for `search_work_packages`, also its `exact_match` when present);
-an invalid name returns the allowed set for that row type.
+`payload`, even when selected (its normalized `result` carries the same data).
+`list_work_packages`, `search_work_packages`, `list_projects`, `list_users`,
+the batch-read `get_work_packages` and the bulk writes
+`bulk_create_work_packages`/`bulk_update_work_packages` accept an optional
+`select` (a list of field names) to return only the fields you need per row
+(for `get_work_packages`, per fetched work package; for `search_work_packages`,
+also its `exact_match` when present; for the bulk writes, per item's write
+result, with fields of the written work package selected as `result.<field>`,
+e.g. `["work_package_id", "result.status"]`); an invalid name returns the
+allowed set for that row type.
 
 Beyond the obvious fields, work packages also carry scheduling/derived state
 (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`,

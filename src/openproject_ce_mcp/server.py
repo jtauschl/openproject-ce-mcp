@@ -69,9 +69,10 @@ the authority** — if a tool exists it is allowed; if it does not, it is not.
 
 List and write results are trimmed for context economy: list results omit the
 derivable `count`/`truncated` fields, and a confirmed write omits the echoed
-request `payload` (its normalized `result` carries the same information). Where
-a tool exposes `select` in its input schema, pass it (a list of field names) to
-read only the fields you need; an invalid name returns the allowed set.
+request `payload` even when selected (its normalized `result` carries the same
+information). Where a tool exposes `select` in its input schema, pass it (a list
+of field names) to read only the fields you need; an invalid name returns the
+allowed set.
 
 Trimmed list, write, batch, and bulk results from tools that expose `select`
 normally omit fields whose value is `null` when `select` is not given; empty
@@ -90,10 +91,17 @@ every list tool does; a few return their full unpaginated collection instead),
 regardless of `select` or the tool's trimming behavior — page until it is
 `null`, not until it is absent.
 
+On batch and bulk tools, `select` names fields of each item's entity, inside
+the item's `id`/`index`/`success`/`error` wrapper: for `get_work_packages` the
+work package itself (`["id", "status"]`), for a bulk write the item's write
+result (`["work_package_id", "ready"]`), whose written work package is reached
+as `result.<field>` (`["work_package_id", "result.status"]`).
+
 With `select`, a failed batch-read or bulk-write item retains its nested
 `work_package` / `result` as an explicit `null` (inspect the sibling `error`
-field to see why); without `select`, that same nested field would be omitted
-like any other `null` value.
+field to see why); a bulk item OpenProject rejected keeps its write result with
+`validation_errors` and a `null` work package. Without `select`, that same
+nested field would be omitted like any other `null` value.
 
 ## Clearing an assigned field
 

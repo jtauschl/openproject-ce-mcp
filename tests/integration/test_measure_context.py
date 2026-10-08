@@ -37,6 +37,8 @@ def test_live_measurement_reports_every_table_row_and_returns_the_listed_rows(te
         "update_work_package",
         "bulk_create_work_packages",
         "bulk_update_work_packages",
+        "bulk_create_work_packages with select",
+        "bulk_update_work_packages with select",
     }
     lines = out.splitlines()
     for label in measured:

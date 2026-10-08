@@ -108,9 +108,9 @@ provider may transform or cache the catalog before billing it.
 | --- | ---: | ---: |
 | Fresh install, no project scope | 14 | ~3,677 |
 | Project reads, no writes | 88 | ~37,172 |
-| Work-package writes only | 152 | ~58,007 |
-| Every write scope | 173 | ~63,421 |
-| Every write scope plus extended metadata | 185 | ~65,338 |
+| Work-package writes only | 152 | ~58,037 |
+| Every write scope | 173 | ~63,451 |
+| Every write scope plus extended metadata | 185 | ~65,368 |
 
 The extended metadata group adds 12 rarely used tools and is opt-in through
 `OPENPROJECT_ENABLE_EXTENDED_READ=true`; see

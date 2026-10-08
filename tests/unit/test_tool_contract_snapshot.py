@@ -220,7 +220,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_create_work_packages": {
-        "description_hash": "7f0e9a70adcc9878d7e89374756b6baf22e0cd293854711e5d3ce89e54004d19",
+        "description_hash": "0c36427e6393f1f6b1b0eb3d3366cc482730e33f20c98847c8d93be2be19a212",
         "input_schema": {
             "properties": {
                 "items": {"items": {"additionalProperties": True, "type": "object"}, "title": "Items", "type": "array"},

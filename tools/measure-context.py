@@ -10,7 +10,7 @@ in README.md's "How it works" section). Three parts:
    payload both with and without the opt-in metadata tools.
 
 2. **Response-size table** (raw API vs. list/get/search/update/bulk, each with
-   and without MCP trimming) — needs a live OpenProject instance with a few
+   and without MCP trimming, the list and bulk rows also with `select`) — needs a live OpenProject instance with a few
    realistic work packages, since payload size depends on real content
    (description length, populated fields, custom fields) that a synthetic
    fixture can't responsibly claim to represent. Point it at the local
@@ -406,6 +406,11 @@ async def measure_response_sizes() -> list | None:
             json.dumps(raw_bulk_create_parts),
             json.dumps(_to_payload(bulk_create_result)),
         )
+        _report(
+            "bulk_create_work_packages with select (work_package_id, result.subject)",
+            json.dumps(raw_bulk_create_parts),
+            json.dumps(_to_payload(bulk_create_result, select=frozenset({"work_package_id", "result.subject"}))),
+        )
 
         # --- Bulk update ×5: bulk_update_work_packages vs. 5x PATCH /work_packages/{id} ---
         bulk_target_ids = created_ids[-len(bulk_items) :]
@@ -426,6 +431,13 @@ async def measure_response_sizes() -> list | None:
             f"bulk_update_work_packages (x{len(bulk_target_ids)}, vs. {len(bulk_target_ids)} individual raw PATCHes)",
             json.dumps(raw_bulk_update_parts),
             json.dumps(_to_payload(bulk_update_result)),
+        )
+        _report(
+            "bulk_update_work_packages with select (work_package_id, result.percentage_done)",
+            json.dumps(raw_bulk_update_parts),
+            json.dumps(
+                _to_payload(bulk_update_result, select=frozenset({"work_package_id", "result.percentage_done"}))
+            ),
         )
 
     # A fixed 20-row page of the project's newest work packages for Part 3.

@@ -1,11 +1,18 @@
 """Tests for dynamic tool registration in create_app()."""
 
+import json
+
 import pytest
 
 import openproject_ce_mcp.server as server
-from openproject_ce_mcp import __version__
+from openproject_ce_mcp import __version__, models
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
+from openproject_ce_mcp.tools_validation import (
+    BATCH_READ_ITEM_WRAPPER_FIELDS,
+    BULK_ITEM_WRAPPER_FIELDS,
+    _validate_select,
+)
 
 
 def make_settings(**overrides) -> Settings:
@@ -645,3 +652,24 @@ def test_run_server_silent_when_no_legacy_env_vars(monkeypatch, capsys) -> None:
     server._run_server()
 
     assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize(
+    ("example", "row_type", "wrapper_fields", "nested"),
+    [
+        (
+            '["work_package_id", "result.status"]',
+            models.WorkPackageWriteResult,
+            BULK_ITEM_WRAPPER_FIELDS,
+            {"result": models.WorkPackageDetail},
+        ),
+        ('["id", "status"]', models.WorkPackageDetail, BATCH_READ_ITEM_WRAPPER_FIELDS, None),
+    ],
+)
+def test_select_examples_in_the_instructions_are_accepted_by_their_tools(
+    example, row_type, wrapper_fields, nested
+) -> None:
+    assert f"`{example}`" in server.CE_INSTRUCTIONS
+    select = json.loads(example)
+
+    assert _validate_select(select, row_type=row_type, wrapper_fields=wrapper_fields, nested=nested) == select

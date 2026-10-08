@@ -956,3 +956,60 @@ def test_validate_select_accepts_wrapper_fields_without_returning_them() -> None
     assert _validate_select(["index"], row_type=WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS) == []
     with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
         _validate_select(["index"], row_type=WorkPackageWriteResult)
+
+
+def _validate_bulk_select(select: list[str]) -> list[str] | None:
+    from openproject_ce_mcp.models import WorkPackageDetail, WorkPackageWriteResult
+    from openproject_ce_mcp.tools_validation import BULK_ITEM_WRAPPER_FIELDS, _validate_select
+
+    return _validate_select(
+        select,
+        row_type=WorkPackageWriteResult,
+        wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
+        nested={"result": WorkPackageDetail},
+    )
+
+
+def test_validate_select_accepts_a_path_into_the_nested_entity() -> None:
+    assert _validate_bulk_select(["work_package_id", "result.status", "project", "result.project"]) == [
+        "work_package_id",
+        "result.status",
+        "project",
+        "result.project",
+    ]
+
+
+def test_validate_select_names_the_path_for_a_bare_nested_field() -> None:
+    with pytest.raises(
+        ValueError, match=r"'subject' is a field of the WorkPackageDetail in 'result'; select it as 'result\.subject'"
+    ):
+        _validate_bulk_select(["work_package_id", "subject"])
+
+
+def test_validate_select_lists_prefixed_names_for_an_unknown_nested_field() -> None:
+    with pytest.raises(
+        ValueError, match=r"'result\.bogus' is not a valid result field\. Allowed: .*result\.status, result\.subject"
+    ):
+        _validate_bulk_select(["result.bogus"])
+
+
+def test_validate_select_rejects_a_path_deeper_than_one_level() -> None:
+    with pytest.raises(ValueError, match=r"'result\.custom_fields\.x' is not a valid result field"):
+        _validate_bulk_select(["result.custom_fields.x"])
+
+
+def test_validate_select_mentions_the_path_syntax_for_an_unknown_name() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"not a valid WorkPackageWriteResult field\..*Fields of 'result' are selected as 'result\.<field>'",
+    ):
+        _validate_bulk_select(["bogus"])
+
+
+@pytest.mark.parametrize("name", ["work_package.subject", "result.subject"])
+def test_validate_select_without_nested_entities_rejects_paths(name: str) -> None:
+    from openproject_ce_mcp.models import WorkPackageDetail
+    from openproject_ce_mcp.tools_validation import BATCH_READ_ITEM_WRAPPER_FIELDS, _validate_select
+
+    with pytest.raises(ValueError, match=f"'{name}' is not a valid WorkPackageDetail field"):
+        _validate_select([name], row_type=WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS)

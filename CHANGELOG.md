@@ -16,6 +16,10 @@ development baseline.
   irreversible text replacement.
 - List and upload attachments on wiki pages, forum posts, meetings and comments.
 - List available assignees and relation candidates for work packages.
+- `select` on `bulk_create_work_packages` and `bulk_update_work_packages`
+  picks fields of each written work package as `result.<field>`, e.g.
+  `["work_package_id", "result.status"]`; a bare work package field name is
+  rejected with the path to use.
 - CI now installs the built wheel via both `pipx` and `uv tool install` in
   an isolated environment outside the repository, checks `--version`,
   `configure --help`, `doctor --help`, and a bounded MCP stdio startup, and
@@ -72,6 +76,8 @@ development baseline.
 
 ### Changed
 
+- A confirmed bulk write no longer returns an item's echoed `payload` when
+  `select` names it; the normalized `result` carries the same data.
 - **Breaking:** minimum supported Python version raised from 3.10 to 3.11.
   Enables `asyncio.create_task`'s `context=` parameter, which the new
   structured stderr logging needs to keep the `http_requests`/`project_scope`/

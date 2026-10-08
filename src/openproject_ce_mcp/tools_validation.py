@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime
 import functools
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
@@ -917,7 +917,11 @@ BATCH_READ_ITEM_WRAPPER_FIELDS = frozenset({"id", "success", "error"})
 
 
 def _validate_select(
-    select: list[str] | None, *, row_type: type, wrapper_fields: frozenset[str] = frozenset()
+    select: list[str] | None,
+    *,
+    row_type: type,
+    wrapper_fields: frozenset[str] = frozenset(),
+    nested: Mapping[str, type] | None = None,
 ) -> list[str] | None:
     """Validate a field-selection list against a result-row dataclass.
 
@@ -926,22 +930,41 @@ def _validate_select(
     ``wrapper_fields`` are accepted but not returned. The trimming wrapper
     (tools_runtime._normalize_select) reads the same ``select`` kwarg and applies
     it after the result resolves.
+
+    ``nested`` maps a field of ``row_type`` that holds another entity to that
+    entity's dataclass; its fields are selected one level deep as
+    ``<field>.<name>``.
     """
     if select is None:
         return None
+    nested = nested or {}
     valid = {f.name for f in dataclass_fields(row_type)}
+    nested_valid = {prefix: {f.name for f in dataclass_fields(model)} for prefix, model in nested.items()}
     chosen: list[str] = []
     wrapper_only = False
     for raw in select:
         name = str(raw).strip()
-        if name in valid:
+        prefix, _, inner = name.partition(".")
+        if name in valid or (prefix in nested_valid and inner in nested_valid[prefix]):
             if name not in chosen:
                 chosen.append(name)
         elif name in wrapper_fields:
             wrapper_only = True
+        elif inner and prefix in nested_valid:
+            allowed = ", ".join(f"{prefix}.{field}" for field in sorted(nested_valid[prefix]))
+            raise ValueError(f"select field '{name}' is not a valid {prefix} field. Allowed: {allowed}.")
         else:
+            owner = next((p for p, fields in nested_valid.items() if not inner and name in fields), None)
+            if owner is not None:
+                raise ValueError(
+                    f"select field '{name}' is a field of the {nested[owner].__name__} in '{owner}'; "
+                    f"select it as '{owner}.{name}'."
+                )
             allowed = ", ".join(sorted(valid | wrapper_fields))
-            raise ValueError(f"select field '{name}' is not a valid {row_type.__name__} field. Allowed: {allowed}.")
+            hint = "".join(f" Fields of '{p}' are selected as '{p}.<field>'." for p in sorted(nested_valid))
+            raise ValueError(
+                f"select field '{name}' is not a valid {row_type.__name__} field. Allowed: {allowed}.{hint}"
+            )
     if not chosen and not wrapper_only:
         raise ValueError("select must contain at least one field name.")
     return chosen

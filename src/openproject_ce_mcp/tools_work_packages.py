@@ -945,7 +945,9 @@ async def bulk_create_work_packages(
     `error`, and nested `result` rather than the MCP error envelope.
 
     select restricts each item's nested result to the given fields (e.g.
-    ["ready", "work_package_id"]); an invalid name returns the allowed set. The
+    ["ready", "work_package_id"]); an invalid name returns the allowed set.
+    Fields of the written work package are selected as result.<field> (e.g.
+    ["work_package_id", "result.status"]). The
     index/success/error fields on each item are always included regardless of
     select, so you can still tell which items succeeded; listing them in select
     is accepted and changes nothing. For batches with many
@@ -969,7 +971,12 @@ async def bulk_create_work_packages(
     client = _client_from_context(ctx)
     if not items:
         raise ValueError("items must not be empty.")
-    _validate_select(select, row_type=WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS)
+    _validate_select(
+        select,
+        row_type=WorkPackageWriteResult,
+        wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
+        nested={"result": WorkPackageDetail},
+    )
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):
         if not isinstance(item, dict):
@@ -1102,7 +1109,12 @@ async def bulk_update_work_packages(
     client = _client_from_context(ctx)
     if not items:
         raise ValueError("items must not be empty.")
-    _validate_select(select, row_type=WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS)
+    _validate_select(
+        select,
+        row_type=WorkPackageWriteResult,
+        wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
+        nested={"result": WorkPackageDetail},
+    )
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):
         if not isinstance(item, dict):

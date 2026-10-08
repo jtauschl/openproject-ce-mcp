@@ -100,8 +100,10 @@ async def test_bulk_create_with_a_work_package_field_in_select_reports_why_and_w
         )
 
     assert result.is_error is True
-    assert "[VALIDATION_FAILED] select field 'subject' is not a valid WorkPackageWriteResult field" in _text(result)
-    assert "work_package_id" in _text(result).split("Allowed:")[1]
+    assert (
+        "[VALIDATION_FAILED] select field 'subject' is a field of the WorkPackageDetail in 'result'; select it as 'result.subject'."
+        in _text(result)
+    )
     written = await _ids_matching(client, test_project, marker)
     wp_ids.extend(written)
     assert written == []
@@ -125,5 +127,46 @@ async def test_bulk_update_with_a_work_package_field_in_select_reports_why_and_w
         )
 
     assert result.is_error is True
-    assert "[VALIDATION_FAILED] select field 'status' is not a valid WorkPackageWriteResult field" in _text(result)
+    assert (
+        "[VALIDATION_FAILED] select field 'status' is a field of the WorkPackageDetail in 'result'; select it as 'result.status'."
+        in _text(result)
+    )
     assert (await client.work_package.get(created.work_package_id)).subject == subject
+
+
+async def test_confirmed_bulk_writes_select_written_work_package_fields_by_path(
+    mcp_server: StrictMCPServer,
+    client: OpenProjectClient,
+    test_project: str,
+    wp_ids: list[int],
+) -> None:
+    marker = f"[integration-test] bulk select path {uuid.uuid4().hex[:8]}"
+    async with _connect(mcp_server) as mcp:
+        created = await _call_ok(
+            mcp,
+            "bulk_create_work_packages",
+            {
+                "items": [{"project": test_project, "type": "Task", "subject": marker}],
+                "select": ["work_package_id", "result.subject"],
+                "confirm": True,
+            },
+        )
+        wp_id = created["items"][0]["result"]["work_package_id"]
+        wp_ids.append(wp_id)
+        updated = await _call_ok(
+            mcp,
+            "bulk_update_work_packages",
+            {
+                "items": [{"work_package_id": wp_id, "subject": f"{marker} renamed"}],
+                "select": ["work_package_id", "result.subject"],
+                "confirm": True,
+            },
+        )
+
+    assert created["items"] == [
+        {"index": 0, "success": True, "result": {"work_package_id": wp_id, "result": {"subject": marker}}}
+    ]
+    assert updated["items"] == [
+        {"index": 0, "success": True, "result": {"work_package_id": wp_id, "result": {"subject": f"{marker} renamed"}}}
+    ]
+    assert (await client.work_package.get(wp_id)).subject == f"{marker} renamed"
