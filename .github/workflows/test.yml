@@ -122,7 +122,9 @@ jobs:
   # declared ranges (mcp>=2,<3 above all) gets caught here instead of by a
   # real user.
   test-newest-deps:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Also on push: a new SDK release can change behaviour between the weekly
+    # runs, and only release-branch pushes exercise the code about to ship.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -134,6 +136,50 @@ jobs:
 
       - name: Install dependencies at their newest allowed versions
         run: uv sync --dev --upgrade
+
+      - name: Run tests
+        run: uv run pytest
+
+  # The other end of the declared ranges: uv.lock follows the newest releases,
+  # so without this job nothing would show that a range's lower bound
+  # (mcp>=2 above all) still works.
+  test-lowest-deps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Job-wide, not a sync flag: a plain `uv run` would otherwise re-lock at
+    # the newest versions and test those instead.
+    env:
+      UV_RESOLUTION: lowest-direct
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install direct dependencies at their lowest allowed versions
+        run: uv sync --dev
+
+      - name: Check every direct dependency sits on its declared lower bound
+        run: |
+          uv run python - <<'EOF'
+          import importlib.metadata as metadata
+
+          from packaging.requirements import Requirement
+          from packaging.version import Version
+
+          off_floor = []
+          for raw in metadata.requires("openproject-ce-mcp") or []:
+              requirement = Requirement(raw)
+              if requirement.marker and not requirement.marker.evaluate({"extra": "dev"}):
+                  continue
+              floor = next((spec.version for spec in requirement.specifier if spec.operator == ">="), None)
+              installed = metadata.version(requirement.name)
+              print(f"{requirement.name} {installed} (floor {floor})")
+              if floor is not None and Version(installed) != Version(floor):
+                  off_floor.append(f"{requirement.name} {installed} (floor {floor})")
+          assert not off_floor, f"not at the declared lower bound: {off_floor}"
+          EOF
 
       - name: Run tests
         run: uv run pytest

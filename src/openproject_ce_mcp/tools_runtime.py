@@ -9,7 +9,7 @@ categorization, and the return-model/select-trimming machinery.
 
 Strictly one-directional: this module never imports from `tools.py`, any
 `tools_<domain>.py`, or `app/` -- it only imports from `.client`, `.models`,
-`.presentation`, `.http_request_counter`/`.policy_observation`/
+`.presentation`, `.tool_errors`, `.http_request_counter`/`.policy_observation`/
 `.logging_support` (OPM-2709's structured-logging plumbing, also
 package-root modules, not `app/`), and stdlib/`mcp`. Which tools exist and
 which scope/policy gates them is Catalog/Policy concern, owned by `tools.py`,
@@ -41,6 +41,7 @@ from .client import (
 )
 from .logging_support import ToolCallLogRecord
 from .presentation import ContentBundle, _to_payload
+from .tool_errors import ToolCallError, ToolInputError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -191,7 +192,7 @@ def _prefix(category: str, message: str) -> str:
     return f"[{category}] {message}"
 
 
-def _categorize_openproject_error(exc: OpenProjectError) -> ValueError | RuntimeError:
+def _categorize_openproject_error(exc: OpenProjectError) -> ToolInputError | ToolCallError:
     """Map any OpenProjectError to its coded, agent-facing exception.
 
     Shared by `_run_tool` (the normal path, wrapping a client/service call)
@@ -205,12 +206,11 @@ def _categorize_openproject_error(exc: OpenProjectError) -> ValueError | Runtime
     `ValueError` by the time it gets there) for OPM-2709's structured log
     line, without parsing the `[CODE]`-prefixed message string back apart.
     """
-    translated: ValueError | RuntimeError
+    translated: ToolInputError | ToolCallError
     if isinstance(exc, InvalidInputError):
-        # Validation failures surface as ValueError; everything else as RuntimeError.
-        translated = ValueError(_prefix(exc.code, str(exc)))
+        translated = ToolInputError(_prefix(exc.code, str(exc)))
     else:
-        translated = RuntimeError(_prefix(exc.code, str(exc)))
+        translated = ToolCallError(_prefix(exc.code, str(exc)))
     translated.code = exc.code  # type: ignore[union-attr]
     translated.layer = exc.layer  # type: ignore[union-attr]
     return translated
@@ -367,7 +367,7 @@ def _categorize_tool_errors(fn):
                 raise
             error_code, layer = "VALIDATION_FAILED", "validation"
             _emit_tool_call_log(fn.__name__, "error", start, error_code, layer, request_id, LOGGER.warning)
-            raise ValueError(_prefix("VALIDATION_FAILED", str(exc))) from exc
+            raise ToolInputError(_prefix("VALIDATION_FAILED", str(exc))) from exc
         except RuntimeError as exc:
             # Only a RuntimeError already coded by _run_tool via
             # _categorize_openproject_error (which attaches .code/.layer to
@@ -387,7 +387,7 @@ def _categorize_tool_errors(fn):
             error_code, layer = "INTERNAL_ERROR", "internal"
             LOGGER.exception("Unhandled exception in tool %s", fn.__name__)
             _emit_tool_call_log(fn.__name__, "error", start, error_code, layer, request_id, LOGGER.warning)
-            raise RuntimeError(_prefix("INTERNAL_ERROR", "An internal error occurred.")) from exc
+            raise ToolCallError(_prefix("INTERNAL_ERROR", "An internal error occurred.")) from exc
         except OpenProjectError as exc:
             # Some tool body calls a raising API directly without going
             # through _run_tool -- give it its own real code via the same
@@ -400,7 +400,7 @@ def _categorize_tool_errors(fn):
             error_code, layer = "INTERNAL_ERROR", "internal"
             LOGGER.exception("Unhandled exception in tool %s", fn.__name__)
             _emit_tool_call_log(fn.__name__, "error", start, error_code, layer, request_id, LOGGER.warning)
-            raise RuntimeError(_prefix("INTERNAL_ERROR", "An internal error occurred.")) from exc
+            raise ToolCallError(_prefix("INTERNAL_ERROR", "An internal error occurred.")) from exc
         else:
             _emit_tool_call_log(fn.__name__, "success", start, None, None, request_id, LOGGER.info)
             return result

@@ -236,11 +236,9 @@ ASSUMPTIONS: list[Assumption] = [
 
 
 def _find_any(root: Path, name_pattern: str) -> bool:
-    """True if `find <root> -name <name_pattern>` matches at least one file."""
-    found = subprocess.run(
-        ["find", str(root), "-name", name_pattern], capture_output=True, text=True, check=False
-    ).stdout.strip()
-    return bool(found)
+    """True if any file or directory under `root` (or `root` itself) matches `name_pattern`."""
+    # pathlib, not find(1): Windows ships an unrelated find.exe.
+    return root.match(name_pattern) or next(root.rglob(name_pattern), None) is not None
 
 
 def _present(version: str, asm: Assumption) -> bool:
@@ -266,7 +264,7 @@ def _present(version: str, asm: Assumption) -> bool:
             return True
         # Filename match (for *_api.rb / directory-name patterns).
         return _find_any(base, f"*{asm.pattern}*")
-    except FileNotFoundError as exc:  # grep/find missing
+    except FileNotFoundError as exc:  # grep missing
         print(f"error: required tool not found: {exc}", file=sys.stderr)
         raise
 

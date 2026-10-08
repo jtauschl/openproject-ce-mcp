@@ -13,6 +13,7 @@ from mcp.types import Icon, ToolAnnotations
 
 from . import http_request_counter, policy_observation
 from .logging_support import ToolCallLogRecord
+from .tool_errors import ToolInputError
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ class StrictMCPServer(MCPServer):
                     f"Allowed arguments: {', '.join(sorted(allowed))}"
                 )
                 self._emit_dispatch_error_log(name, start, request_id)
-                raise ValueError(message)
+                raise ToolInputError(message)
         try:
             return await super().call_tool(name, arguments, context)
         except ToolError as exc:
@@ -122,7 +123,9 @@ class StrictMCPServer(MCPServer):
                 field_errors = "; ".join(
                     f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in exc.__cause__.errors()
                 )
-                raise ValueError(f"[VALIDATION_FAILED] Invalid argument(s) for tool '{name}': {field_errors}") from exc
+                raise ToolInputError(
+                    f"[VALIDATION_FAILED] Invalid argument(s) for tool '{name}': {field_errors}"
+                ) from exc
             raise
 
     @staticmethod
@@ -206,9 +209,8 @@ async def verify_strict_dispatch(mcp: StrictMCPServer) -> None:
     dispatch path directly), but appropriate for a startup check that must
     run fast and deterministically on every launch. A separate test
     (test_strict_mcpserver.py) additionally exercises the real client-server
-    roundtrip via ``mcp.shared.memory.create_client_server_memory_streams``
-    to catch SDK changes to serialization/dispatch/middleware this direct
-    call cannot see.
+    roundtrip via the SDK's ``mcp.client.Client`` to catch SDK changes to
+    serialization/dispatch/middleware this direct call cannot see.
     """
     probe_name = _STRICT_DISPATCH_PROBE_NAME
 

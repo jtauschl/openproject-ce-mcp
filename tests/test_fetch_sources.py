@@ -3,12 +3,17 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import op_sources
 import pytest
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "api-check" / "fetch-sources.sh"
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="fetch-sources.sh is a POSIX shell tool for maintainer machines"
+)
 
 
 @pytest.fixture

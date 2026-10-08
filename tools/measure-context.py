@@ -56,6 +56,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import httpx
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
@@ -201,6 +203,31 @@ def _report(label: str, raw_json: str, mcp_json: str) -> None:
     print(f"  MCP: {len(mcp_json)} bytes, ~{mcp_tokens} tokens (-{pct}% vs. raw)\n")
 
 
+def _measurement_settings(base_url: str, token: str, project: str) -> Settings:
+    env = {
+        "OPENPROJECT_BASE_URL": base_url,
+        "OPENPROJECT_API_TOKEN": token,
+        "OPENPROJECT_READ_PROJECTS": project,
+        "OPENPROJECT_WRITE_PROJECTS": project,
+        "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+    }
+    if timeout := os.environ.get("OPENPROJECT_TIMEOUT"):
+        env["OPENPROJECT_TIMEOUT"] = timeout
+    return Settings.from_env(env)
+
+
+def _raw_api(settings: Settings) -> httpx.AsyncClient:
+    """Client for the raw REST baseline the MCP responses are compared with."""
+    # httpx's 5 s default is shorter than a busy instance's first write; both
+    # sides of the comparison wait as long as the MCP client does.
+    return httpx.AsyncClient(
+        base_url=settings.base_url,
+        auth=httpx.BasicAuth("apikey", settings.api_token),
+        verify=settings.verify_ssl,
+        timeout=settings.timeout,
+    )
+
+
 async def measure_response_sizes() -> list | None:
     base_url = os.environ.get("OPENPROJECT_BASE_URL")
     token = os.environ.get("OPENPROJECT_API_TOKEN")
@@ -214,25 +241,14 @@ async def measure_response_sizes() -> list | None:
         )
         return None
 
-    import httpx
-
-    settings = Settings.from_env(
-        {
-            "OPENPROJECT_BASE_URL": base_url,
-            "OPENPROJECT_API_TOKEN": token,
-            "OPENPROJECT_READ_PROJECTS": project,
-            "OPENPROJECT_WRITE_PROJECTS": project,
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
-        }
-    )
+    settings = _measurement_settings(base_url, token, project)
     client = OpenProjectClient(settings)
     await client.initialize()
-    auth = httpx.BasicAuth("apikey", token)
 
     created_ids = []
     project_id: str | None = None
     run_marker = f"context-measure-{uuid4().hex[:12]}"
-    async with httpx.AsyncClient(base_url=base_url, auth=auth, verify=settings.verify_ssl) as http:
+    async with _raw_api(settings) as http:
         for index, (subject, description) in enumerate(SAMPLE_WORK_PACKAGES):
             if index == 0:
                 subject = f"{subject} [{run_marker}]"
@@ -311,7 +327,7 @@ async def measure_response_sizes() -> list | None:
     )
     print()
 
-    async with httpx.AsyncClient(base_url=base_url, auth=auth, verify=settings.verify_ssl) as http:
+    async with _raw_api(settings) as http:
         # --- Single read: get_work_package vs. GET /work_packages/{id} ---
         single_id = created_ids[0]
         resp = await http.get(f"/api/v3/work_packages/{single_id}")
