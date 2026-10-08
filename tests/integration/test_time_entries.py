@@ -135,7 +135,7 @@ async def test_create_get_update_time_entry_until(
     create_time_entry/update_time_entry `end_time` removal). Uses whole
     seconds throughout: up to OpenProject 17.8 the hours-to-ISO8601-duration API
     serialization truncates (not rounds) a fractional-second remainder (rounds
-    since 17.9.0, #78531) --
+    since 17.9.0, OpenProject work package 78531) --
     verified against a live instance: `hours` itself
     is stored with full float precision (confirmed via a direct DB read),
     but the response serializer builds `Duration.new(seconds: hours * 3600)`

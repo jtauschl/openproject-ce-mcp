@@ -121,7 +121,7 @@ _None — every checked field is modeled or has a documented exclusion._
 ### internal_other
 
 - `work_package.budget` — Budgets are Community Edition (bundled module, no EnterpriseToken guard), but this client doesn't model them yet; tracked as a coverage gap in check_coverage.py's CONFIRMED_GAPS.
-- `work_package.observedInVersions` — New in 17.9 (associated_resources :observed_in_versions, multi-value 'observed in' versions for bugs); not modeled on this line yet -- planned as a target_versions-style read/write field for the next minor.
+- `work_package.observedInVersions` — New in 17.9 (associated_resources :observed_in_versions, multi-value 'observed in' versions for bugs); not modeled on this line.
 - `user.password` — Write-only property (getter: ->(*) {}, render_nil: false) -- never appears in a read response, per user_representer.rb's own '# Write-only properties' comment.
 - `user.currentPassword` — Write-only property (getter: ->(*) {}, render_nil: false), same as password.
 - `work_package.date` — Milestone-only date_property (work_package_representer.rb:380, getter: default_date_getter(:due_date)); this client normalizes it into start_date/due_date at runtime (both get the same value for a milestone) rather than modeling a separate field -- a deliberate composite/semantic mapping, not an unmodeled field.

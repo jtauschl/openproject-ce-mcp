@@ -482,9 +482,9 @@ Tool names are `<verb>_<object>`, in snake_case.
 | `toggle_` | Only where OpenProject itself toggles and the result depends on the current state (`toggle_activity_emoji_reaction`) |
 | A domain verb | Only when OpenProject names the action itself and it isn't a plain create, update or delete (`copy_project`, `execute_query`, `cancel_recurring_meeting_occurrence`, `init_recurring_meeting_occurrence`, `render_text`, `mark_notifications_read`) |
 
-Some existing names predate this scheme and are due to be renamed:
-`add_work_package_comment`, and `get_work_package_relations` and
-`get_work_package_activities`, which return collections.
+Exceptions to this scheme: `add_work_package_comment`, and
+`get_work_package_relations` and `get_work_package_activities`, which return
+collections.
 
 #### Objects
 

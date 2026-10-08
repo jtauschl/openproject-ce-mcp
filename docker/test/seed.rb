@@ -206,7 +206,7 @@ end
 # that simply won't route. Needed for the user_schedule integration tests to
 # exercise the real endpoints at all on 17.3-17.6 (see
 # tests/integration/test_user_schedule.py's module docstring for the full
-# per-version breakdown, verified against op-sources).
+# per-version breakdown).
 if Setting.respond_to?(:feature_user_working_times_active?)
   unless Setting.feature_user_working_times_active?
     Setting.feature_user_working_times_active = true
@@ -463,10 +463,9 @@ end
 # OpenProject::FeatureDecisions.work_package_multiple_versions_active? (an
 # experimental feature flag, separate from the plain Setting) -- 17.8 drops
 # that second gate, so setting Setting.work_package_multiple_versions alone
-# is sufficient there. Verified live (2026-09-07) against
-# openproject/openproject 17.8+ (verified 17.8.1, 17.9.1): the setting ships with default: true there
-# (config/constants/settings/definition.rb), NOT off by default as an
-# earlier version of this seed assumed. The setting is explicitly FORCED to a
+# is sufficient there. On 17.8+ the setting ships with default: true
+# (OpenProject's config/constants/settings/definition.rb). The setting is
+# explicitly FORCED to a
 # known state below (not just conditionally enabled) so op-17-8 gives
 # deterministic, repeatable behavior regardless of what the image happened to
 # ship with -- forced to false unless SEED_MULTI_VERSIONS=1, forced to true

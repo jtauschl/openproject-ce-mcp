@@ -251,8 +251,7 @@ EXCLUSIONS: list[FieldExclusion] = [
         "observedInVersions",
         ExclusionCategory.INTERNAL_OTHER,
         "New in 17.9 (associated_resources :observed_in_versions, multi-value "
-        "'observed in' versions for bugs); not modeled on this line yet -- "
-        "planned as a target_versions-style read/write field for the next minor.",
+        "'observed in' versions for bugs); not modeled on this line.",
     ),
     FieldExclusion(
         "work_package",

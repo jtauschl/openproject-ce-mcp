@@ -157,9 +157,9 @@ wait_nextcloud_healthy() {
 # Nextcloud is always seeded (see the top-of-file note) -- no on/off switch.
 # SEED_MULTI_VERSIONS is read from up.sh's own environment (default 0, e.g.
 # `SEED_MULTI_VERSIONS=1 docker/test/up.sh 178`) -- OpenProject 17.8+ images ship
-# Setting::WorkPackageMultipleVersions with default: true (verified live,
-# 2026-09-07, against config/constants/settings/definition.rb in the actual
-# image), so seed.rb always forces the setting to a known state rather than
+# Setting::WorkPackageMultipleVersions with default: true (OpenProject's
+# config/constants/settings/definition.rb), so seed.rb always forces the
+# setting to a known state rather than
 # trusting the fresh-install default: false unless SEED_MULTI_VERSIONS=1,
 # true when it is. No separate dedicated container is needed for this --
 # both states are exercised on the same op-17-8 service/volume across

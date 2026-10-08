@@ -119,8 +119,9 @@ def _literal_filter_keys_in_src() -> set[str]:
 
 
 def test_filter_extraction_sees_every_literal_filter_key_the_client_sends():
-    # --all audits only what this regex extraction finds; a filter built in a
-    # shape it misses would silently drop out of the audit (readIAN once did).
+    # --all audits only what this regex extraction finds; this keeps every
+    # literal filter key the client sends, camelCase ones such as readIAN
+    # included, inside the audit.
     assert _literal_filter_keys_in_src() - check_api.FILTER_SKIP <= check_api._extract_client_filters()
 
 
@@ -232,8 +233,8 @@ def test_full_coverage_reports_a_resource_introduced_after_the_first_version(mon
 
 
 def test_resource_present_finds_module_resources_and_path_helper_entries(tmp_path, monkeypatch):
-    # Module resources live under modules/<name>/lib/api/v3; missing them once
-    # produced a false 12-resource regression report.
+    # Module resources live under modules/<name>/lib/api/v3; missing them would
+    # report every module resource as absent.
     monkeypatch.setattr(check_api, "SOURCES", tmp_path)
     core = tmp_path / "17.9" / "lib" / "api" / "v3"
     (core / "work_packages").mkdir(parents=True)
