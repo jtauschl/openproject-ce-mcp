@@ -37,8 +37,32 @@ async def _poll_until_done(client: OpenProjectClient, job_status_id: str, *, tim
         await asyncio.sleep(0.5)
 
 
+async def _copy_a_fresh_project(client: OpenProjectClient, project_refs: list[str]):
+    """Copy a project created here, returning the copy's identifier and the copy result.
+
+    The shared test project grows with every run; copying it would tie the
+    job's duration, and with it the poll limit above, to the instance's history.
+    """
+    source = disposable_project_identifier()
+    created = await client.project.create(name=f"[integration-test] {source}", identifier=source, confirm=True)
+    assert created.ready, created.validation_errors
+    project_refs.append(source)
+
+    target = disposable_project_identifier()
+    copy_result = await client.project.copy(
+        source_project=source,
+        name=f"[integration-test] {target}",
+        identifier=target,
+        confirm=True,
+    )
+    assert copy_result.ready, copy_result.validation_errors
+    assert copy_result.job_status_id is not None
+    project_refs.append(target)
+    return target, copy_result
+
+
 async def test_copy_project_result_becomes_visible_to_allowlist_immediately(
-    client: OpenProjectClient, test_project: str, project_refs: list[str]
+    client: OpenProjectClient, project_refs: list[str]
 ) -> None:
     """Regression: get_job_status only wrote the copied project's real
     identifier into project_id_to_identifier when the job payload's own
@@ -56,16 +80,7 @@ async def test_copy_project_result_becomes_visible_to_allowlist_immediately(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    new_identifier = disposable_project_identifier()
-    copy_result = await unrestricted_client.project.copy(
-        source_project=test_project,
-        name=f"[integration-test] {new_identifier}",
-        identifier=new_identifier,
-        confirm=True,
-    )
-    assert copy_result.ready, copy_result.validation_errors
-    assert copy_result.job_status_id is not None
-    project_refs.append(new_identifier)
+    new_identifier, copy_result = await _copy_a_fresh_project(unrestricted_client, project_refs)
 
     status = await _poll_until_done(unrestricted_client, copy_result.job_status_id)
     assert status.status == "success", status.message
@@ -76,7 +91,7 @@ async def test_copy_project_result_becomes_visible_to_allowlist_immediately(
 
 
 async def test_get_job_status_denies_project_link_outside_read_allowlist(
-    client: OpenProjectClient, test_project: str, project_refs: list[str]
+    client: OpenProjectClient, project_refs: list[str]
 ) -> None:
     """Regression: get_job_status read project/sourceProject/createdProject
     links from the response's top-level `_links`, but OpenProject only ever
@@ -93,16 +108,7 @@ async def test_get_job_status_denies_project_link_outside_read_allowlist(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    new_identifier = disposable_project_identifier()
-    copy_result = await unrestricted_client.project.copy(
-        source_project=test_project,
-        name=f"[integration-test] {new_identifier}",
-        identifier=new_identifier,
-        confirm=True,
-    )
-    assert copy_result.ready, copy_result.validation_errors
-    assert copy_result.job_status_id is not None
-    project_refs.append(new_identifier)
+    _, copy_result = await _copy_a_fresh_project(unrestricted_client, project_refs)
 
     status = await _poll_until_done(unrestricted_client, copy_result.job_status_id)
     assert status.status == "success", status.message
