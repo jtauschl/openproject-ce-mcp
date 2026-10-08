@@ -34,6 +34,8 @@ therefore:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import WorkPackageListResult, WorkPackageSummary
 from ..pagination import effective_limit, fetch_bounded_and_paginate
@@ -50,7 +52,7 @@ class QueryExecutionService:
         api: QueryExecutionApi,
         work_package_api: WorkPackageApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
     ) -> None:
         self._api = api
         self._work_package_api = work_package_api

@@ -30,6 +30,7 @@ exist here).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -53,7 +54,7 @@ class MeetingAgendaItemService:
         api: MeetingAgendaItemApi,
         meeting_api: MeetingApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
         api_prefix: str,
     ) -> None:

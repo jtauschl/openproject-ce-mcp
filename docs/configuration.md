@@ -66,6 +66,15 @@ flag skips the connection test and preview and writes directly.
 | `OPENPROJECT_READ_PROJECTS` | no | empty (nothing readable) | Readable projects; comma-separated identifiers, names, or glob patterns (e.g. `my-project,team-*`); `*` allows all visible projects; empty or unset denies all project-scoped reads |
 | `OPENPROJECT_WRITE_PROJECTS` | no | empty (nothing writable) | Writable projects; empty or unset disables all project-scoped writes; always intersected with read scope — so `*` here writes-enables every project that `OPENPROJECT_READ_PROJECTS` also allows, not every project on the instance regardless of read scope |
 
+A project created after the server started (a copy, the web UI, another
+client) is matched as soon as a response shows or links it; no restart is
+needed. `list_work_packages` without a `project` filters on the readable
+projects the server has seen and refreshes that list at most every five
+minutes, so a new project's work packages can take up to five minutes to
+appear there unless another call has already shown the project. Archived
+projects are left out of that filter, since OpenProject hides their work
+packages.
+
 ## Tool Groups
 
 Each of the 9 tool groups below has its own `OPENPROJECT_ENABLE_<GROUP>_READ`

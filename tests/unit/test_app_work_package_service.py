@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from collections.abc import Iterable
 
 import pytest
 from _client_test_helpers import make_settings
@@ -357,11 +358,24 @@ def _bulk_from_single(single):
     return bulk
 
 
+class _ReadableIds:
+    def __init__(self, readable: Iterable[int]) -> None:
+        self._readable = frozenset(readable)
+        self.ensure_fresh_calls = 0
+
+    async def ensure_fresh(self) -> None:
+        self.ensure_fresh_calls += 1
+
+    def readable_project_ids(self) -> frozenset[int]:
+        return self._readable
+
+
 def _service(
     api: _FakeWorkPackageApi | None = None,
     *,
     settings=None,
     project_id_to_identifier: dict[int, str] | None = None,
+    readable_projects: _ReadableIds | None = None,
     work_package_project_allowed=None,
     work_package_project_allowed_bulk=None,
     status_api: _FakeStatusApi | None = None,
@@ -407,12 +421,14 @@ def _service(
     async def current_user():
         return CurrentUser(id=42, name="Admin", login="admin")
 
+    known_projects = (
+        project_id_to_identifier if project_id_to_identifier is not None else dict(PROJECT_ID_TO_IDENTIFIER)
+    )
     service = WorkPackageService(
         api=fake_api,
         settings=settings or make_settings(),
-        project_id_to_identifier=project_id_to_identifier
-        if project_id_to_identifier is not None
-        else dict(PROJECT_ID_TO_IDENTIFIER),
+        project_id_to_identifier=known_projects,
+        readable_projects=readable_projects or _ReadableIds(known_projects),
         resolve_project_ref=resolve_project_ref,
         resolve_type_id=resolve_type_id,
         resolve_version_id=resolve_version_id,
@@ -580,6 +596,25 @@ async def test_list_exposes_real_total_when_restricted_scope_filter_sent() -> No
 
     assert result.total == 5
     assert result.count == 2
+    assert {"project_id": {"operator": "=", "values": ["1"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_filters_on_freshly_readable_projects_not_on_every_known_one() -> None:
+    """A project allowlisted only for writes is known to the link checks but
+    must not widen the read filter."""
+    api = _FakeWorkPackageApi(raw_elements=[_payload(1)], server_total=1)
+    readable_projects = _ReadableIds({1})
+    service, _ = _service(
+        api,
+        settings=dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("ops",)),
+        project_id_to_identifier={1: "demo", 2: "ops"},
+        readable_projects=readable_projects,
+    )
+
+    await service.list(limit=2)
+
+    assert readable_projects.ensure_fresh_calls == 1
     assert {"project_id": {"operator": "=", "values": ["1"]}} in api.list_calls[0]["filters"]
 
 

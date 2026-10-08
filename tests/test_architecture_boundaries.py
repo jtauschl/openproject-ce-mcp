@@ -1382,10 +1382,18 @@ def test_f3_allowlist_semaphore_is_structurally_separate_from_f6_batch_read_sema
         def __getattr__(self, name: str) -> object:
             raise AssertionError(f"unused: {name}")
 
+    class _StubReadableProjects:
+        async def ensure_fresh(self) -> None:
+            raise AssertionError("unused")
+
+        def readable_project_ids(self) -> frozenset[int]:
+            raise AssertionError("unused")
+
     service = WorkPackageService(
         api=_StubWorkPackageApi(),  # type: ignore[arg-type]
         settings=_settings(),
         project_id_to_identifier={},
+        readable_projects=_StubReadableProjects(),
         resolve_project_ref=_unused,  # type: ignore[arg-type]
         resolve_type_id=_unused,  # type: ignore[arg-type]
         resolve_version_id=_unused,  # type: ignore[arg-type]
@@ -1899,7 +1907,7 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
 
 # The exact set of OpenProjectClient public methods allowed to contain real logic
 # instead of being a pure one-line delegation to a single Service. Lifecycle (initialize/aclose),
-# create_project/update_project's CLEAR-sentinel translation + identifier-cache sync, and
+# create_project/update_project's CLEAR-sentinel translation, and
 # add_project_favorite/remove_project_favorite's shared-private-helper indirection are pre-existing,
 # understood minor deviations -- not orchestration logic, and out of scope here. get_my_project_access
 # and get_project_work_package_context are the two named cross-service coordinators (see the
@@ -2118,5 +2126,71 @@ async def test_client_service_namespaces_are_complete_and_identity_preserving() 
                 f"client.{public_name} must return the exact same object as self.{private_name}, "
                 "not a rebuilt/copied instance."
             )
+    finally:
+        await client.aclose()
+
+
+def _reachable_objects(root: object) -> list[object]:
+    """Every project-defined object reachable from `root` through attributes,
+    containers and bound methods."""
+    seen: dict[int, object] = {}
+    stack = [root]
+    while stack:
+        obj = stack.pop()
+        if id(obj) in seen:
+            continue
+        if isinstance(obj, dict):
+            stack.extend(obj.values())
+        elif isinstance(obj, (list, tuple, set, frozenset)):
+            stack.extend(obj)
+        elif inspect.ismethod(obj):
+            stack.append(obj.__self__)
+        elif type(obj).__module__.startswith("openproject_ce_mcp."):
+            seen[id(obj)] = obj
+            stack.extend(getattr(obj, "__dict__", {}).values())
+    return list(seen.values())
+
+
+@pytest.mark.asyncio
+async def test_every_adapter_reads_through_the_one_learning_transport() -> None:
+    """A project link in any response can name a project created after start;
+    the allowlist only knows it if that response passed the learner. An
+    adapter built on its own plain transport would silently bypass it. The
+    directory's own project API is the one exception: it must not learn from
+    the lookups it makes itself."""
+    from openproject_ce_mcp.app.transport.learning_transport import LearningTransport
+    from openproject_ce_mcp.client import OpenProjectClient
+    from openproject_ce_mcp.config import Settings
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("demo",),
+    )
+    client = OpenProjectClient(settings)
+    try:
+        directory_api = client._project_directory._api
+        adapters = [
+            obj
+            for obj in _reachable_objects(client)
+            if type(obj).__module__.startswith("openproject_ce_mcp.app.adapters.")
+        ]
+        adapter_modules = {
+            f"openproject_ce_mcp.app.adapters.{path.stem}" for path in (APP / "adapters").glob("httpx_*.py")
+        }
+
+        assert isinstance(client._transport, LearningTransport)
+        assert {type(adapter).__module__ for adapter in adapters} == adapter_modules
+        for adapter in adapters:
+            if adapter is directory_api:
+                assert not isinstance(adapter._transport, LearningTransport)
+            else:
+                assert adapter._transport is client._transport, type(adapter).__name__
     finally:
         await client.aclose()

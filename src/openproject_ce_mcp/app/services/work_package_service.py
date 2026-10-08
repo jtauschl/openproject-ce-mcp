@@ -94,6 +94,7 @@ import dataclasses
 import datetime
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from ... import policy_observation
@@ -134,6 +135,7 @@ from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.priority_ref import PriorityRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
+from ..ports.readable_projects import ReadableProjects
 from ..ports.sprint_ref import SprintIdResolver
 from ..ports.status_priority_type_api import StatusPriorityTypeApi
 from ..ports.status_ref import StatusRefResolver
@@ -483,7 +485,8 @@ class WorkPackageService:
         *,
         api: WorkPackageApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
+        readable_projects: ReadableProjects,
         resolve_project_ref: ProjectRefResolver,
         resolve_type_id: TypeRefResolver,
         resolve_version_id: VersionIdResolver,
@@ -503,6 +506,7 @@ class WorkPackageService:
         self._api = api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
+        self._readable_projects = readable_projects
         self._resolve_project_ref = resolve_project_ref
         self._resolve_type_id = resolve_type_id
         self._resolve_version_id = resolve_version_id
@@ -1155,7 +1159,8 @@ class WorkPackageService:
             filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
             total_is_scope_safe = True
         elif not total_is_scope_safe:
-            allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
+            await self._readable_projects.ensure_fresh()
+            allowed_ids = [str(pid) for pid in sorted(self._readable_projects.readable_project_ids())]
             if not allowed_ids:
                 # No single project targeted (no `project` filter) and the
                 # allowlist has resolved to nothing readable at all --

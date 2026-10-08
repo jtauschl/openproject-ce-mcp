@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
-from _client_test_helpers import _base_settings
+from _client_test_helpers import _base_settings, _project_index_response, started_client
 
 from openproject_ce_mcp.app.policies import board_policy, project_policy, scope
 from openproject_ce_mcp.client import (
@@ -107,7 +109,7 @@ async def test_create_time_entry_with_work_package_respects_allowed_write_projec
         write_projects=("demo",),
         enable_work_package_write=True,
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.time_entry.create(
@@ -310,18 +312,7 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
     # it in). READ="*" + WRITE="DEMO" exercises this case.
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/projects"
-        return httpx.Response(
-            200,
-            json={
-                "_embedded": {
-                    "elements": [
-                        {"id": 7, "identifier": "DEMO", "name": "Demo Project"},
-                        {"id": 16, "identifier": "ENC", "name": "ENC Encore ST"},
-                    ]
-                }
-            },
-            request=request,
-        )
+        return _project_index_response(request, [(7, "DEMO", "Demo Project"), (16, "ENC", "ENC Encore ST")])
 
     settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -349,10 +340,8 @@ async def test_initialize_walks_every_server_page_of_projects() -> None:
         offset = request.url.params.get("offset")
         page_size = int(request.url.params["pageSize"])
         requested_offsets.append(offset)
-        page_1 = [{"id": i, "identifier": f"proj-{i}", "name": f"Project {i}"} for i in range(1, page_size + 1)]
-        page_2 = [{"id": 999, "identifier": "DEMO", "name": "Demo Project"}]
-        elements = {"1": page_1, "2": page_2}.get(offset, [])
-        return httpx.Response(200, json={"_embedded": {"elements": elements}}, request=request)
+        projects = [(i, f"proj-{i}", f"Project {i}") for i in range(1, page_size + 1)]
+        return _project_index_response(request, [*projects, (999, "DEMO", "Demo Project")])
 
     settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -380,7 +369,7 @@ async def test_initialize_logs_and_survives_an_expected_transport_failure(caplog
         with caplog.at_level("WARNING"):
             await client.initialize()
         assert client._project_id_to_identifier == {}
-        [record] = [r for r in caplog.records if "identifier-cache" in r.message]
+        [record] = [r for r in caplog.records if "allowlist scan failed" in r.message]
         assert "Could not reach OpenProject" in record.message
     finally:
         await client.aclose()
@@ -412,11 +401,7 @@ async def test_write_link_allowlist_recognizes_identifier_after_initialize_with_
     # initialize() has run, even though READ_PROJECTS is wide open.
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/projects"
-        return httpx.Response(
-            200,
-            json={"_embedded": {"elements": [{"id": 7, "identifier": "DEMO", "name": "Demo Project"}]}},
-            request=request,
-        )
+        return _project_index_response(request, [(7, "DEMO", "Demo Project")])
 
     settings = _base_settings(read_projects=("*",), write_projects=("DEMO",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -814,7 +799,7 @@ async def test_toggle_activity_emoji_reaction_respects_allowed_write_projects() 
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.emoji_reaction.toggle(1988, "heart")
@@ -848,9 +833,152 @@ async def test_delete_file_link_respects_allowed_write_projects() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.file_link.delete(5, confirm=True)
 
+    await client.aclose()
+
+
+def _project_json(project_id: int, identifier: str, name: str) -> dict:
+    return {
+        "_type": "Project",
+        "id": project_id,
+        "identifier": identifier,
+        "name": name,
+        "active": True,
+        "_links": {"self": {"href": f"/api/v3/projects/{project_id}", "title": name}},
+    }
+
+
+def _work_package_json(work_package_id: int, project_id: int) -> dict:
+    return {
+        "_type": "WorkPackage",
+        "id": work_package_id,
+        "subject": "Task",
+        "_links": {
+            "self": {"href": f"/api/v3/work_packages/{work_package_id}"},
+            "project": {"href": f"/api/v3/projects/{project_id}", "title": "Some project"},
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_project_created_through_the_client_is_in_scope_without_a_restart() -> None:
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.method == "POST" and request.url.path == "/api/v3/projects/form":
+            payload = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": payload, "schema": {}, "validationErrors": {}}},
+                request=request,
+            )
+        if request.method == "POST" and request.url.path == "/api/v3/projects":
+            return httpx.Response(201, json=_project_json(50, "demo-new", "Demo new"), request=request)
+        if request.method == "GET" and request.url.path == "/api/v3/work_packages/9":
+            return httpx.Response(200, json=_work_package_json(9, 50), request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo*",), write_projects=("demo*",), enable_project_write=True)
+    client = await started_client(settings, handler, [(1, "demo", "Demo")])
+
+    await client.project.create(name="Demo new", identifier="demo-new", confirm=True)
+    work_package = await client.work_package.get(9)
+
+    assert work_package.id == 9
+    assert ("GET", "/api/v3/projects/50") not in requests
+    await client.aclose()
+
+
+@pytest.mark.parametrize(("read_projects", "allowed"), [(("demo*",), True), (("demo",), False)])
+@pytest.mark.asyncio
+async def test_a_copied_project_is_learned_from_its_job_status(read_projects: tuple, allowed: bool) -> None:
+    # A finished copy job links the new project as payload._links.project;
+    # OpenProject sends no createdProject link.
+    requests: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        if request.url.path == "/api/v3/job_statuses/77":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "JobStatus",
+                    "jobId": "77",
+                    "status": "success",
+                    "payload": {"_links": {"project": {"href": "/api/v3/projects/114", "title": "Demo copy"}}},
+                    "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/114":
+            return httpx.Response(200, json=_project_json(114, "demo-copy", "Demo copy"), request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = await started_client(_base_settings(read_projects=read_projects), handler, [(6, "demo", "Demo")])
+
+    if allowed:
+        job = await client.job_status.get("77")
+        assert job.project_id == 114
+        assert client._project_id_to_identifier[114] == "demo-copy"
+    else:
+        with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+            await client.job_status.get("77")
+        assert 114 not in client._project_id_to_identifier
+    assert requests == ["/api/v3/job_statuses/77", "/api/v3/projects/114"]
+    await client.aclose()
+
+
+@pytest.mark.parametrize(("identifier", "listed"), [("demo-ui", True), ("other-ui", False)])
+@pytest.mark.asyncio
+async def test_a_project_created_elsewhere_joins_the_global_work_package_filter(identifier: str, listed: bool) -> None:
+    project_filters: list[list[str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/9":
+            return httpx.Response(200, json=_work_package_json(9, 60), request=request)
+        if request.url.path == "/api/v3/projects/60":
+            return httpx.Response(200, json=_project_json(60, identifier, "Created in the web UI"), request=request)
+        if request.url.path == "/api/v3/work_packages":
+            filters = json.loads(request.url.params["filters"])
+            project_filters.extend(f["project_id"]["values"] for f in filters if "project_id" in f)
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = await started_client(_base_settings(read_projects=("demo*",)), handler, [(1, "demo", "Demo")])
+
+    if listed:
+        await client.work_package.get(9)
+    else:
+        with pytest.raises(PermissionDeniedError):
+            await client.work_package.get(9)
+    await client.work_package.list(limit=5)
+
+    assert project_filters == [["1", "60"] if listed else ["1"]]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_the_global_work_package_filter_leaves_out_archived_projects() -> None:
+    # OpenProject answers a project filter naming an archived project with
+    # "Project filter has invalid values" and lists nothing.
+    project_filters: list[list[str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/work_packages"
+        filters = json.loads(request.url.params["filters"])
+        project_filters.extend(f["project_id"]["values"] for f in filters if "project_id" in f)
+        return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+
+    client = await started_client(
+        _base_settings(read_projects=("demo*",)), handler, [(1, "demo", "Demo"), (2, "demo-old", "Demo old", False)]
+    )
+
+    await client.work_package.list(limit=5)
+
+    assert project_filters == [["1"]]
     await client.aclose()

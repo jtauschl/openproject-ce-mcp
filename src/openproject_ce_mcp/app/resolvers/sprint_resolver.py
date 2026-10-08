@@ -23,6 +23,8 @@ match a sprint whose real name was blank. See `app/ports/sprint_api.py`'s
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ..errors import InvalidInputError, NotFoundError
 from ..pagination import paginate_server
@@ -39,7 +41,7 @@ class SprintResolver:
         api: SprintApi,
         resolve_project_ref: ProjectRefResolver,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
     ) -> None:
         self._api = api
         self._resolve_project_ref = resolve_project_ref

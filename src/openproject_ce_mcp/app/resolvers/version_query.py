@@ -14,7 +14,7 @@ identical to masking eagerly during page-building).
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 
 from ...config import Settings
 from ...models import VersionSummary
@@ -63,7 +63,7 @@ async def fetch_visible_version_records(
     api: VersionApi,
     resolve_project_ref: ProjectRefResolver,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
     project: str | None,
     context: ProjectResolutionContext | None,
     text_limit: int | None = FORMATTABLE_LIMIT,
@@ -130,7 +130,7 @@ async def fetch_version_page(
     api: VersionApi,
     resolve_project_ref: ProjectRefResolver,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
     project: str | None,
     search: str | None,
     offset: int,

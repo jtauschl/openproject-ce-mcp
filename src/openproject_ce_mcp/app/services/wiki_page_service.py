@@ -28,6 +28,8 @@ semantic project reference for.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import WikiPageDetail
 from ..policies import access, hidden_fields
@@ -41,7 +43,7 @@ class WikiPageService:
         *,
         api: WikiPageApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
     ) -> None:
         self._api = api
         self._settings = settings

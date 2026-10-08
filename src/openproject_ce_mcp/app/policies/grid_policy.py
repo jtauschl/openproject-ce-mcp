@@ -16,6 +16,7 @@ already have one in hand).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ... import policy_observation
@@ -42,7 +43,7 @@ def grid_scope_href(scope_link: dict[str, Any] | None) -> str | None:
 
 
 def ensure_grid_read_allowed(
-    scope_link: dict[str, Any] | None, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    scope_link: dict[str, Any] | None, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     if grid_scope_href(scope_link) == "/my/page":
         return
@@ -50,7 +51,7 @@ def ensure_grid_read_allowed(
 
 
 def grid_read_allowed(
-    scope_link: dict[str, Any] | None, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    scope_link: dict[str, Any] | None, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> bool:
     return payload_allowed(
         lambda: ensure_grid_read_allowed(
@@ -60,7 +61,7 @@ def grid_read_allowed(
 
 
 def ensure_grid_write_allowed(
-    scope_href: str | None, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    scope_href: str | None, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     if scope_href == "/my/page":
         return

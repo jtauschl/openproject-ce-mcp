@@ -26,6 +26,7 @@ hidden behind a innocuous-looking "cancel" name.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -54,7 +55,7 @@ class RecurringMeetingService:
         *,
         api: RecurringMeetingApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_project_ref: ProjectRefResolver,
         api_prefix: str,
     ) -> None:

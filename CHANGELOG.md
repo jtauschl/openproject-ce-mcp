@@ -113,17 +113,30 @@ development baseline.
 
 ## [0.4.2] - Unreleased
 
+### Security
+
+- Bumped `pyjwt` and `urllib3` to fix known vulnerabilities in transitive
+  dependencies.
+- `list_work_packages` without a project counted the work packages of
+  projects that matched only `OPENPROJECT_WRITE_PROJECTS` in its total, group
+  counts and sums; the work packages themselves were already left out.
+
+### Changed
+
+- Source-audited and runtime-smoke-tested against OpenProject 17.9.
+
 ### Fixed
 
 - The MCP server no longer imposes a 10,000-character limit on long-text
   writes (descriptions, comments, custom field strings), so work packages
   whose description grew longer in the web editor can be edited again.
-- Fixed the server's scope guidance: Budgets are a Community Edition
-  feature, but budget tools are not available.
-- `bulk_create_work_packages`, `bulk_update_work_packages` and `get_work_packages`
-  rejected the per-item fields `index`, `success` and `error` in `select`,
-  although every item carries them regardless of `select`; naming them is now
-  accepted and leaves the item untouched.
+- The server instructions no longer list Budgets among the Enterprise-only
+  features; Budgets are part of the Community Edition.
+- `bulk_create_work_packages` and `bulk_update_work_packages` rejected the
+  per-item fields `index`, `success` and `error` in `select`, and
+  `get_work_packages` rejected `success` and `error`, although every item
+  carries them regardless of `select`; naming them is now accepted and leaves
+  the item untouched.
 - `list_time_entry_activities` failed outright on servers that answer the
   `time_entries/activities` probe with HTTP 400 instead of 404; the
   per-project fallback now runs in that case too.
@@ -133,6 +146,15 @@ development baseline.
 - With `mcp` 2.1 or later installed, a call with an unknown argument was
   logged as a server crash with a traceback; it is now logged as a rejected
   call.
+- Projects created after the server started (a copy, the web UI, another
+  client) were denied by identifier- or pattern-based
+  `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS` entries until the
+  server restarted, and `list_work_packages` without a project left out their
+  work packages. They are now recognized from the responses that link them;
+  `list_work_packages` without a project includes them within five minutes.
+- `list_work_packages` without a project failed with "Project filter has
+  invalid values" when an archived project matched
+  `OPENPROJECT_READ_PROJECTS`.
 
 ## [0.4.1] - 2026-09-22
 

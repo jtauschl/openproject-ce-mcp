@@ -54,7 +54,7 @@ scope).
 from __future__ import annotations
 
 import mimetypes
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -185,7 +185,7 @@ class AttachmentService:
         api: AttachmentApi,
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
     ) -> None:
         self._api = api

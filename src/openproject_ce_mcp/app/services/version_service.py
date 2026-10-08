@@ -8,6 +8,7 @@ state machine -- see that module's docstring).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -30,7 +31,7 @@ class VersionService:
         *,
         api: VersionApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_project_ref: ProjectRefResolver,
         api_prefix: str,
     ) -> None:

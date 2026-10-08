@@ -21,7 +21,7 @@ in that one file.
 src/openproject_ce_mcp/
 ├── config.py             environment loading, validation, and safe defaults
 ├── client.py             OpenProject API client facade: auth, transport, error
-│                         mapping, the project-identifier cache, and one-line
+│                         mapping, wiring, and one-line
 │                         delegations to app/ for every domain (see below) --
 │                         normalization/business logic now lives entirely under
 │                         app/, except two deliberate cross-service-orchestration
@@ -39,6 +39,8 @@ src/openproject_ce_mcp/
     ├── pagination.py     shared pagination-envelope helpers (re-exported from client.py)
     ├── policies/         pure, no-I/O scope/allowlist/hidden-field checks
     ├── transport/        HttpxTransport (the only module here that imports httpx)
+    │                     and LearningTransport (shows every JSON response to the
+    │                     project directory)
     ├── ports/            narrow per-domain API port Protocols
     ├── adapters/         concrete HTTP implementations of those ports
     ├── resolvers/        semantic-reference-to-id resolution + shared query logic
@@ -63,8 +65,9 @@ src/openproject_ce_mcp/
 
 ### `client.py`
 
-- Owns all OpenProject HTTP transport (auth, timeouts, error mapping) and the
-  shared project-identifier cache.
+- Owns all OpenProject HTTP transport (auth, timeouts, error mapping) and wires
+  the one `LearningTransport` every adapter shares to the `ProjectDirectoryService`
+  (see "Project allowlist directory" below).
 - Every domain's public method is a one-line delegation into `app/` (see
   "Layered architecture" below) — normalization, write previews/confirmation,
   and the runtime policy model (read gates, scoped write gates, project scoping,
@@ -364,6 +367,28 @@ tools_<domain>.py (MCP presentation)
   `client.py`-level orchestration rather than moving into a single Service,
   since a Service must not depend on another Service.
 
+### Project allowlist directory
+
+A HAL project link carries only an `href` and a `title`, so an identifier- or
+name-based allowlist (`OPM`, `IT*`) can match a linked project only through a
+numeric id to identifier map. `ProjectDirectoryService`
+(`app/services/project_directory_service.py`) is the single owner and only
+writer of that map; every service and policy receives it read-only
+(`Mapping[int, str]`). The directory scans `GET /projects` at startup and learns
+every later project from the responses that show or link it: every adapter reads
+through one shared `LearningTransport` (`app/transport/learning_transport.py`),
+which hands each JSON body to the directory before any policy sees it. The
+directory reads only the server's own resources in a body (the response itself,
+everything under `_embedded`, and a job status's `payload`), never a free-form
+property such as a grid's `options`. A project representation there is recorded
+as is; a linked id the last scan never saw is looked up with
+`GET /projects/{id}`, at most ten at a time. Out-of-scope projects are
+remembered for five minutes, then re-checked. The global `list_work_packages`
+filters on the projects the directory reports as readable (read scope matched,
+not archived) and rescans when the last scan is older than five minutes. A test
+asserts that every adapter holds the one `LearningTransport`; only the
+directory's own project lookups bypass it.
+
 An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer
 directions above, confines `httpx` to `HttpxTransport`, forbids importing the
 `mcp` SDK or reading environment variables directly anywhere under `app/`, and
@@ -482,9 +507,9 @@ Tool names are `<verb>_<object>`, in snake_case.
 | `toggle_` | Only where OpenProject itself toggles and the result depends on the current state (`toggle_activity_emoji_reaction`) |
 | A domain verb | Only when OpenProject names the action itself and it isn't a plain create, update or delete (`copy_project`, `execute_query`, `cancel_recurring_meeting_occurrence`, `init_recurring_meeting_occurrence`, `render_text`, `mark_notifications_read`) |
 
-Some existing names predate this scheme and are due to be renamed:
-`add_work_package_comment`, and `get_work_package_relations` and
-`get_work_package_activities`, which return collections.
+Exceptions to this scheme: `add_work_package_comment`, and
+`get_work_package_relations` and `get_work_package_activities`, which return
+collections.
 
 #### Objects
 

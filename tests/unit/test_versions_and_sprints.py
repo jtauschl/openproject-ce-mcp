@@ -5,7 +5,7 @@ import json
 
 import httpx
 import pytest
-from _client_test_helpers import make_settings
+from _client_test_helpers import make_settings, started_client
 
 from openproject_ce_mcp.client import (
     NotFoundError,
@@ -751,7 +751,9 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    # Allowed by name: three projects share the display name "Demo".
+    projects = [(i, f"demo-{i}", "Demo") if i % 2 == 0 else (i, f"secret-{i}", "Secret Project") for i in range(1, 7)]
+    client = await started_client(settings, handler, projects)
     page = await client.version.list(limit=2)
 
     assert [v.id for v in page.results] == [2, 4]
@@ -967,7 +969,7 @@ async def test_list_versions_global_not_truncated_when_exactly_limit_allowed_mat
             raise AssertionError(f"Unexpected offset: {offset}")
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
     page = await client.version.list(limit=1)
 
     assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"

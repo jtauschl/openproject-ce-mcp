@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from _client_test_helpers import _base_settings, _make_project_response
+from _client_test_helpers import _base_settings, _make_project_response, started_client
 from _tools_test_helpers import FakeContext
 
 from openproject_ce_mcp.app.errors import InvalidInputError, ProjectScopeDeniedError
@@ -44,14 +44,17 @@ def _handler(routes: dict[str, dict], seen: list[httpx.Request]):
     return handler
 
 
-def _client(routes: dict[str, dict], seen: list[httpx.Request], **settings) -> OpenProjectClient:
-    return OpenProjectClient(_base_settings(**settings), transport=httpx.MockTransport(_handler(routes, seen)))
+_PROJECTS = [(1, "demo", "Demo"), (7, "other", "Other")]
+
+
+async def _client(routes: dict[str, dict], seen: list[httpx.Request], **settings) -> OpenProjectClient:
+    return await started_client(_base_settings(**settings), _handler(routes, seen), _PROJECTS)
 
 
 @pytest.mark.asyncio
 async def test_available_assignees_for_a_work_package() -> None:
     seen: list[httpx.Request] = []
-    client = _client(
+    client = await _client(
         {"/api/v3/work_packages/42": _wp(), "/api/v3/work_packages/42/available_assignees": _PRINCIPALS}, seen
     )
     result = await client.work_package_picker.available_assignees(work_package_id=42)
@@ -63,7 +66,7 @@ async def test_available_assignees_for_a_work_package() -> None:
 @pytest.mark.asyncio
 async def test_available_assignees_for_a_project() -> None:
     seen: list[httpx.Request] = []
-    client = _client({"/api/v3/projects/1/available_assignees": _PRINCIPALS}, seen)
+    client = await _client({"/api/v3/projects/1/available_assignees": _PRINCIPALS}, seen)
     result = await client.work_package_picker.available_assignees(project_ref="1")
     assert result.count == 2
     assert seen[-1].url.path == "/api/v3/projects/1/available_assignees"
@@ -74,7 +77,7 @@ async def test_available_assignees_for_a_project() -> None:
 @pytest.mark.parametrize("kwargs", [{}, {"work_package_id": 42, "project_ref": "1"}])
 async def test_available_assignees_needs_exactly_one_anchor(kwargs: dict) -> None:
     seen: list[httpx.Request] = []
-    client = _client({}, seen)
+    client = await _client({}, seen)
     with pytest.raises(InvalidInputError, match="exactly one"):
         await client.work_package_picker.available_assignees(**kwargs)
     assert seen == []
@@ -84,7 +87,7 @@ async def test_available_assignees_needs_exactly_one_anchor(kwargs: dict) -> Non
 @pytest.mark.asyncio
 async def test_an_anchor_outside_the_read_allowlist_is_refused_before_listing() -> None:
     seen: list[httpx.Request] = []
-    client = _client(
+    client = await _client(
         {
             "/api/v3/work_packages/42": _wp("/api/v3/projects/7", "Other"),
             "/api/v3/work_packages/42/available_assignees": _PRINCIPALS,
@@ -122,7 +125,7 @@ async def test_relation_candidates_pass_query_type_and_limit_and_drop_foreign_pr
             ]
         }
     }
-    client = _client(
+    client = await _client(
         {"/api/v3/work_packages/42": _wp(), "/api/v3/work_packages/42/available_relation_candidates": candidates},
         seen,
         read_projects=("demo",),
@@ -141,7 +144,7 @@ async def test_relation_candidates_pass_query_type_and_limit_and_drop_foreign_pr
 @pytest.mark.asyncio
 async def test_relation_candidates_omit_unset_filters() -> None:
     seen: list[httpx.Request] = []
-    client = _client(
+    client = await _client(
         {
             "/api/v3/work_packages/42": _wp(),
             "/api/v3/work_packages/42/available_relation_candidates": {"_embedded": {"elements": []}},
@@ -156,7 +159,7 @@ async def test_relation_candidates_omit_unset_filters() -> None:
 @pytest.mark.asyncio
 async def test_project_anchor_outside_the_read_allowlist_is_refused_before_listing() -> None:
     seen: list[httpx.Request] = []
-    client = _client({}, seen, read_projects=("other",))
+    client = await _client({}, seen, read_projects=("other",))
     with pytest.raises(ProjectScopeDeniedError):
         await client.work_package_picker.available_assignees(project_ref="1")
     assert all("available_assignees" not in r.url.path for r in seen)
@@ -167,7 +170,7 @@ async def test_project_anchor_outside_the_read_allowlist_is_refused_before_listi
 @pytest.mark.parametrize("relation_type", ["parent", "child"])
 async def test_tool_forwards_hierarchy_relation_types(relation_type: str) -> None:
     seen: list[httpx.Request] = []
-    client = _client(
+    client = await _client(
         {
             "/api/v3/work_packages/42": _wp(),
             "/api/v3/work_packages/42/available_relation_candidates": {"_embedded": {"elements": []}},

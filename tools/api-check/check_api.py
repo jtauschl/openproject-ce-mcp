@@ -398,8 +398,8 @@ CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 # (self._transport.get_json/post_json/patch_json/delete/delete_json, the
 # direct analog of client.py's own self._get/_post/_patch/_delete), and moved
 # filter-dict construction into app/services/*.py as well as some adapters.
-# Scanning CLIENT alone after the migration completed (2026-08-01, all
-# domains migrated) finds almost nothing -- extended to scan both app/
+# Scanning CLIENT alone finds almost nothing since that migration --
+# extended to scan both app/
 # subtrees too, so this tool's --all coverage doesn't silently go blind as a
 # side effect of an otherwise behavior-preserving refactor.
 APP_ADAPTERS = ROOT / "src" / "openproject_ce_mcp" / "app" / "adapters"

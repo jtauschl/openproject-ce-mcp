@@ -34,10 +34,9 @@
 #           gate on any pinned version -- always present, independent of the
 #           setting. Writing more than one target version IS rejected
 #           server-side unless the setting is active (on this version).
-#           Verified live (2026-09-07) against this exact image: the setting
-#           ships with default: true (config/constants/settings/
-#           definition.rb) -- NOT off by default as an earlier draft of this
-#           comment assumed. seed.rb explicitly forces it to false before
+#           The setting ships with default: true (OpenProject's
+#           config/constants/settings/definition.rb). seed.rb explicitly
+#           forces it to false before
 #           seeding op-17-8's single-target-version fixture (so this
 #           container still exercises the setting-disabled path as a real
 #           reference state, e.g. an upgraded-from-17.7 instance where an

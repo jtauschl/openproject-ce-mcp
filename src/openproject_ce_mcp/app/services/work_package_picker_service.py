@@ -18,6 +18,8 @@ these lookups exists to fill a work package field.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import (
     PrincipalCollectionResult,
@@ -38,7 +40,7 @@ class WorkPackagePickerService:
         *,
         api: WorkPackagePickerApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
         resolve_project_ref: ProjectRefResolver,
     ) -> None:

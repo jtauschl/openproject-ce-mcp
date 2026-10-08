@@ -35,6 +35,8 @@ scope).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import FileLinkListResult, FileLinkSummary, FileLinkWriteResult
 from ..pagination import clamp_limit, scan_records_and_paginate
@@ -53,7 +55,7 @@ class FileLinkService:
         api: FileLinkApi,
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
     ) -> None:
         self._api = api

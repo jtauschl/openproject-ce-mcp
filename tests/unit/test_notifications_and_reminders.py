@@ -8,6 +8,7 @@ from _client_test_helpers import (
     _notification_payload,
     _personal_write_enabled_settings,
     _write_enabled_settings,
+    started_client,
 )
 
 from openproject_ce_mcp.client import (
@@ -49,7 +50,7 @@ async def test_list_notifications_filters_by_read_projects() -> None:
         read_projects=("demo",),
         enable_personal_read=True,
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     result = await client.notification.list_all()
 
@@ -206,7 +207,7 @@ async def test_list_notifications_resolves_work_package_notification_without_pro
         read_projects=("demo",),  # does not match the work package's "other" project
         enable_personal_read=True,
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     result = await client.notification.list_all()
 
@@ -292,7 +293,7 @@ async def test_list_reminders_filters_by_read_projects_via_work_package() -> Non
         log_level="WARNING",
         read_projects=("demo",),
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     result = await client.reminder.list_all()
 

@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -131,7 +132,7 @@ class TimeEntryService:
         user_api: UserApi,
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
         resolve_project_ref: ProjectRefResolver,
         resolve_project_id: ProjectIdResolver,

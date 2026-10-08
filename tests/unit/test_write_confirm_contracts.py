@@ -38,6 +38,7 @@ from collections.abc import Callable
 
 import httpx
 import pytest
+from _client_test_helpers import started_client
 from _tools_test_helpers import FakeContext
 from _write_contract_cases import WRITE_TOOL_CASES
 from _write_contract_cases_types import WriteToolCase, materialize_case
@@ -62,6 +63,10 @@ def test_every_registered_write_tool_has_a_contract_case() -> None:
     stale = covered - all_write_tools
     assert not missing, f"registered write tools with no WriteToolCase: {sorted(missing)}"
     assert not stale, f"WRITE_TOOL_CASES entries for unregistered/removed tools: {sorted(stale)}"
+
+
+# The projects the cases link to, as the server's project index lists them.
+_CASE_PROJECTS = [(1, "demo", "Demo"), (6, "demo-six", "Demo")]
 
 
 def _handler_rejecting_the_write_request(case: WriteToolCase) -> Callable[[httpx.Request], httpx.Response]:
@@ -183,9 +188,7 @@ async def test_write_tool_denies_when_target_project_outside_write_projects_allo
     materialized = materialize_case(case, tmp_path)
     denied_settings = dataclasses.replace(materialized.settings, write_projects=("definitely-not-this-project",))
     fn = _TOOL_FUNCTIONS[case.tool]
-    client = OpenProjectClient(
-        denied_settings, transport=httpx.MockTransport(_handler_rejecting_the_write_request(case))
-    )
+    client = await started_client(denied_settings, _handler_rejecting_the_write_request(case), _CASE_PROJECTS)
     try:
         if case.denial_mode == "raises":
             with pytest.raises(RuntimeError, match=r"\[PROJECT_SCOPE_DENIED\]"):

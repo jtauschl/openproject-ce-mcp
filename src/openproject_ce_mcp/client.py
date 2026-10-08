@@ -75,7 +75,7 @@ from .app.errors import (
     ConflictError,  # noqa: F401
     InvalidInputError,  # noqa: F401
     NotFoundError,  # noqa: F401
-    OpenProjectError,
+    OpenProjectError,  # noqa: F401
     OpenProjectPermissionDeniedError,  # noqa: F401
     OpenProjectServerError,
     PermissionDeniedError,  # noqa: F401
@@ -91,7 +91,6 @@ from .app.pagination import (
 )
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
-from .app.policies import scope as _scope_policy
 from .app.ports.action_capability_api import ActionCapabilityApi
 from .app.ports.activity_api import ActivityApi
 from .app.ports.attachment_api import AttachmentApi
@@ -178,6 +177,7 @@ from .app.services.news_service import NewsService
 from .app.services.notification_service import NotificationService
 from .app.services.post_service import PostService
 from .app.services.principal_service import PrincipalService
+from .app.services.project_directory_service import ProjectDirectoryService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.project_storage_service import ProjectStorageService
@@ -216,6 +216,7 @@ from .app.services.work_package_picker_service import WorkPackagePickerService
 from .app.services.work_package_service import CLEAR, CLEAR_PARENT, CLEAR_VERSION, WorkPackageService  # noqa: F401
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
+from .app.transport.learning_transport import LearningTransport
 from .config import Settings
 from .hal import normalize_links
 from .models import (
@@ -255,7 +256,6 @@ class OpenProjectClient:
         self.settings = settings
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
-        self._project_id_to_identifier: dict[int, str] = {}
         # Process-lifetime caches for read-only, process-global API responses
         # (see app/caches.py) -- each is shared by every real consumer of
         # that value (Service and, where one exists, Resolver alike).
@@ -378,10 +378,21 @@ class OpenProjectClient:
                 for pattern, mount_transport in self._http._mounts.items()  # noqa: SLF001
             }
 
-        # HttpxTransport wraps the SAME httpx.AsyncClient
-        # constructed above (one connection pool, not two).
+        # Every HttpxTransport wraps the SAME httpx.AsyncClient constructed
+        # above (one connection pool). The directory looks projects up on a
+        # transport of its own, so a lookup is not learned from again; every
+        # adapter gets the one learning transport, so no response reaches a
+        # scope policy before the directory has seen it.
+        self._project_directory = ProjectDirectoryService(
+            api=HttpxProjectApi(HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix),
+            settings=settings,
+            origin=self._origin,
+            api_prefix=self._api_prefix,
+        )
+        self._project_id_to_identifier = self._project_directory.positives
+        self._transport = LearningTransport(HttpxTransport(self._http), learn=self._project_directory.learn)
         self._project_api: ProjectApi = HttpxProjectApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+            self._transport, base_url=settings.base_url, api_prefix=self._api_prefix
         )
         self._project_resolver = ProjectResolver(
             api=self._project_api, settings=settings, project_id_to_identifier=self._project_id_to_identifier
@@ -402,7 +413,7 @@ class OpenProjectClient:
             base_url=settings.base_url,
         )
 
-        self._version_api: VersionApi = HttpxVersionApi(HttpxTransport(self._http))
+        self._version_api: VersionApi = HttpxVersionApi(self._transport)
         self._version_service = VersionService(
             api=self._version_api,
             settings=settings,
@@ -410,11 +421,8 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
             api_prefix=self._api_prefix,
         )
-        # self._project_id_to_identifier is the same live dict object threaded into
-        # VersionService/VersionResolver -- initialize() (below) mutates it in place
-        # *after* __init__ runs, so both must see the populated cache without being
-        # reconstructed. dict(self._project_id_to_identifier) here would silently
-        # break allowlist-identifier recovery for Versions.
+        # self._project_id_to_identifier is the directory's live dict, updated in
+        # place as projects are learned; a copy here would freeze it at startup.
         self._version_resolver = VersionResolver(
             api=self._version_api,
             resolve_project_ref=self._get_project_payload,
@@ -422,17 +430,15 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._role_api: RoleApi = HttpxRoleApi(HttpxTransport(self._http))
+        self._role_api: RoleApi = HttpxRoleApi(self._transport)
         self._role_service = RoleService(api=self._role_api, settings=settings)
 
-        self._instance_configuration_api: InstanceConfigurationApi = HttpxInstanceConfigurationApi(
-            HttpxTransport(self._http)
-        )
+        self._instance_configuration_api: InstanceConfigurationApi = HttpxInstanceConfigurationApi(self._transport)
         self._instance_configuration_service = InstanceConfigurationService(
             api=self._instance_configuration_api, settings=settings, cache=self._instance_configuration_cache
         )
 
-        self._current_user_api: CurrentUserApi = HttpxCurrentUserApi(HttpxTransport(self._http))
+        self._current_user_api: CurrentUserApi = HttpxCurrentUserApi(self._transport)
         self._current_user_service = CurrentUserService(
             api=self._current_user_api, settings=settings, cache=self._current_user_cache
         )
@@ -440,26 +446,26 @@ class OpenProjectClient:
             api=self._current_user_api, settings=settings, cache=self._current_user_cache
         )
 
-        self._principal_api: PrincipalApi = HttpxPrincipalApi(HttpxTransport(self._http))
+        self._principal_api: PrincipalApi = HttpxPrincipalApi(self._transport)
         self._principal_service = PrincipalService(api=self._principal_api, settings=settings)
         self._principal_resolver = PrincipalResolver(
             api=self._principal_api, current_user=self._current_user_resolver, settings=settings
         )
         self._assignee_resolver = AssigneeResolver(current_user=self._current_user_resolver)
 
-        self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._user_api: UserApi = HttpxUserApi(self._transport, base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
 
-        self._user_preferences_api: UserPreferencesApi = HttpxUserPreferencesApi(HttpxTransport(self._http))
+        self._user_preferences_api: UserPreferencesApi = HttpxUserPreferencesApi(self._transport)
         self._user_preferences_service = UserPreferencesService(api=self._user_preferences_api, settings=settings)
 
-        self._group_api: GroupApi = HttpxGroupApi(HttpxTransport(self._http))
+        self._group_api: GroupApi = HttpxGroupApi(self._transport)
         self._group_service = GroupService(api=self._group_api, settings=settings, api_prefix=self._api_prefix)
 
-        self._storage_api: StorageApi = HttpxStorageApi(HttpxTransport(self._http))
+        self._storage_api: StorageApi = HttpxStorageApi(self._transport)
         self._storage_service = StorageService(api=self._storage_api, settings=settings)
 
-        self._project_storage_api: ProjectStorageApi = HttpxProjectStorageApi(HttpxTransport(self._http))
+        self._project_storage_api: ProjectStorageApi = HttpxProjectStorageApi(self._transport)
         self._project_storage_service = ProjectStorageService(
             api=self._project_storage_api,
             settings=settings,
@@ -468,7 +474,7 @@ class OpenProjectClient:
         )
 
         self._membership_api: MembershipApi = HttpxMembershipApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+            self._transport, base_url=settings.base_url, api_prefix=self._api_prefix
         )
         self._membership_service = MembershipService(
             api=self._membership_api,
@@ -480,7 +486,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._news_api: NewsApi = HttpxNewsApi(HttpxTransport(self._http))
+        self._news_api: NewsApi = HttpxNewsApi(self._transport)
         self._news_service = NewsService(
             api=self._news_api,
             settings=settings,
@@ -488,7 +494,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._document_api: DocumentApi = HttpxDocumentApi(HttpxTransport(self._http))
+        self._document_api: DocumentApi = HttpxDocumentApi(self._transport)
         self._document_service = DocumentService(
             api=self._document_api,
             settings=settings,
@@ -496,21 +502,21 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._wiki_page_api: WikiPageApi = HttpxWikiPageApi(HttpxTransport(self._http))
+        self._wiki_page_api: WikiPageApi = HttpxWikiPageApi(self._transport)
         self._wiki_page_service = WikiPageService(
             api=self._wiki_page_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._post_api: PostApi = HttpxPostApi(HttpxTransport(self._http))
+        self._post_api: PostApi = HttpxPostApi(self._transport)
         self._post_service = PostService(
             api=self._post_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._category_api: CategoryApi = HttpxCategoryApi(HttpxTransport(self._http))
+        self._category_api: CategoryApi = HttpxCategoryApi(self._transport)
         self._category_service = CategoryService(
             api=self._category_api,
             settings=settings,
@@ -518,7 +524,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._view_api: ViewApi = HttpxViewApi(HttpxTransport(self._http))
+        self._view_api: ViewApi = HttpxViewApi(self._transport)
         self._view_service = ViewService(
             api=self._view_api,
             settings=settings,
@@ -526,7 +532,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._sprint_api: SprintApi = HttpxSprintApi(HttpxTransport(self._http))
+        self._sprint_api: SprintApi = HttpxSprintApi(self._transport)
         self._sprint_service = SprintService(
             api=self._sprint_api,
             settings=settings,
@@ -540,7 +546,7 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._backlog_bucket_api: BacklogBucketApi = HttpxBacklogBucketApi(HttpxTransport(self._http))
+        self._backlog_bucket_api: BacklogBucketApi = HttpxBacklogBucketApi(self._transport)
         self._backlog_bucket_service = BacklogBucketService(
             api=self._backlog_bucket_api,
             settings=settings,
@@ -548,14 +554,14 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._grid_api: GridApi = HttpxGridApi(HttpxTransport(self._http))
+        self._grid_api: GridApi = HttpxGridApi(self._transport)
         self._grid_service = GridService(
             api=self._grid_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._board_api: BoardApi = HttpxBoardApi(HttpxTransport(self._http))
+        self._board_api: BoardApi = HttpxBoardApi(self._transport)
         self._board_service = BoardService(
             api=self._board_api,
             settings=settings,
@@ -566,7 +572,7 @@ class OpenProjectClient:
         )
 
         self._action_capability_api: ActionCapabilityApi = HttpxActionCapabilityApi(
-            HttpxTransport(self._http), base_url=settings.base_url
+            self._transport, base_url=settings.base_url
         )
         self._action_capability_service = ActionCapabilityService(
             api=self._action_capability_api,
@@ -575,7 +581,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._status_priority_type_api: StatusPriorityTypeApi = HttpxStatusPriorityTypeApi(HttpxTransport(self._http))
+        self._status_priority_type_api: StatusPriorityTypeApi = HttpxStatusPriorityTypeApi(self._transport)
         self._status_priority_type_service = StatusPriorityTypeService(
             api=self._status_priority_type_api,
             settings=settings,
@@ -593,7 +599,7 @@ class OpenProjectClient:
         )
 
         self._query_metadata_api: QueryMetadataApi = HttpxQueryMetadataApi(
-            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
+            self._transport, base_url=settings.base_url, origin=self._origin
         )
         self._query_metadata_service = QueryMetadataService(
             api=self._query_metadata_api,
@@ -601,15 +607,14 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._job_status_api: JobStatusApi = HttpxJobStatusApi(HttpxTransport(self._http))
+        self._job_status_api: JobStatusApi = HttpxJobStatusApi(self._transport)
         self._job_status_service = JobStatusService(
             api=self._job_status_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
-            project_api=self._project_api,
         )
 
-        self._extended_metadata_api: ExtendedMetadataApi = HttpxExtendedMetadataApi(HttpxTransport(self._http))
+        self._extended_metadata_api: ExtendedMetadataApi = HttpxExtendedMetadataApi(self._transport)
         self._extended_metadata_service = ExtendedMetadataService(api=self._extended_metadata_api, settings=settings)
 
         # Narrow reference-resolution seam (WorkPackageIdResolver/
@@ -617,7 +622,7 @@ class OpenProjectClient:
         # depend on. Kept exactly as-is below -- see that block's own
         # comment for why.
         self._work_package_lookup_api: WorkPackageLookupApi = HttpxWorkPackageLookupApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+            self._transport, base_url=settings.base_url, api_prefix=self._api_prefix
         )
         self._work_package_resolver = WorkPackageResolver(
             api=self._work_package_lookup_api,
@@ -634,16 +639,17 @@ class OpenProjectClient:
         # WorkPackageResolver above stays bound to work_package_lookup_api,
         # the seam every work-package-reference-dependent domain uses.
         self._work_package_api: WorkPackageApi = HttpxWorkPackageApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+            self._transport, base_url=settings.base_url, api_prefix=self._api_prefix
         )
         # Constructed here so WorkPackageService can depend on it directly
         # for add_comment()'s reuse of the Activities normalizer, instead of
         # duplicating that logic onto WorkPackageApi.
-        self._activity_api: ActivityApi = HttpxActivityApi(HttpxTransport(self._http))
+        self._activity_api: ActivityApi = HttpxActivityApi(self._transport)
         self._work_package_service = WorkPackageService(
             api=self._work_package_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+            readable_projects=self._project_directory,
             resolve_project_ref=self._get_project_payload,
             resolve_type_id=self._type_resolver.resolve_id,
             resolve_version_id=self._resolve_version_id,
@@ -661,7 +667,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._file_link_api: FileLinkApi = HttpxFileLinkApi(HttpxTransport(self._http))
+        self._file_link_api: FileLinkApi = HttpxFileLinkApi(self._transport)
         self._file_link_service = FileLinkService(
             api=self._file_link_api,
             work_package_lookup_api=self._work_package_lookup_api,
@@ -670,14 +676,14 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
-        self._watcher_api: WatcherApi = HttpxWatcherApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._watcher_api: WatcherApi = HttpxWatcherApi(self._transport, api_prefix=self._api_prefix)
         self._watcher_service = WatcherService(
             api=self._watcher_api,
             settings=settings,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
-        self._emoji_reaction_api: EmojiReactionApi = HttpxEmojiReactionApi(HttpxTransport(self._http))
+        self._emoji_reaction_api: EmojiReactionApi = HttpxEmojiReactionApi(self._transport)
         self._emoji_reaction_service = EmojiReactionService(
             api=self._emoji_reaction_api,
             work_package_lookup_api=self._work_package_lookup_api,
@@ -686,7 +692,7 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
-        self._work_package_picker_api: WorkPackagePickerApi = HttpxWorkPackagePickerApi(HttpxTransport(self._http))
+        self._work_package_picker_api: WorkPackagePickerApi = HttpxWorkPackagePickerApi(self._transport)
         self._work_package_picker_service = WorkPackagePickerService(
             api=self._work_package_picker_api,
             settings=settings,
@@ -695,7 +701,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._wiki_page_link_api: WikiPageLinkApi = HttpxWikiPageLinkApi(HttpxTransport(self._http))
+        self._wiki_page_link_api: WikiPageLinkApi = HttpxWikiPageLinkApi(self._transport)
         self._wiki_page_link_service = WikiPageLinkService(
             api=self._wiki_page_link_api,
             settings=settings,
@@ -703,12 +709,12 @@ class OpenProjectClient:
             current_user=self._current_user_resolver,
         )
 
-        self._user_non_working_time_api: UserNonWorkingTimeApi = HttpxUserNonWorkingTimeApi(HttpxTransport(self._http))
+        self._user_non_working_time_api: UserNonWorkingTimeApi = HttpxUserNonWorkingTimeApi(self._transport)
         self._user_non_working_time_service = UserNonWorkingTimeService(
             api=self._user_non_working_time_api, settings=settings
         )
 
-        self._user_working_hours_api: UserWorkingHoursApi = HttpxUserWorkingHoursApi(HttpxTransport(self._http))
+        self._user_working_hours_api: UserWorkingHoursApi = HttpxUserWorkingHoursApi(self._transport)
         self._user_working_hours_service = UserWorkingHoursService(api=self._user_working_hours_api, settings=settings)
 
         # Depends on self._work_package_api (constructed above) directly, to
@@ -716,7 +722,7 @@ class OpenProjectClient:
         # matching WorkPackageService's own precedent of depending on
         # self._activity_api directly rather than duplicating that domain's
         # normalization logic.
-        self._query_execution_api: QueryExecutionApi = HttpxQueryExecutionApi(HttpxTransport(self._http))
+        self._query_execution_api: QueryExecutionApi = HttpxQueryExecutionApi(self._transport)
         self._query_execution_service = QueryExecutionService(
             api=self._query_execution_api,
             work_package_api=self._work_package_api,
@@ -724,7 +730,7 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._reminder_api: ReminderApi = HttpxReminderApi(HttpxTransport(self._http))
+        self._reminder_api: ReminderApi = HttpxReminderApi(self._transport)
         self._reminder_service = ReminderService(
             api=self._reminder_api,
             work_package_lookup_api=self._work_package_lookup_api,
@@ -735,7 +741,7 @@ class OpenProjectClient:
             work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
         )
 
-        self._notification_api: NotificationApi = HttpxNotificationApi(HttpxTransport(self._http))
+        self._notification_api: NotificationApi = HttpxNotificationApi(self._transport)
         self._notification_service = NotificationService(
             api=self._notification_api,
             settings=settings,
@@ -744,7 +750,7 @@ class OpenProjectClient:
             work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
         )
 
-        self._relation_api: RelationApi = HttpxRelationApi(HttpxTransport(self._http))
+        self._relation_api: RelationApi = HttpxRelationApi(self._transport)
         self._relation_service = RelationService(
             api=self._relation_api,
             work_package_lookup_api=self._work_package_lookup_api,
@@ -757,7 +763,7 @@ class OpenProjectClient:
         )
 
         self._time_entry_api: TimeEntryApi = HttpxTimeEntryApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+            self._transport, base_url=settings.base_url, api_prefix=self._api_prefix
         )
         self._time_entry_service = TimeEntryService(
             api=self._time_entry_api,
@@ -774,7 +780,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._cost_api: CostApi = HttpxCostApi(HttpxTransport(self._http))
+        self._cost_api: CostApi = HttpxCostApi(self._transport)
         self._cost_service = CostService(
             api=self._cost_api,
             settings=settings,
@@ -783,7 +789,7 @@ class OpenProjectClient:
         )
 
         self._github_gitlab_link_api: GithubGitlabLinkApi = HttpxGithubGitlabLinkApi(
-            HttpxTransport(self._http), text_limit=settings.text_limit
+            self._transport, text_limit=settings.text_limit
         )
         self._github_gitlab_link_service = GithubGitlabLinkService(
             api=self._github_gitlab_link_api,
@@ -798,7 +804,7 @@ class OpenProjectClient:
         )
 
         self._attachment_api: AttachmentApi = HttpxAttachmentApi(
-            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
+            self._transport, base_url=settings.base_url, origin=self._origin
         )
         self._attachment_service = AttachmentService(
             api=self._attachment_api,
@@ -814,7 +820,7 @@ class OpenProjectClient:
         # allowlist check through a parent Meeting (the precedent already
         # established by WorkPackageService->ActivityApi/
         # FileLinkService->WorkPackageLookupApi).
-        self._meeting_api: MeetingApi = HttpxMeetingApi(HttpxTransport(self._http))
+        self._meeting_api: MeetingApi = HttpxMeetingApi(self._transport)
         self._meeting_service = MeetingService(
             api=self._meeting_api,
             settings=settings,
@@ -826,7 +832,7 @@ class OpenProjectClient:
         )
 
         self._meeting_agenda_item_api: MeetingAgendaItemApi = HttpxMeetingAgendaItemApi(
-            HttpxTransport(self._http), text_limit=settings.text_limit
+            self._transport, text_limit=settings.text_limit
         )
         self._meeting_agenda_item_service = MeetingAgendaItemService(
             api=self._meeting_agenda_item_api,
@@ -837,7 +843,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._meeting_section_api: MeetingSectionApi = HttpxMeetingSectionApi(HttpxTransport(self._http))
+        self._meeting_section_api: MeetingSectionApi = HttpxMeetingSectionApi(self._transport)
         self._meeting_section_service = MeetingSectionService(
             api=self._meeting_section_api,
             meeting_api=self._meeting_api,
@@ -847,7 +853,7 @@ class OpenProjectClient:
         )
 
         self._meeting_outcome_api: MeetingOutcomeApi = HttpxMeetingOutcomeApi(
-            HttpxTransport(self._http), text_limit=settings.text_limit
+            self._transport, text_limit=settings.text_limit
         )
         self._meeting_outcome_service = MeetingOutcomeService(
             api=self._meeting_outcome_api,
@@ -859,7 +865,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._recurring_meeting_api: RecurringMeetingApi = HttpxRecurringMeetingApi(HttpxTransport(self._http))
+        self._recurring_meeting_api: RecurringMeetingApi = HttpxRecurringMeetingApi(self._transport)
         self._recurring_meeting_service = RecurringMeetingService(
             api=self._recurring_meeting_api,
             settings=settings,
@@ -869,85 +875,7 @@ class OpenProjectClient:
         )
 
     async def initialize(self) -> None:
-        # _project_id_to_identifier is consulted for BOTH read and write link-based
-        # allowlist matching (see _project_candidates), so population must not skip
-        # just because read_projects is wide-open — a wide-open read scope combined
-        # with a restricted write_projects (e.g. READ="*", WRITE="DEMO") still needs
-        # this cache, or write-side identifier matching on an embedded project link
-        # silently fails to recognize a valid identifier candidate.
-        read_scope = self.settings.read_projects
-        write_scope = self.settings.write_projects
-        read_needs_lookup = bool(read_scope) and not _scope_allows_all(read_scope)
-        write_needs_lookup = bool(write_scope) and not _scope_allows_all(write_scope)
-        if not read_needs_lookup and not write_needs_lookup:
-            return
-        try:
-            # Projects is genuinely OffsetPaginatedCollection server-side (verified
-            # against OpenProject's own API implementation). A single bounded fetch
-            # would silently skip caching the identifier of any project beyond
-            # that cap, which would then fail link-based allowlist matching for
-            # that project. Walk every server page instead, terminating on a
-            # short page (fewer records than requested page size) rather than
-            # trusting a possibly-absent/inconsistent `total` field.
-            server_page_size = self.settings.max_page_size
-            server_offset = 1
-            seen_ids: set[int] = set()
-            is_first_page = True
-            while True:
-                payload = await self._get(
-                    "projects", params={"offset": str(server_offset), "pageSize": str(server_page_size)}
-                )
-                elements = payload.get("_embedded", {}).get("elements", [])
-                raw_ids = (item.get("id") for item in elements if isinstance(item, dict))
-                page_ids = {raw_id for raw_id in raw_ids if isinstance(raw_id, int)}
-                if not is_first_page and page_ids and page_ids <= seen_ids:
-                    break
-                is_first_page = False
-                seen_ids.update(page_ids)
-                for item in elements:
-                    if not isinstance(item, dict):
-                        continue
-                    project_id = item.get("id")
-                    project_identifier = item.get("identifier")
-                    project_name = item.get("name") or ""
-                    if not isinstance(project_id, int) or not isinstance(project_identifier, str):
-                        continue
-                    candidates: set[str] = {
-                        project_identifier.casefold(),
-                        str(project_id),
-                        project_name.casefold(),
-                        project_name.casefold().replace(" ", "-"),
-                    }
-                    if (read_needs_lookup and _scope_matches_candidates(read_scope, candidates)) or (
-                        write_needs_lookup and _scope_matches_candidates(write_scope, candidates)
-                    ):
-                        self._project_id_to_identifier[project_id] = project_identifier
-                if len(elements) < server_page_size:
-                    break
-                server_offset += 1
-        except OpenProjectError as exc:
-            LOGGER.warning(
-                "initialize: failed to fetch the project list for identifier-cache "
-                "population; identifier-based allowlist matching may reject valid "
-                "projects until the server is restarted and initialization succeeds: %s",
-                exc,
-            )
-
-    def _remember_project_identifier(self, result: ProjectWriteResult) -> None:
-        """Keep _project_id_to_identifier in sync with a just-committed create/update.
-
-        This dict is otherwise populated exactly once, by initialize() at
-        server startup -- a project created or renamed through this same
-        server afterward was invisible to every link-shaped allowlist check
-        (_ensure_project_link_allowed, used by every work-package/membership/
-        version/etc. write and read that scopes by an embedded project link,
-        which carries no identifier field) until the process restarted.
-        """
-        if result.state != "confirmed" or result.result is None:
-            return
-        identifier = result.result.identifier
-        if identifier:
-            self._project_id_to_identifier[result.result.id] = identifier
+        await self._project_directory.refresh()
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -1234,7 +1162,7 @@ class OpenProjectClient:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        result = await self._project_service.create(
+        return await self._project_service.create(
             name=name,
             identifier=identifier,
             description=description,
@@ -1245,8 +1173,6 @@ class OpenProjectClient:
             parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
             confirm=confirm,
         )
-        self._remember_project_identifier(result)
-        return result
 
     async def update_project(
         self,
@@ -1262,7 +1188,7 @@ class OpenProjectClient:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        result = await self._project_service.update(
+        return await self._project_service.update(
             project_ref=project_ref,
             name=name,
             identifier=identifier,
@@ -1274,8 +1200,6 @@ class OpenProjectClient:
             parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
             confirm=confirm,
         )
-        self._remember_project_identifier(result)
-        return result
 
     async def get_my_project_access(self, project_ref: str) -> ProjectAccessSummary:
         self._ensure_read_enabled("project")
@@ -1593,12 +1517,3 @@ def _parse_response_json(response: httpx.Response) -> dict[str, Any]:
         return normalize_links(response.json())
     except ValueError as exc:
         raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
-
-
-# _scope_allows_all/_scope_matches_candidates: relocated to app/policies/scope.py.
-# Rebound here rather than rewritten as wrapper
-# functions since both are pure module-level functions with no `self` — a direct
-# name rebind is behaviorally identical and requires zero changes at any of the
-# ~30 existing call sites across every domain.
-_scope_allows_all = _scope_policy.scope_allows_all
-_scope_matches_candidates = _scope_policy.scope_matches_candidates

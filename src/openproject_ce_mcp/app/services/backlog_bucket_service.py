@@ -36,6 +36,7 @@ integration to guard, so there is no confirm/preview-ordering concern here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -55,7 +56,7 @@ class BacklogBucketService:
         *,
         api: BacklogBucketApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_project_ref: ProjectRefResolver,
     ) -> None:
         self._api = api

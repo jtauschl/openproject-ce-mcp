@@ -20,18 +20,6 @@ fallback for the response body). Typed `Any`, not `dict | None`: link
 classification (missing vs. malformed vs. legitimately empty) is
 `scope.classify_project_link`'s responsibility, so the adapter must pass the
 raw value through unmodified.
-
-`created_project_id` is a THIRD, narrower concern: whether the job's
-`_links["createdProject"]` key specifically is present (a copy_project
-job's completion signal), as opposed to the generic
-`createdResource`/`result` fallback keys `summary.created_resource_type`/
-`created_resource_id` are populated from. `summary.created_resource_type`
-cannot be used for this -- OpenProject's real `createdProject` payload
-shape carries only `href`/`title`, no `type` field (confirmed against
-`test_projects.py`'s `createdProject` fixture), so `created_resource_type`
-stays `None` even for a genuine completed project copy. Only the
-*presence of the `createdProject` key itself* reliably signals "this job
-created a project."
 """
 
 from __future__ import annotations
@@ -46,7 +34,6 @@ from ...models import JobStatusDetail
 class JobStatusRecord:
     summary: JobStatusDetail
     project_link: Any
-    created_project_id: int | None
 
 
 class JobStatusApi(Protocol):

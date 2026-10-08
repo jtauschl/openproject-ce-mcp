@@ -2,12 +2,11 @@
 
 OpenProject stores descriptions, comments, status explanations and
 notification messages as unbounded text with no length validation. A cap
-in this layer mirrors no real constraint and only invites a caller to
-shorten text to get it accepted; the fixed 10,000-character cap that used to
-sit on these call sites made work packages with long descriptions uneditable
-through the server. This pins every such call site to ``max_length=None`` and
-keeps the retired literal out of every text-validator call, by AST, so a
-spelling variant of the number cannot slip past.
+in this layer mirrors no real constraint, only invites a caller to shorten
+text to get it accepted, and leaves work packages with longer descriptions
+uneditable through the server. This pins every such call site to
+``max_length=None`` and keeps a 10,000 literal out of every text-validator
+call, by AST, so a spelling variant of the number cannot slip past.
 """
 
 from __future__ import annotations

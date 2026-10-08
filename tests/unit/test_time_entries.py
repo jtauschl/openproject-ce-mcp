@@ -4,7 +4,7 @@ import json
 
 import httpx
 import pytest
-from _client_test_helpers import _base_settings, _write_enabled_settings, make_settings
+from _client_test_helpers import _base_settings, _write_enabled_settings, make_settings, started_client
 
 from openproject_ce_mcp.client import (
     OpenProjectClient,
@@ -194,7 +194,7 @@ async def test_time_entry_crud_and_activity_listing() -> None:
         write_projects=("demo",),
         enable_work_package_write=True,
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(6, "demo", "Demo")])
 
     activities = await client.time_entry.list_activities()
     listed = await client.time_entry.list_all(project="demo", work_package_id=55)

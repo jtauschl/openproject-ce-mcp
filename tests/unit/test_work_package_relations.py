@@ -4,7 +4,7 @@ import re
 
 import httpx
 import pytest
-from _client_test_helpers import _base_settings
+from _client_test_helpers import _base_settings, started_client
 
 from openproject_ce_mcp.client import (
     OpenProjectClient,
@@ -58,7 +58,7 @@ async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("allowed",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "allowed", "allowed"), (2, "secret", "secret")])
 
     detail = await client.work_package.get(1)
 
@@ -120,7 +120,7 @@ async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist()
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("allowed",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "allowed", "allowed"), (2, "secret", "secret")])
 
     with pytest.raises(PermissionDeniedError):
         await client.watcher.list_for_work_package(9)
@@ -146,7 +146,7 @@ async def test_list_work_package_watchers_allows_anchor_inside_read_allowlist() 
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("allowed",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "allowed", "allowed"), (2, "secret", "secret")])
 
     result = await client.watcher.list_for_work_package(9)
 

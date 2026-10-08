@@ -23,6 +23,7 @@ always rejected regardless of scope.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -41,7 +42,7 @@ class ViewService:
         *,
         api: ViewApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_project_ref: ProjectRefResolver,
     ) -> None:
         self._api = api

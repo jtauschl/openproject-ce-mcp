@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from _client_test_helpers import _base_settings
+from _client_test_helpers import _base_settings, started_client
 
 from openproject_ce_mcp.app.errors import (
     CapabilityDisabledError,
@@ -40,7 +40,10 @@ _CONTAINERS = {
 }
 
 
-def _attachment_client(requests: list[httpx.Request], **settings) -> OpenProjectClient:
+_PROJECTS = [(1, "demo", "Demo"), (7, "other", "Other")]
+
+
+async def _attachment_client(requests: list[httpx.Request], **settings) -> OpenProjectClient:
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         path = request.url.path
@@ -57,7 +60,7 @@ def _attachment_client(requests: list[httpx.Request], **settings) -> OpenProject
             return httpx.Response(200, json=_attachment(5, path.removesuffix("/attachments")), request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    return OpenProjectClient(_base_settings(**settings), transport=httpx.MockTransport(handler))
+    return await started_client(_base_settings(**settings), handler, _PROJECTS)
 
 
 @pytest.mark.asyncio
@@ -68,7 +71,7 @@ def _attachment_client(requests: list[httpx.Request], **settings) -> OpenProject
 async def test_list_returns_only_the_containers_own_attachments(
     container_type: str, container_id: int, expected_type: str
 ) -> None:
-    client = _attachment_client([], read_projects=("demo",))
+    client = await _attachment_client([], read_projects=("demo",))
     result = await client.attachment.list_for_container(container_type, container_id)
     assert [(a.id, a.container_type, a.container_id) for a in result.results] == [(1, expected_type, container_id)]
     await client.aclose()
@@ -77,7 +80,7 @@ async def test_list_returns_only_the_containers_own_attachments(
 @pytest.mark.asyncio
 async def test_list_refuses_a_container_in_an_unreadable_project() -> None:
     requests: list[httpx.Request] = []
-    client = _attachment_client(requests, read_projects=("demo",))
+    client = await _attachment_client(requests, read_projects=("demo",))
     with pytest.raises(ProjectScopeDeniedError):
         await client.attachment.list_for_container("post", 3)
     assert all(not r.url.path.endswith("/attachments") for r in requests)
@@ -86,7 +89,7 @@ async def test_list_refuses_a_container_in_an_unreadable_project() -> None:
 
 @pytest.mark.asyncio
 async def test_a_comment_without_a_work_package_link_fails_closed() -> None:
-    client = _attachment_client([])
+    client = await _attachment_client([])
     with pytest.raises(OpenProjectServerError, match="work package link"):
         await client.attachment.list_for_container("activity", 78)
     await client.aclose()
@@ -95,7 +98,7 @@ async def test_a_comment_without_a_work_package_link_fails_closed() -> None:
 @pytest.mark.asyncio
 async def test_an_unknown_container_type_is_rejected_without_a_request() -> None:
     requests: list[httpx.Request] = []
-    client = _attachment_client(requests)
+    client = await _attachment_client(requests)
     with pytest.raises(InvalidInputError, match="container_type"):
         await client.attachment.list_for_container("document", 1)
     assert requests == []
@@ -104,7 +107,7 @@ async def test_an_unknown_container_type_is_rejected_without_a_request() -> None
 
 @pytest.mark.asyncio
 async def test_the_containers_own_read_flag_is_checked() -> None:
-    client = _attachment_client([], enable_meeting_read=False)
+    client = await _attachment_client([], enable_meeting_read=False)
     with pytest.raises(CapabilityDisabledError):
         await client.attachment.list_for_container("meeting", 6)
     await client.aclose()
@@ -119,7 +122,7 @@ async def test_upload_previews_without_posting_then_posts_to_the_container(tmp_p
     file_path = tmp_path / "note.txt"
     file_path.write_text("hello")
     requests: list[httpx.Request] = []
-    client = _attachment_client(requests, **_upload_settings(tmp_path))
+    client = await _attachment_client(requests, **_upload_settings(tmp_path))
 
     preview = await client.attachment.create_for_container(
         container_type="wiki_page", container_id=12, file_path=str(file_path)
@@ -146,7 +149,7 @@ async def test_upload_is_refused_outside_the_write_allowlist(tmp_path: Path) -> 
     file_path = tmp_path / "note.txt"
     file_path.write_text("hello")
     requests: list[httpx.Request] = []
-    client = _attachment_client(requests, **_upload_settings(tmp_path, write_projects=("other",)))
+    client = await _attachment_client(requests, **_upload_settings(tmp_path, write_projects=("other",)))
     with pytest.raises(ProjectScopeDeniedError):
         await client.attachment.create_for_container(
             container_type="activity", container_id=77, file_path=str(file_path), confirm=True
@@ -161,7 +164,7 @@ async def test_upload_checks_the_containers_own_write_flag(tmp_path: Path) -> No
     file_path.write_text("hello")
     requests: list[httpx.Request] = []
     settings = _upload_settings(tmp_path, enable_meeting_write=False)
-    client = _attachment_client(requests, **settings)
+    client = await _attachment_client(requests, **settings)
     with pytest.raises(CapabilityDisabledError):
         await client.attachment.create_for_container(
             container_type="meeting", container_id=6, file_path=str(file_path), confirm=True
@@ -176,7 +179,7 @@ async def test_upload_keeps_the_attachment_root_confinement(tmp_path: Path) -> N
     outside.write_text("secret")
     root = tmp_path / "root"
     root.mkdir()
-    client = _attachment_client([], attachment_root=str(root))
+    client = await _attachment_client([], attachment_root=str(root))
     with pytest.raises(InvalidInputError, match="outside the allowed attachment directory"):
         await client.attachment.create_for_container(
             container_type="wiki_page", container_id=12, file_path=str(outside)

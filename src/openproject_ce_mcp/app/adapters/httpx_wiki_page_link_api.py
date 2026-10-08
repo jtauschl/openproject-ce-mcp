@@ -9,7 +9,7 @@ response IS paginated (`PageLinkCollectionRepresenter` inherits OpenProject's
 read directly from the response, no `len(records)` fallback needed.
 
 KNOWN SERVER LIMITATION on OpenProject up to 17.8 (fixed upstream in 17.9.0,
-#78529; not worked around client-side): the
+OpenProject work package 78529; not worked around client-side): the
 work-package-scoped endpoint's own handler (`work_package_wiki_page_links_
 api.rb`) never forwards the request's `offset` param into `page:` when
 constructing `PageLinkCollectionRepresenter` -- only `per_page: params[:

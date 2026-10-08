@@ -11,6 +11,8 @@ from _client_test_helpers import (
     _wp_detail_payload,
     _wp_detail_payload_with_description,
     make_settings,
+    serving_projects,
+    started_client,
 )
 
 from openproject_ce_mcp.client import (
@@ -209,7 +211,9 @@ async def test_search_work_packages_exact_match_none_under_restricted_read_scope
             return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client = await started_client(
+        _base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo"), (2, "other-project", "other-project")]
+    )
 
     result = await client.work_package.search(search="394")
 
@@ -483,19 +487,13 @@ async def test_list_work_packages_exposes_real_total_when_scope_unrestricted() -
 
 
 @pytest.mark.asyncio
-async def test_list_work_packages_denies_when_project_cache_empty_under_restricted_scope() -> None:
-    # Restricted scope, no explicit project, and the allowed-project-id cache
-    # (populated by initialize() at startup, or by ProjectService.create()/
-    # update() writing through on a confirmed commit) is empty -- there is no
-    # way to send a server-side project filter that provably restricts the
-    # query, so silently proceeding would let an unscopable total leak the
-    # existence of disallowed-project matches. This must fail closed with an
-    # explicit error, consistent with every other project-link-scoped tool
-    # (get_work_package/update_work_package/etc.), not silently narrow to a
-    # page-count total that reads exactly like "this project has no work
-    # packages yet."
+async def test_list_work_packages_denies_when_no_readable_project_exists_under_restricted_scope() -> None:
+    # Without a readable project there is no server-side project filter that
+    # provably restricts the query, and an unfiltered total would leak matches
+    # from disallowed projects; failing closed is the only safe answer.
     client = OpenProjectClient(
-        _base_settings(read_projects=("demo",)), transport=httpx.MockTransport(_no_request_handler)
+        _base_settings(read_projects=("demo",)),
+        transport=httpx.MockTransport(serving_projects(_no_request_handler, [(2, "other", "Other")])),
     )
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
@@ -536,8 +534,7 @@ async def test_list_work_packages_exposes_real_total_when_restricted_scope_filte
             request=request,
         )
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    client._project_id_to_identifier[1] = "demo"
+    client = await started_client(_base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo")])
     result = await client.work_package.list(limit=2)
 
     assert result.total == 5
@@ -551,7 +548,7 @@ async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total
     # search_work_packages has no restricted-scope project_id filter branch at
     # all (unlike list_work_packages, which now fails closed instead of ever
     # reaching an untrusted-total state -- see
-    # test_list_work_packages_denies_when_project_cache_empty_under_restricted_scope),
+    # test_list_work_packages_denies_when_no_readable_project_exists_under_restricted_scope),
     # so it's the one remaining path that can still legitimately produce an
     # untrusted total without an explicit project. next_offset/truncated must
     # NOT be derived from the server's secret total (50) -- that would reveal
@@ -576,7 +573,7 @@ async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total
             request=request,
         )
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client = await started_client(_base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo")])
     result = await client.work_package.search(search="A", limit=5)
 
     assert result.total == 1
@@ -626,7 +623,7 @@ async def test_search_work_packages_pagination_continues_with_untrusted_total_wh
             request=request,
         )
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client = await started_client(_base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo")])
     result = await client.work_package.search(search="A", offset=1, limit=2)
 
     assert result.total == 2
@@ -672,7 +669,7 @@ async def test_search_work_packages_does_not_report_truncated_when_page_full_but
             request=request,
         )
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client = await started_client(_base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo")])
     result = await client.work_package.search(search="A", offset=1, limit=2)
 
     assert result.total == 2
@@ -707,7 +704,7 @@ async def test_search_work_packages_falls_back_to_page_count_without_explicit_pr
             request=request,
         )
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client = await started_client(_base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo")])
     result = await client.work_package.search(search="A", limit=5)
 
     assert result.total == 1
@@ -743,7 +740,7 @@ async def test_search_work_packages_exposes_real_total_with_explicit_project() -
             request=request,
         )
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client = await started_client(_base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo")])
     result = await client.work_package.search(search="A", project="demo", limit=5)
 
     assert result.total == 5
@@ -777,7 +774,7 @@ async def test_list_my_open_work_packages_falls_back_to_page_count_under_restric
             request=request,
         )
 
-    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client = await started_client(_base_settings(read_projects=("demo",)), handler, [(1, "demo", "Demo")])
     result = await client.work_package.list_my_open(limit=5)
 
     assert result.total == 1
@@ -909,15 +906,9 @@ async def test_global_list_work_packages_and_versions_respect_allowlist_ids() ->
         log_level="WARNING",
         read_projects=("6",),
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    # Mirrors initialize()'s cache population (or ProjectService's write-through
-    # on a confirmed create/update) -- without it, list_work_packages now fails
-    # closed instead of ever reaching the server (see
-    # test_list_work_packages_denies_when_project_cache_empty_under_restricted_scope).
-    # This test's own purpose is the per-row allowlist filter (project 7's item
-    # must still be dropped client-side even though the server-side filter
-    # covers it), so the cache must be populated to reach that code at all.
-    client._project_id_to_identifier[6] = "6"
+    client = await started_client(settings, handler, [(6, "demo", "Demo"), (7, "other", "Other")])
+    # The per-row allowlist filter must still drop project 7's item, which the
+    # mocked server returns despite the project filter.
 
     work_packages = await client.work_package.list()
     versions = await client.version.list()
@@ -993,7 +984,9 @@ async def test_list_my_open_work_packages_filters_total_when_all_items_blocked_b
         log_level="WARNING",
         read_projects=("6",),
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(
+        settings, handler, [(6, "demo", "Demo"), (7, "other", "Other"), (8, "another", "Another")]
+    )
 
     result = await client.work_package.list_my_open(limit=20, offset=1)
 

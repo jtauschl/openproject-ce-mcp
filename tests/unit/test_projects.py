@@ -6,7 +6,7 @@ import os
 
 import httpx
 import pytest
-from _client_test_helpers import _base_settings, make_settings
+from _client_test_helpers import _base_settings, make_settings, started_client
 
 from openproject_ce_mcp.client import (
     AuthenticationError,
@@ -632,14 +632,6 @@ async def test_job_status_documents_news_and_wiki() -> None:
                 },
                 request=request,
             )
-        if request.url.path == "/api/v3/projects/88":
-            # get_job_status resolves the createdProject link's real
-            # identifier for the shared allowlist cache.
-            return httpx.Response(
-                200,
-                json={"_type": "Project", "id": 88, "name": "Demo Copy", "identifier": "demo-copy"},
-                request=request,
-            )
         if request.url.path == "/api/v3/documents" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -1188,7 +1180,7 @@ async def test_views_categories_and_attachments() -> None:
         enable_work_package_write=True,
         attachment_root=os.getcwd(),  # uploads need a configured root
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(6, "demo", "Demo")])
 
     view_list = await client.view.list(project="demo", view_type="Views::TeamPlanner")
     view_detail = await client.view.get(12)
@@ -1269,7 +1261,7 @@ async def test_list_work_package_attachments_walks_every_server_page_when_allowl
     import dataclasses
 
     settings = dataclasses.replace(make_settings(), max_page_size=2, read_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     # limit=2 (matching max_page_size) needs the limit+1 lookahead match on
     # page 2 to confirm truncation -- both server pages get requested.

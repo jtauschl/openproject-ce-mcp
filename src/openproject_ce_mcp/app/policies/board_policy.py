@@ -21,13 +21,14 @@ BoardService.create(), not here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
 from . import scope
 
 
-def board_read_allowed(project_link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]) -> bool:
+def board_read_allowed(project_link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]) -> bool:
     return scope.payload_allowed(
         lambda: scope.ensure_project_link_allowed_if_present(
             project_link, settings=settings, project_id_to_identifier=project_id_to_identifier
@@ -36,7 +37,7 @@ def board_read_allowed(project_link: Any, *, settings: Settings, project_id_to_i
 
 
 def ensure_board_read_allowed(
-    project_link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    project_link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     scope.ensure_project_link_allowed_if_present(
         project_link, settings=settings, project_id_to_identifier=project_id_to_identifier
@@ -44,7 +45,7 @@ def ensure_board_read_allowed(
 
 
 def ensure_board_write_allowed(
-    project_link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    project_link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     scope.ensure_project_write_link_allowed_if_present(
         project_link, settings=settings, project_id_to_identifier=project_id_to_identifier

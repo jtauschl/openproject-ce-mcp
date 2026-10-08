@@ -13,7 +13,7 @@ import json
 
 import httpx
 import pytest
-from _client_test_helpers import _write_enabled_settings, make_settings
+from _client_test_helpers import _write_enabled_settings, make_settings, started_client
 
 from openproject_ce_mcp.app.errors import (
     CapabilityDisabledError,
@@ -127,7 +127,9 @@ async def test_an_activity_without_a_work_package_link_fails_closed() -> None:
 async def test_the_work_packages_project_must_be_writable() -> None:
     patches: list[dict] = []
     settings = dataclasses.replace(_write_enabled_settings(), write_projects=("other",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(_handler(_activity(), patches)))
+    client = await started_client(
+        settings, _handler(_activity(), patches), [(1, "demo", "Demo"), (7, "other", "Other")]
+    )
 
     with pytest.raises(ProjectScopeDeniedError):
         await client.work_package.update_comment(activity_id=77, comment="New text.", confirm=True)
