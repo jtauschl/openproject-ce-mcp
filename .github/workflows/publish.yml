@@ -151,6 +151,15 @@ jobs:
     outputs:
       formula_changed: ${{ steps.diff.outputs.changed }}
     steps:
+      - name: Verify tag is an exact plain SemVer (no pre-release suffix)
+        # Gated here too, not only through `needs: publish`: this job's own
+        # credentials or third-party code must not depend on another job's check.
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not an exact plain vMAJOR.MINOR.PATCH tag — refusing to publish" >&2
+            exit 1
+          fi
+
       - name: Checkout tap repo (public read, no credentials)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -231,6 +240,15 @@ jobs:
     timeout-minutes: 10
     permissions: {} # only ever authenticates via secrets.TAP_REPO_PAT below, never GITHUB_TOKEN
     steps:
+      - name: Verify tag is an exact plain SemVer (no pre-release suffix)
+        # Gated here too, not only through `needs: publish`: this job's own
+        # credentials or third-party code must not depend on another job's check.
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not an exact plain vMAJOR.MINOR.PATCH tag — refusing to publish" >&2
+            exit 1
+          fi
+
       - name: Checkout tap repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
