@@ -5,7 +5,13 @@ import re
 
 import httpx
 import pytest
-from _client_test_helpers import _base_settings, _wp_detail_payload, _write_enabled_settings, make_settings
+from _client_test_helpers import (
+    _base_settings,
+    _wp_detail_payload,
+    _write_enabled_settings,
+    make_settings,
+    started_client,
+)
 
 from openproject_ce_mcp.app.adapters._text import _extract_formattable_text
 from openproject_ce_mcp.app.adapters._text import (
@@ -656,7 +662,7 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     result = await client.file_link.delete(5, confirm=True)
 
@@ -789,7 +795,7 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     result = await client.relation.list_all()
 
@@ -854,7 +860,7 @@ async def test_get_work_package_relations_filters_out_of_scope_other_side() -> N
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     result = await client.relation.list_for_work_package(10)
 

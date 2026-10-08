@@ -36,7 +36,7 @@ link is never the same thing as "deliberately no link".
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from enum import Enum, auto
 from fnmatch import fnmatch
 from typing import Any
@@ -143,9 +143,19 @@ def scope_matches_candidates(scope: tuple[str, ...], candidates: set[str]) -> bo
     return False
 
 
+def project_record_candidates(project_id: int, identifier: str, name: str | None) -> set[str]:
+    """Candidates of a project known by id, identifier and name, as a scope pattern may name it."""
+    name_cf = (name or "").casefold()
+    return {
+        candidate
+        for candidate in (identifier.casefold(), str(project_id), name_cf, name_cf.replace(" ", "-"))
+        if candidate
+    }
+
+
 def project_candidates(
     *,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
     project_ref: str | None = None,
     payload: dict[str, Any] | None = None,
     link: Any = None,
@@ -201,7 +211,7 @@ def payload_allowed(ensure: Callable[[], None]) -> bool:
 
 
 def project_link_payload_allowed(
-    payload: dict[str, Any], *, link_key: str, settings: Settings, project_id_to_identifier: dict[int, str]
+    payload: dict[str, Any], *, link_key: str, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> bool:
     """Shared body for every domain's `<domain>_payload_allowed(payload, ...)`
     wrapper (`document_policy.py`, `news_policy.py`, `version_policy.py`,
@@ -218,7 +228,7 @@ def project_link_payload_allowed(
     )
 
 
-def ensure_project_link_allowed(link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]) -> None:
+def ensure_project_link_allowed(link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]) -> None:
     """REQUIRED-project-link contract: for resource types whose
     representer always emits a project link (a real one, or OpenProject's own
     URN_UNDISCLOSED placeholder for an invisible-but-existing project).
@@ -243,7 +253,7 @@ def ensure_project_link_allowed(link: Any, *, settings: Settings, project_id_to_
 
 
 def ensure_project_write_link_allowed(
-    link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     ensure_project_link_allowed(link, settings=settings, project_id_to_identifier=project_id_to_identifier)
     state = classify_project_link(link)
@@ -259,7 +269,7 @@ def ensure_project_write_link_allowed(
 
 
 def ensure_project_link_allowed_if_present(
-    link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     """OPTIONAL-project-link contract: for the few resource types
     (Membership, View, Board/Query, Job Status) whose representer documents
@@ -285,7 +295,7 @@ def ensure_project_link_allowed_if_present(
 
 
 def ensure_project_write_link_allowed_if_present(
-    link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]
+    link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     ensure_project_link_allowed_if_present(link, settings=settings, project_id_to_identifier=project_id_to_identifier)
     state = classify_project_link(link)

@@ -25,6 +25,7 @@ existing `context`-aware, payload-caching behavior unchanged, calling
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -39,7 +40,7 @@ _PROJECT_NAME_SEARCH_MAX_PAGES = 5
 
 
 class ProjectResolver:
-    def __init__(self, *, api: ProjectApi, settings: Settings, project_id_to_identifier: dict[int, str]) -> None:
+    def __init__(self, *, api: ProjectApi, settings: Settings, project_id_to_identifier: Mapping[int, str]) -> None:
         self._api = api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier

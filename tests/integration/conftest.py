@@ -236,6 +236,28 @@ async def client():
 
 
 @pytest.fixture
+async def start_scoped_client():
+    """Starts clients with their own project scopes, each at the moment the
+    test asks, and closes them after the test."""
+    settings = _integration_settings()
+    if settings is None:
+        pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
+    started: list[OpenProjectClient] = []
+
+    async def start(*, read_projects: tuple[str, ...], write_projects: tuple[str, ...]) -> OpenProjectClient:
+        scoped = OpenProjectClient(
+            dataclasses.replace(settings, read_projects=read_projects, write_projects=write_projects)
+        )
+        started.append(scoped)
+        await scoped.initialize()
+        return scoped
+
+    yield start
+    for scoped in started:
+        await scoped.aclose()
+
+
+@pytest.fixture
 def test_project() -> str:
     return _resolve_test_project()
 

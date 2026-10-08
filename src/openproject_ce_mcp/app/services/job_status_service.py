@@ -24,33 +24,20 @@ a payload scoped only via `sourceProject` (e.g. `copy_project`'s response)
 must still be subject to `OPENPROJECT_READ_PROJECTS`, so the allowlist check
 stays consistent with what the response body reports.
 
-A project created via `copy_project` is only known by numeric id once the
-async copy job completes, which `copy_project` itself never observes (it
-returns immediately after starting the job) -- until that id is written
-through to the shared `project_id_to_identifier` cache, the new project
-would be invisible to every link-shaped allowlist check. `get()` closes this
-gap: when `record.created_project_id` is set (the job's
-`_links.createdProject` key is present), it resolves the new project by id
-via `ProjectApi.get()` (an extra GET, only on this one code path) and writes
-its REAL identifier through to the shared cache -- not just the job status
-response's own `created_resource_name` display title, which the allowlist
-matcher (`scope.project_candidates`) already tries as a fallback and would
-add no coverage beyond. Uses `created_project_id`, NOT
-`summary.created_resource_type == "Project"`: OpenProject's real
-`createdProject` payload shape carries no `type` field (only `href`/`title`),
-so that check would never fire; see `job_status_api.py`'s
-`created_project_id` docstring for the full explanation.
+A project created via `copy_project` becomes known to the allowlist when the
+completed job's response, which links the new project, passes through the
+learning transport (see services.project_directory_service).
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import JobStatusDetail
-from ..errors import NotFoundError, PermissionDeniedError
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.job_status_api import JobStatusApi
-from ..ports.project_api import ProjectApi
 
 
 class JobStatusService:
@@ -59,13 +46,11 @@ class JobStatusService:
         *,
         api: JobStatusApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
-        project_api: ProjectApi,
+        project_id_to_identifier: Mapping[int, str],
     ) -> None:
         self._api = api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
-        self._project_api = project_api
 
     async def get(self, job_status_id: str) -> JobStatusDetail:
         access.ensure_read_enabled("project", settings=self._settings)
@@ -73,21 +58,4 @@ class JobStatusService:
         scope_policy.ensure_project_link_allowed_if_present(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
-        if record.created_project_id is not None:
-            await self._remember_copied_project_identifier(record.created_project_id)
         return hidden_fields.apply_hidden_fields("job_status", record.summary, settings=self._settings)
-
-    async def _remember_copied_project_identifier(self, project_id: int) -> None:
-        # Best-effort: a race (the project was deleted right after the copy
-        # completed, or the caller's own scope no longer covers it) must not
-        # fail the job-status read itself -- the caller is asking about the
-        # JOB, not the project. Do NOT swallow other errors (e.g. a
-        # transient 5xx) the same way -- see _work_package_project_allowed's
-        # identical distinction elsewhere in this codebase.
-        try:
-            new_project = await self._project_api.get(str(project_id))
-        except (NotFoundError, PermissionDeniedError):
-            return
-        identifier = new_project.summary.identifier
-        if identifier:
-            self._project_id_to_identifier[project_id] = identifier

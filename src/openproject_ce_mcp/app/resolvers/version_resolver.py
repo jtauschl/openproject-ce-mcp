@@ -19,6 +19,8 @@ of re-fetching the same server pages once per client-side page.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ..errors import InvalidInputError
 from ..policies import scope as scope_policy
@@ -35,7 +37,7 @@ class VersionResolver:
         api: VersionApi,
         resolve_project_ref: ProjectRefResolver,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
     ) -> None:
         self._api = api
         self._resolve_project_ref = resolve_project_ref

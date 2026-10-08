@@ -17,7 +17,7 @@ building their own per-call cache.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from ...config import Settings
 from ..errors import NotFoundError
@@ -38,7 +38,7 @@ _ALLOWLIST_BULK_CONCURRENCY = 10
 
 class WorkPackageResolver:
     def __init__(
-        self, *, api: WorkPackageLookupApi, settings: Settings, project_id_to_identifier: dict[int, str]
+        self, *, api: WorkPackageLookupApi, settings: Settings, project_id_to_identifier: Mapping[int, str]
     ) -> None:
         self._api = api
         self._settings = settings

@@ -22,6 +22,7 @@ through the Port rather than re-extracted here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -34,7 +35,7 @@ def ensure_sprint_workspace_allowed(
     defining_workspace_payload: dict[str, Any] | None,
     defining_workspace_link: Any,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
 ) -> None:
     if defining_workspace_payload is not None:
         if scope.scope_allows_all(settings.read_projects):
@@ -55,7 +56,7 @@ def sprint_payload_allowed(
     defining_workspace_payload: dict[str, Any] | None,
     defining_workspace_link: Any,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
 ) -> bool:
     return scope.payload_allowed(
         lambda: ensure_sprint_workspace_allowed(

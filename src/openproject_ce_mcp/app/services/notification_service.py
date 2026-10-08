@@ -50,6 +50,8 @@ confirmed branch would silently loosen that preview-time behavior.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import NotificationListResult, NotificationMarkResult, NotificationSummary
 from ..pagination import effective_limit
@@ -66,7 +68,7 @@ class NotificationService:
         *,
         api: NotificationApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         work_package_project_allowed: WorkPackageProjectAllowedCheck,
         work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
     ) -> None:

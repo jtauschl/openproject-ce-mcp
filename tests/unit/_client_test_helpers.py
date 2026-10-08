@@ -4,8 +4,12 @@
 # `--import-mode=importlib`.
 from __future__ import annotations
 
+import inspect
+from collections.abc import Callable, Sequence
+
 import httpx
 
+from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
 
 
@@ -208,3 +212,46 @@ def _projects_search_handler(matches: list[dict], *, page_size: int = 50):
         return httpx.Response(200, json={"total": len(matches), "_embedded": {"elements": elements}}, request=request)
 
     return handler
+
+
+def _project_index_response(request: httpx.Request, projects: Sequence[tuple[int, str, str]]) -> httpx.Response:
+    offset = int(request.url.params.get("offset", "1"))
+    size = int(request.url.params.get("pageSize", "50"))
+    start = (offset - 1) * size
+    elements = [
+        {
+            "_type": "Project",
+            "id": project_id,
+            "identifier": identifier,
+            "name": name,
+            "_links": {"self": {"href": f"/api/v3/projects/{project_id}", "title": name}},
+        }
+        for project_id, identifier, name in projects[start : start + size]
+    ]
+    return httpx.Response(
+        200,
+        json={"_type": "Collection", "total": len(projects), "_embedded": {"elements": elements}},
+        request=request,
+    )
+
+
+def serving_projects(handler: Callable, projects: Sequence[tuple[int, str, str]]) -> Callable:
+    """Answer the project index the way the server would, so the client's
+    allowlist directory knows these (id, identifier, name) projects; every
+    other request goes to `handler`, which therefore never sees the scan."""
+
+    async def wrapped(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v3/projects":
+            return _project_index_response(request, projects)
+        response = handler(request)
+        return await response if inspect.isawaitable(response) else response
+
+    return wrapped
+
+
+async def started_client(
+    settings: Settings, handler: Callable, projects: Sequence[tuple[int, str, str]]
+) -> OpenProjectClient:
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(serving_projects(handler, projects)))
+    await client.initialize()
+    return client

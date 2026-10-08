@@ -34,6 +34,8 @@ scope).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import EmojiReactionListResult, EmojiReactionSummary, EmojiReactionWriteResult
 from ..errors import InvalidInputError, OpenProjectServerError
@@ -64,7 +66,7 @@ class EmojiReactionService:
         api: EmojiReactionApi,
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
     ) -> None:
         self._api = api

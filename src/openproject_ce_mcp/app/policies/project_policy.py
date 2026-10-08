@@ -6,6 +6,7 @@ primitives rather than duplicating candidate-matching logic here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -18,7 +19,7 @@ def ensure_project_read_allowed(
     *,
     project_ref: str | None = None,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
 ) -> None:
     """Read-allowlist check on an already-resolved project payload.
 
@@ -40,7 +41,7 @@ def ensure_project_write_allowed(
     *,
     project_ref: str | None = None,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
 ) -> None:
     """Read- AND write-allowlist check (write implies read), for update/delete/favorite."""
     candidates = project_candidates(
@@ -60,7 +61,7 @@ def ensure_project_create_target_allowed(
     identifier: str | None,
     name: str | None,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
 ) -> None:
     """Read- then write-allowlist check on an intended create/copy target.
 

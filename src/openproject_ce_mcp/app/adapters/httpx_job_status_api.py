@@ -114,15 +114,10 @@ class HttpxJobStatusApi:
         project_link = links.get("project")
         if project_link is None:
             project_link = links.get("sourceProject")
-        created_project_link = links.get("createdProject")
-        created_project_id = (
-            _id_from_href(created_project_link.get("href")) if isinstance(created_project_link, dict) else None
-        )
         return JobStatusRecord(
             summary=normalize_job_status(payload),
             # Passed through raw, unfiltered: classifying a link as missing,
             # malformed, or legitimately empty is the scope policy's job,
             # not the adapter's.
             project_link=project_link,
-            created_project_id=created_project_id,
         )

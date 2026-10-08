@@ -46,6 +46,7 @@ detail/summary on confirmed delete.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -68,7 +69,7 @@ class GridService:
         *,
         api: GridApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
     ) -> None:
         self._api = api
         self._settings = settings

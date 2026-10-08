@@ -22,6 +22,7 @@ so it stays a flat inline preview/commit method, mirroring
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -43,7 +44,7 @@ class MeetingService:
         *,
         api: MeetingApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_project_ref: ProjectRefResolver,
         resolve_project_id: ProjectIdResolver,
         resolve_principal_id: PrincipalRefResolver,

@@ -4,6 +4,7 @@ import httpx
 import pytest
 from _client_test_helpers import (
     _base_settings,
+    started_client,
 )
 
 from openproject_ce_mcp.app.errors import InvalidInputError
@@ -139,7 +140,7 @@ async def test_delete_file_link_allows_write_project() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     result = await client.file_link.delete(5, confirm=True)
 
@@ -167,7 +168,7 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("allowed",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "allowed", "allowed"), (2, "secret", "secret")])
 
     with pytest.raises(PermissionDeniedError):
         await client.file_link.list_for_work_package(9)
@@ -193,7 +194,7 @@ async def test_list_work_package_file_links_allows_anchor_inside_read_allowlist(
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("allowed",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "allowed", "allowed"), (2, "secret", "secret")])
 
     result = await client.file_link.list_for_work_package(9)
 

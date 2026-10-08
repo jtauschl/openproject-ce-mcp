@@ -21,6 +21,8 @@ happens mid-page -- every call re-scans from server page 1, skipping the first
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import ProjectSummary
 from ..policies import access, project_policy
@@ -32,7 +34,7 @@ async def fetch_project_page(
     *,
     api: ProjectApi,
     settings: Settings,
-    project_id_to_identifier: dict[int, str],
+    project_id_to_identifier: Mapping[int, str],
     search: str | None,
     offset: int,
     limit: int,

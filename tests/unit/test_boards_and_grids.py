@@ -4,7 +4,7 @@ import json
 
 import httpx
 import pytest
-from _client_test_helpers import _make_grid_payload, _make_grid_settings
+from _client_test_helpers import _make_grid_payload, _make_grid_settings, started_client
 
 from openproject_ce_mcp.client import (
     OpenProjectClient,
@@ -205,7 +205,7 @@ async def test_board_crud_uses_query_form_endpoints_and_project_filtering() -> N
         write_projects=("demo",),
         enable_board_write=True,
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(6, "demo", "Demo"), (9, "other", "Other")])
 
     listed = await client.board.list(project="demo")
     detail = await client.board.get(12)

@@ -2,20 +2,16 @@
 
 Job status ids are ephemeral, only ever created as a side effect of an async
 operation like copy_project, and copy_project itself creates a real project.
-JobStatusService.get (app/services/job_status_service.py) has behavior --
-the project-or-sourceProject link fallback, and the copy-path
-project_id_to_identifier write-through via created_project_id -- that is
-only provable against a real instance's actual response shapes: unit tests
-against hand-built payloads already cover the normalization/allowlist logic,
-but not that OpenProject's real payload shape feeds it correctly. Both tests
-below use copy_project deliberately (via the project_refs fixture, so
-the copied project is cleaned up like any other disposable test project).
+Unit tests cover the link fallback and the allowlist logic against hand-built
+payloads; only a real instance proves that its job payload names the copied
+project in a shape the allowlist recognises. Copied projects go through the
+project_refs fixture, so they are cleaned up like any other disposable test
+project.
 """
 
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 
 import pytest
 
@@ -61,61 +57,48 @@ async def _copy_a_fresh_project(client: OpenProjectClient, project_refs: list[st
     return target, copy_result
 
 
-async def test_copy_project_result_becomes_visible_to_allowlist_immediately(
-    client: OpenProjectClient, project_refs: list[str]
+async def test_a_client_started_before_a_copy_reads_the_copy_by_its_allowlist_pattern(
+    start_scoped_client, project_refs: list[str]
 ) -> None:
-    """Regression: get_job_status only wrote the copied project's real
-    identifier into project_id_to_identifier when the job payload's own
-    createdProject link was present -- and a prior bug (fixed in the same
-    round) meant that write-through path was never exercised at all, since
-    the created_resource_type=="Project" check it relied on never fired
-    (the real payload has no top-level `type` field). Without a restart, the
-    new project's numeric id was unresolvable by any link-shaped allowlist
-    check anywhere else in the client."""
-    unrestricted_settings = dataclasses.replace(
-        client.settings,
-        read_projects=("*",),
-        write_projects=("*",),
+    """The copy did not exist when the scoped client scanned the project
+    list; its job status only links it by numeric id."""
+    unrestricted = await start_scoped_client(read_projects=("*",), write_projects=("*",))
+    scoped = await start_scoped_client(read_projects=("IT*",), write_projects=("IT*",))
+
+    new_identifier, copy_result = await _copy_a_fresh_project(unrestricted, project_refs)
+    finished = await _poll_until_done(unrestricted, copy_result.job_status_id)
+    assert finished.status == "success", finished.message
+    copy = await unrestricted.project.get(new_identifier)
+    work_package = await unrestricted.work_package.create(
+        project=new_identifier, type="Task", subject="[integration-test] in a copied project", confirm=True
     )
-    unrestricted_client = OpenProjectClient(unrestricted_settings)
-    await unrestricted_client.initialize()
+    assert work_package.ready, work_package.validation_errors
 
-    new_identifier, copy_result = await _copy_a_fresh_project(unrestricted_client, project_refs)
+    status = await scoped.job_status.get(copy_result.job_status_id)
+    read_back = await scoped.work_package.get(work_package.work_package_id)
 
-    status = await _poll_until_done(unrestricted_client, copy_result.job_status_id)
-    assert status.status == "success", status.message
-
-    # Immediately, no restart: the new project must already be resolvable.
-    new_project = await unrestricted_client.project.get(new_identifier)
-    assert new_project.identifier == new_identifier
+    assert status.project_id == copy.id
+    assert scoped._project_id_to_identifier[copy.id] == new_identifier
+    assert read_back.id == work_package.work_package_id
 
 
-async def test_get_job_status_denies_project_link_outside_read_allowlist(
-    client: OpenProjectClient, project_refs: list[str]
+async def test_a_client_started_before_a_copy_denies_it_outside_its_allowlist(
+    start_scoped_client, project_refs: list[str]
 ) -> None:
-    """Regression: get_job_status read project/sourceProject/createdProject
-    links from the response's top-level `_links`, but OpenProject only ever
-    puts a `self` link there -- every job-specific resource link (verified
-    live: a completed copy_project job's `project` link, which points at
-    the newly created project) lives one level down, inside the job's own
-    `payload` object. The allowlist check on that link was therefore
-    silently never exercised at all against real data."""
-    unrestricted_settings = dataclasses.replace(
-        client.settings,
-        read_projects=("*",),
-        write_projects=("*",),
+    unrestricted = await start_scoped_client(read_projects=("*",), write_projects=("*",))
+    scoped = await start_scoped_client(
+        read_projects=("no-such-project-for-integration-tests",),
+        write_projects=("no-such-project-for-integration-tests",),
     )
-    unrestricted_client = OpenProjectClient(unrestricted_settings)
-    await unrestricted_client.initialize()
 
-    _, copy_result = await _copy_a_fresh_project(unrestricted_client, project_refs)
+    new_identifier, copy_result = await _copy_a_fresh_project(unrestricted, project_refs)
+    finished = await _poll_until_done(unrestricted, copy_result.job_status_id)
+    assert finished.status == "success", finished.message
+    copy = await unrestricted.project.get(new_identifier)
+    # The denial below must come from the copy's own link, not from a
+    # missing one: a restrictive scope denies a job without a project link too.
+    assert finished.project_id == copy.id
 
-    status = await _poll_until_done(unrestricted_client, copy_result.job_status_id)
-    assert status.status == "success", status.message
-
-    denied_settings = dataclasses.replace(client.settings, read_projects=("no-such-project-for-integration-tests",))
-    denied_client = OpenProjectClient(denied_settings)
-    await denied_client.initialize()
-
-    with pytest.raises(PermissionDeniedError):
-        await denied_client.job_status.get(copy_result.job_status_id)
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await scoped.job_status.get(copy_result.job_status_id)
+    assert copy.id not in scoped._project_id_to_identifier

@@ -22,6 +22,7 @@ private/domain-local, unified only where the shapes genuinely match.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -120,7 +121,7 @@ class NewsService:
         *,
         api: NewsApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_project_ref: ProjectRefResolver,
     ) -> None:
         self._api = api

@@ -22,6 +22,7 @@ client-side via `paginate_client`, matching Meeting Agenda Items.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -43,7 +44,7 @@ class MeetingSectionService:
         api: MeetingSectionApi,
         meeting_api: MeetingApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         api_prefix: str,
     ) -> None:
         self._api = api

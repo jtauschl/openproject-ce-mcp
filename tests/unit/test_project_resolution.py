@@ -12,6 +12,7 @@ from _client_test_helpers import (
     _make_wp_form_response,
     _projects_search_handler,
     make_settings,
+    started_client,
 )
 
 from openproject_ce_mcp.client import (
@@ -56,7 +57,7 @@ async def test_create_work_package_denies_disallowed_parent_project() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.work_package.create(
@@ -77,7 +78,7 @@ async def test_update_work_package_denies_disallowed_parent_project() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.work_package.update(work_package_id=42, parent_work_package_id=999, confirm=True)
@@ -110,7 +111,7 @@ async def test_create_work_package_denies_reparent_into_a_readable_but_write_res
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.work_package.create(
@@ -140,7 +141,7 @@ async def test_update_work_package_denies_reparent_into_a_readable_but_write_res
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.work_package.update(work_package_id=42, parent_work_package_id=999, confirm=True)
@@ -159,7 +160,7 @@ async def test_create_work_package_relation_denies_disallowed_target_project() -
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.relation.create(
@@ -194,7 +195,7 @@ async def test_create_work_package_relation_denies_readable_but_write_restricted
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.relation.create(
@@ -229,7 +230,7 @@ async def test_update_work_package_denies_disallowed_sprint_project() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.work_package.update(work_package_id=42, sprint="700", confirm=True)
@@ -726,7 +727,7 @@ async def test_resolve_version_id_no_project_falls_back_to_defining_project_chec
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(read_projects=("demo",))
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    client = await started_client(settings, handler, [(1, "demo", "Demo"), (2, "other", "Other")])
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client._resolve_version_id("500", project=None)

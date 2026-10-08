@@ -39,6 +39,12 @@ development baseline.
 - With `mcp` 2.1 or later installed, a call with an unknown argument was
   logged as a server crash with a traceback; it is now logged as a rejected
   call.
+- Projects created after the server started (a copy, the web UI, another
+  client) were denied by identifier- or pattern-based
+  `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS` entries until the
+  server restarted, and `list_work_packages` without a project left out their
+  work packages. They are now recognized from the responses that link them;
+  `list_work_packages` without a project includes them within five minutes.
 
 ## [0.4.1] - 2026-09-22
 

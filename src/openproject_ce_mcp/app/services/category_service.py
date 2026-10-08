@@ -22,6 +22,8 @@ source of authorization.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...config import Settings
 from ...models import CategoryListResult, CategorySummary
 from ..errors import NotFoundError
@@ -37,7 +39,7 @@ class CategoryService:
         *,
         api: CategoryApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_project_ref: ProjectRefResolver,
     ) -> None:
         self._api = api

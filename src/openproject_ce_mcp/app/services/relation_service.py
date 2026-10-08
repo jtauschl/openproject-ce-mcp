@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
@@ -152,7 +153,7 @@ class RelationService:
         api: RelationApi,
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
-        project_id_to_identifier: dict[int, str],
+        project_id_to_identifier: Mapping[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
         work_package_project_allowed: WorkPackageProjectAllowedCheck,
         work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
