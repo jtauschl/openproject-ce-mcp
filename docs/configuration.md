@@ -71,7 +71,9 @@ client) is matched as soon as a response shows or links it; no restart is
 needed. `list_work_packages` without a `project` filters on the readable
 projects the server has seen and refreshes that list at most every five
 minutes, so a new project's work packages can take up to five minutes to
-appear there unless another call has already shown the project.
+appear there unless another call has already shown the project. Archived
+projects are left out of that filter, since OpenProject hides their work
+packages.
 
 ## Tool Groups
 

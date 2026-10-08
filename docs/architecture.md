@@ -384,10 +384,10 @@ property such as a grid's `options`. A project representation there is recorded
 as is; a linked id the last scan never saw is looked up with
 `GET /projects/{id}`, at most ten at a time. Out-of-scope projects are
 remembered for five minutes, then re-checked. The global `list_work_packages`
-filters on the projects the directory reports as readable (read scope matched)
-and rescans when the last scan is older than five minutes. A test asserts that
-every adapter holds the one `LearningTransport`; only the directory's own
-project lookups bypass it.
+filters on the projects the directory reports as readable (read scope matched,
+not archived) and rescans when the last scan is older than five minutes. A test
+asserts that every adapter holds the one `LearningTransport`; only the
+directory's own project lookups bypass it.
 
 An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer
 directions above, confines `httpx` to `HttpxTransport`, forbids importing the

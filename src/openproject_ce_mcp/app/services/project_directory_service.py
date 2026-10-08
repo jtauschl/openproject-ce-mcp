@@ -80,12 +80,12 @@ class ProjectDirectoryService:
     def readable_project_ids(self) -> frozenset[int]:
         return frozenset(self._readable)
 
-    def record(self, project_id: int, identifier: str, name: str | None) -> None:
+    def record(self, project_id: int, identifier: str, name: str | None, *, archived: bool) -> None:
         if not self._active:
             return
         self._sequence += 1
         self._written_at[project_id] = self._sequence
-        self._apply(_Project(project_id, identifier, name), now=self._clock())
+        self._apply(_Project(project_id, identifier, name, archived), now=self._clock())
 
     def _apply(self, project: _Project, *, now: float) -> None:
         project_id = project.id
@@ -93,7 +93,9 @@ class ProjectDirectoryService:
         if allowed:
             self.positives[project_id] = project.identifier
             self._negatives.pop(project_id, None)
-            if readable:
+            # OpenProject hides an archived project's work packages and
+            # rejects it as a work-package project filter value.
+            if readable and not project.archived:
                 self._readable.add(project_id)
             else:
                 self._readable.discard(project_id)
@@ -171,7 +173,12 @@ class ProjectDirectoryService:
         for node in _hal_resources(payload):
             representation = self._project_representation(node)
             if representation is not None:
-                self.record(representation.id, representation.identifier, representation.name)
+                self.record(
+                    representation.id,
+                    representation.identifier,
+                    representation.name,
+                    archived=representation.archived,
+                )
             links = node.get("_links")
             if isinstance(links, dict):
                 for link in _link_objects(links):
@@ -220,7 +227,7 @@ class ProjectDirectoryService:
             return
         project = _from_summary(record.summary)
         if project is not None:
-            self.record(project.id, project.identifier, project.name)
+            self.record(project.id, project.identifier, project.name, archived=project.archived)
 
     def _project_representation(self, node: dict[str, Any]) -> _Project | None:
         # A form's _embedded.payload carries a proposed identifier but no id
@@ -235,7 +242,7 @@ class ProjectDirectoryService:
         if not isinstance(self_link, dict) or self._project_id_from_href(self_link.get("href")) != project_id:
             return None
         name = node.get("name")
-        return _Project(project_id, identifier, name if isinstance(name, str) else None)
+        return _Project(project_id, identifier, name if isinstance(name, str) else None, node.get("active") is False)
 
     def _project_id_from_href(self, href: Any) -> int | None:
         if not isinstance(href, str):
@@ -254,12 +261,13 @@ class _Project(NamedTuple):
     id: int
     identifier: str
     name: str | None
+    archived: bool
 
 
 def _from_summary(summary: ProjectSummary) -> _Project | None:
     if not summary.identifier:
         return None
-    return _Project(summary.id, summary.identifier, summary.name)
+    return _Project(summary.id, summary.identifier, summary.name, summary.active is False)
 
 
 def _restricted(scope: tuple[str, ...]) -> bool:

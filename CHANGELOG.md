@@ -48,6 +48,9 @@ development baseline.
   server restarted, and `list_work_packages` without a project left out their
   work packages. They are now recognized from the responses that link them;
   `list_work_packages` without a project includes them within five minutes.
+- `list_work_packages` without a project failed with "Project filter has
+  invalid values" when an archived project matched
+  `OPENPROJECT_READ_PROJECTS`.
 
 ## [0.4.1] - 2026-09-22
 

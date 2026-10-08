@@ -214,19 +214,21 @@ def _projects_search_handler(matches: list[dict], *, page_size: int = 50):
     return handler
 
 
-def _project_index_response(request: httpx.Request, projects: Sequence[tuple[int, str, str]]) -> httpx.Response:
+def _project_index_response(request: httpx.Request, projects: Sequence[tuple]) -> httpx.Response:
+    """`projects` holds (id, identifier, name) or (id, identifier, name, active)."""
     offset = int(request.url.params.get("offset", "1"))
     size = int(request.url.params.get("pageSize", "50"))
     start = (offset - 1) * size
     elements = [
         {
             "_type": "Project",
-            "id": project_id,
-            "identifier": identifier,
-            "name": name,
-            "_links": {"self": {"href": f"/api/v3/projects/{project_id}", "title": name}},
+            "id": project[0],
+            "identifier": project[1],
+            "name": project[2],
+            "active": project[3] if len(project) > 3 else True,
+            "_links": {"self": {"href": f"/api/v3/projects/{project[0]}", "title": project[2]}},
         }
-        for project_id, identifier, name in projects[start : start + size]
+        for project in projects[start : start + size]
     ]
     return httpx.Response(
         200,
@@ -235,10 +237,10 @@ def _project_index_response(request: httpx.Request, projects: Sequence[tuple[int
     )
 
 
-def serving_projects(handler: Callable, projects: Sequence[tuple[int, str, str]]) -> Callable:
+def serving_projects(handler: Callable, projects: Sequence[tuple]) -> Callable:
     """Answer the project index the way the server would, so the client's
-    allowlist directory knows these (id, identifier, name) projects; every
-    other request goes to `handler`, which therefore never sees the scan."""
+    allowlist directory knows these projects; every other request goes to
+    `handler`, which therefore never sees the scan."""
 
     async def wrapped(request: httpx.Request) -> httpx.Response:
         if request.method == "GET" and request.url.path == "/api/v3/projects":
@@ -249,9 +251,7 @@ def serving_projects(handler: Callable, projects: Sequence[tuple[int, str, str]]
     return wrapped
 
 
-async def started_client(
-    settings: Settings, handler: Callable, projects: Sequence[tuple[int, str, str]]
-) -> OpenProjectClient:
+async def started_client(settings: Settings, handler: Callable, projects: Sequence[tuple]) -> OpenProjectClient:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(serving_projects(handler, projects)))
     await client.initialize()
     return client

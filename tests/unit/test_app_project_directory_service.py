@@ -25,8 +25,8 @@ class _Clock:
         return self.now
 
 
-def _record(project_id: int, identifier: str, name: str) -> ProjectRecord:
-    summary = ProjectSummary(id=project_id, name=name, identifier=identifier, active=True, description=None)
+def _record(project_id: int, identifier: str, name: str, active: bool = True) -> ProjectRecord:
+    summary = ProjectSummary(id=project_id, name=name, identifier=identifier, active=active, description=None)
     return ProjectRecord(summary=summary, to_detail=lambda: None, payload={})  # type: ignore[arg-type]
 
 
@@ -36,7 +36,7 @@ class _FakeProjectApi:
     `gate`, when set, holds every call until the test releases it, so
     concurrent callers can be lined up behind one in-flight request."""
 
-    def __init__(self, projects: Sequence[tuple[int, str, str]] = ()) -> None:
+    def __init__(self, projects: Sequence[tuple] = ()) -> None:
         self.projects = list(projects)
         self.list_calls: list[int] = []
         self.get_calls: list[str] = []
@@ -495,8 +495,8 @@ async def test_a_scan_never_overwrites_what_was_recorded_after_it_started() -> N
     scan = asyncio.create_task(directory.refresh())
     while not api.list_calls:
         await asyncio.sleep(0)
-    directory.record(1, "moved-out", "Moved out")
-    directory.record(2, "demo-moved-in", "Demo moved in")
+    directory.record(1, "moved-out", "Moved out", archived=False)
+    directory.record(2, "demo-moved-in", "Demo moved in", archived=False)
     api.gate.set()
     await scan
 
@@ -508,7 +508,7 @@ async def test_a_scan_never_overwrites_what_was_recorded_after_it_started() -> N
 async def test_a_project_allowlisted_only_by_name_is_readable() -> None:
     directory = _directory(_FakeProjectApi(), settings=_base_settings(read_projects=("Demo Project",)))
 
-    directory.record(5, "x5", "Demo Project")
+    directory.record(5, "x5", "Demo Project", archived=False)
 
     assert directory.positives == {5: "x5"}
     assert directory.readable_project_ids() == {5}
@@ -517,9 +517,9 @@ async def test_a_project_allowlisted_only_by_name_is_readable() -> None:
 @pytest.mark.asyncio
 async def test_recording_a_project_that_moved_out_of_scope_drops_it() -> None:
     directory = _directory(_FakeProjectApi())
-    directory.record(1, "demo", "Demo")
+    directory.record(1, "demo", "Demo", archived=False)
 
-    directory.record(1, "other", "Other")
+    directory.record(1, "other", "Other", archived=False)
 
     assert directory.positives == {}
     assert directory.readable_project_ids() == frozenset()
@@ -529,10 +529,26 @@ async def test_recording_a_project_that_moved_out_of_scope_drops_it() -> None:
 async def test_a_write_only_project_is_known_but_not_readable() -> None:
     directory = _directory(_FakeProjectApi(), settings=_base_settings(read_projects=("demo",), write_projects=("ops",)))
 
-    directory.record(3, "ops", "Ops")
+    directory.record(3, "ops", "Ops", archived=False)
 
     assert directory.positives == {3: "ops"}
     assert directory.readable_project_ids() == frozenset()
+
+
+@pytest.mark.asyncio
+async def test_an_archived_project_stays_known_but_is_not_readable() -> None:
+    # OpenProject rejects a work-package project filter naming an archived
+    # project, so the global list must not receive one.
+    api = _FakeProjectApi([(1, "demo", "Demo"), (2, "demo-archived", "Demo archived", False)])
+    directory = _directory(api)
+
+    await directory.refresh()
+    archived = _representation(3, "demo-old", "Demo old")
+    archived["active"] = False
+    await directory.learn(archived)
+
+    assert directory.positives == {1: "demo", 2: "demo-archived", 3: "demo-old"}
+    assert directory.readable_project_ids() == {1}
 
 
 @pytest.mark.parametrize(
@@ -572,7 +588,7 @@ async def test_unrestricted_scopes_need_no_directory(read_projects: tuple, write
     await directory.refresh()
     await directory.ensure_fresh()
     await directory.learn(_work_package_in(1))
-    directory.record(1, "demo", "Demo")
+    directory.record(1, "demo", "Demo", archived=False)
 
     assert api.list_calls == []
     assert api.get_calls == []

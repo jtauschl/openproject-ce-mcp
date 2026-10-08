@@ -1,5 +1,5 @@
 """The projects whose work packages the read allowlist covers: matched by
-OPENPROJECT_READ_PROJECTS."""
+OPENPROJECT_READ_PROJECTS and not archived."""
 
 from __future__ import annotations
 

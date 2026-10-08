@@ -960,3 +960,25 @@ async def test_a_project_created_elsewhere_joins_the_global_work_package_filter(
 
     assert project_filters == [["1", "60"] if listed else ["1"]]
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_the_global_work_package_filter_leaves_out_archived_projects() -> None:
+    # OpenProject answers a project filter naming an archived project with
+    # "Project filter has invalid values" and lists nothing.
+    project_filters: list[list[str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/work_packages"
+        filters = json.loads(request.url.params["filters"])
+        project_filters.extend(f["project_id"]["values"] for f in filters if "project_id" in f)
+        return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+
+    client = await started_client(
+        _base_settings(read_projects=("demo*",)), handler, [(1, "demo", "Demo"), (2, "demo-old", "Demo old", False)]
+    )
+
+    await client.work_package.list(limit=5)
+
+    assert project_filters == [["1"]]
+    await client.aclose()
