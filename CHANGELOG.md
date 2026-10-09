@@ -51,6 +51,8 @@ development baseline.
 - `list_work_packages` without a project failed with "Project filter has
   invalid values" when an archived project matched
   `OPENPROJECT_READ_PROJECTS`.
+- The links to `CONTRIBUTING.md` on the PyPI project page led nowhere; they
+  now point to the repository.
 
 ## [0.4.1] - 2026-09-22
 
