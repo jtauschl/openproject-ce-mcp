@@ -11,7 +11,7 @@ from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError, 
 from openproject_ce_mcp.app.ports.project_api import ProjectPage, ProjectRecord
 from openproject_ce_mcp.app.services.project_directory_service import FRESHNESS_SECONDS, ProjectDirectoryService
 from openproject_ce_mcp.config import Settings
-from openproject_ce_mcp.models import ProjectSummary
+from openproject_ce_mcp.models import ProjectDetail, ProjectSummary
 
 ORIGIN = "https://op.example.com"
 PREFIX = "/api/v3/"
@@ -25,9 +25,13 @@ class _Clock:
         return self.now
 
 
+def _no_detail() -> ProjectDetail:
+    raise AssertionError("the directory never reads a project's detail")
+
+
 def _record(project_id: int, identifier: str, name: str, active: bool = True) -> ProjectRecord:
     summary = ProjectSummary(id=project_id, name=name, identifier=identifier, active=active, description=None)
-    return ProjectRecord(summary=summary, to_detail=lambda: None, payload={})  # type: ignore[arg-type]
+    return ProjectRecord(summary=summary, to_detail=_no_detail, payload={})
 
 
 class _FakeProjectApi:
@@ -51,7 +55,7 @@ class _FakeProjectApi:
         if self.gate is not None and (page is None or not self.held_pages or page in self.held_pages):
             await self.gate.wait()
 
-    async def list(self, *, server_offset: int, server_page_size: int, search: str | None, **_: object) -> ProjectPage:
+    async def list(self, *, server_offset: int, server_page_size: int, search: str | None) -> ProjectPage:
         self.list_calls.append(server_offset)
         await self._hold(server_offset)
         if self.list_error is not None:
@@ -64,7 +68,7 @@ class _FakeProjectApi:
             exhausted=start + server_page_size >= len(self.projects),
         )
 
-    async def get(self, project_ref: str, **_: object) -> ProjectRecord:
+    async def get(self, project_ref: str) -> ProjectRecord:
         self.get_calls.append(project_ref)
         self.in_flight += 1
         self.max_in_flight = max(self.max_in_flight, self.in_flight)
@@ -88,7 +92,7 @@ def _directory(
     api_prefix: str = PREFIX,
 ) -> ProjectDirectoryService:
     return ProjectDirectoryService(
-        api=api,  # type: ignore[arg-type]
+        api=api,
         settings=settings or _base_settings(read_projects=("demo*",), write_projects=("demo*",)),
         origin=ORIGIN,
         api_prefix=api_prefix,

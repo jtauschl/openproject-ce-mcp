@@ -111,7 +111,9 @@ development baseline.
   These names have had no effect on the running server since 0.3.0; use
   `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`.
 
-## [0.4.2] - Unreleased
+## [0.4.3] - Unreleased
+
+## [0.4.2] - 2026-10-09
 
 ### Security
 
@@ -155,6 +157,8 @@ development baseline.
 - `list_work_packages` without a project failed with "Project filter has
   invalid values" when an archived project matched
   `OPENPROJECT_READ_PROJECTS`.
+- The links to `CONTRIBUTING.md` on the PyPI project page led nowhere; they
+  now point to the repository.
 
 ## [0.4.1] - 2026-09-22
 

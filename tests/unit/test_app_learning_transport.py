@@ -6,6 +6,7 @@ import pytest
 from _client_test_helpers import _base_settings
 
 from openproject_ce_mcp.app.errors import TransportError
+from openproject_ce_mcp.app.ports.project_api import ProjectPage, ProjectRecord
 from openproject_ce_mcp.app.services.project_directory_service import ProjectDirectoryService
 from openproject_ce_mcp.app.transport.learning_transport import LearningTransport
 from openproject_ce_mcp.app.transport.protocol import BinaryContent, TransportResponse
@@ -101,11 +102,14 @@ async def test_responses_without_a_json_body_are_not_learned(call) -> None:
 @pytest.mark.asyncio
 async def test_a_failed_project_lookup_does_not_lose_a_confirmed_write() -> None:
     class _UnreachableProjects:
-        async def get(self, project_ref: str, **_: Any):
+        async def list(self, *, server_offset: int, server_page_size: int, search: str | None) -> ProjectPage:
+            raise AssertionError("learning a link never scans")
+
+        async def get(self, project_ref: str) -> ProjectRecord:
             raise TransportError("Could not reach OpenProject")
 
     directory = ProjectDirectoryService(
-        api=_UnreachableProjects(),  # type: ignore[arg-type]
+        api=_UnreachableProjects(),
         settings=_base_settings(read_projects=("demo",), write_projects=("demo",)),
         origin="https://op.example.com",
         api_prefix="/api/v3/",

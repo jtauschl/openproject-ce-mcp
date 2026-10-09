@@ -26,7 +26,7 @@ from ...config import Settings
 from ...models import ProjectSummary
 from ..errors import NotFoundError, OpenProjectError
 from ..policies.scope import project_record_candidates, scope_allows_all, scope_matches_candidates
-from ..ports.project_api import ProjectApi
+from ..ports.project_lookup_api import ProjectLookupApi
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class ProjectDirectoryService:
     def __init__(
         self,
         *,
-        api: ProjectApi,
+        api: ProjectLookupApi,
         settings: Settings,
         origin: str,
         api_prefix: str,
