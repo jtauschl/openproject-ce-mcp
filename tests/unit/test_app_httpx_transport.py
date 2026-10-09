@@ -164,18 +164,6 @@ _AUTH = "Basic YXBpa2V5OnRva2Vu"
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
 
 
-def _auth_client(handler) -> httpx.AsyncClient:
-    """Like _client, but carrying an Authorization default header the way
-    OpenProjectClient's real httpx.AsyncClient does -- the redirect tests
-    below are about what happens to exactly that header."""
-    return httpx.AsyncClient(
-        base_url=f"{BASE_URL}/api/v3/",
-        transport=httpx.MockTransport(handler),
-        follow_redirects=True,
-        headers={"Authorization": _AUTH},
-    )
-
-
 @pytest.mark.asyncio
 async def test_get_binary_returns_body_and_served_content_type() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -216,50 +204,138 @@ async def test_get_binary_stops_at_limit_and_reports_truncation() -> None:
     assert result.truncated is True
 
 
-@pytest.mark.asyncio
-async def test_get_binary_same_origin_redirect_keeps_authorization() -> None:
-    """Local-filesystem storage: OpenProject 302s to a path on its own host,
-    which still needs the instance credentials to serve the file."""
-    seen: list[tuple[str, str | None]] = []
+_CREDENTIALS = {
+    "authorization": _AUTH,
+    "cookie": "_open_project_session=s3cr3t",
+    "proxy-authorization": "Basic cHJveHk6cHc=",
+    "x-api-key": "token",
+}
+_SAFE_HEADERS = {"accept": "application/hal+json, application/json", "user-agent": "openproject-ce-mcp/test"}
+
+
+def _credentialed_client(handler) -> httpx.AsyncClient:
+    """Every kind of credential a request can carry: client default headers
+    (Authorization, a proxy or token header from the deployment) and a session
+    cookie the jar holds for the instance."""
+    cookies = httpx.Cookies()
+    cookies.set("_open_project_session", "s3cr3t", domain="op.example.com")
+    return httpx.AsyncClient(
+        base_url=f"{BASE_URL}/api/v3/",
+        transport=httpx.MockTransport(handler),
+        follow_redirects=True,
+        headers={
+            "Authorization": _AUTH,
+            "Proxy-Authorization": _CREDENTIALS["proxy-authorization"],
+            "X-Api-Key": _CREDENTIALS["x-api-key"],
+            "Accept": _SAFE_HEADERS["accept"],
+            "User-Agent": _SAFE_HEADERS["user-agent"],
+        },
+        cookies=cookies,
+    )
+
+
+async def _hops(status: int, location: str) -> list[httpx.Request]:
+    hops: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        seen.append((request.url.path, request.headers.get("authorization")))
-        if request.url.path == "/api/v3/attachments/5/content":
-            return httpx.Response(302, headers={"Location": "/attachments/5/report.png"}, request=request)
-        return httpx.Response(200, content=_PNG, headers={"Content-Type": "image/png"}, request=request)
+        hops.append(request)
+        if len(hops) == 1:
+            return httpx.Response(status, headers={"Location": location}, request=request)
+        return httpx.Response(200, content=_PNG, request=request)
 
-    async with _auth_client(handler) as http_client:
+    async with _credentialed_client(handler) as http_client:
         result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
 
     assert result.data == _PNG
-    assert seen == [
-        ("/api/v3/attachments/5/content", _AUTH),
-        ("/attachments/5/report.png", _AUTH),
-    ]
+    return hops
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://bucket.example.net/signed/report.png?X-Sig=abc",
+        "http://op.example.com/attachments/5/report.png",
+        "https://op.example.com:8443/attachments/5/report.png",
+    ],
+)
+@pytest.mark.asyncio
+async def test_get_binary_cross_origin_redirect_carries_no_credential(status: int, location: str) -> None:
+    first, second = await _hops(status, location)
+
+    assert {name: first.headers.get(name) for name in _CREDENTIALS} == _CREDENTIALS
+    assert str(second.url) == location
+    assert set(second.headers.keys()) == {"host", "accept", "accept-encoding", "user-agent"}
+    assert second.headers["host"] == second.url.netloc.decode()
+    assert {name: second.headers[name] for name in _SAFE_HEADERS} == _SAFE_HEADERS
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize(
+    "location", ["/attachments/5/report.png", "https://OP.example.com:443/attachments/5/report.png"]
+)
+@pytest.mark.asyncio
+async def test_get_binary_same_origin_redirect_keeps_every_header(status: int, location: str) -> None:
+    first, second = await _hops(status, location)
+
+    assert second.url.host == "op.example.com"
+    assert second.url.path == "/attachments/5/report.png"
+    assert {name: second.headers.get(name) for name in _CREDENTIALS} == _CREDENTIALS
+    assert second.headers.multi_items() == first.headers.multi_items()
 
 
 @pytest.mark.asyncio
-async def test_get_binary_cross_origin_redirect_drops_authorization_but_follows() -> None:
-    """S3-backed storage: the redirect target is a pre-signed URL on a foreign
-    host. It must be followed (or S3 instances cannot serve any attachment),
-    but the instance's Basic credentials must not travel to that host."""
-    seen: list[tuple[str, str | None]] = []
+async def test_get_binary_redirect_back_to_the_instance_does_not_regain_credentials() -> None:
+    hops: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        seen.append((request.url.host, request.headers.get("authorization")))
-        if request.url.host == "op.example.com":
-            return httpx.Response(
-                302, headers={"Location": "https://bucket.example.net/signed/report.png?X-Sig=abc"}, request=request
-            )
-        assert request.url.params["X-Sig"] == "abc"
-        return httpx.Response(200, content=_PNG, headers={"Content-Type": "application/octet-stream"}, request=request)
+        hops.append(request)
+        if len(hops) == 1:
+            return httpx.Response(302, headers={"Location": "https://bucket.example.net/signed"}, request=request)
+        if len(hops) == 2:
+            return httpx.Response(302, headers={"Location": f"{BASE_URL}/attachments/5/report.png"}, request=request)
+        return httpx.Response(200, content=_PNG, request=request)
 
-    async with _auth_client(handler) as http_client:
-        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+    async with _credentialed_client(handler) as http_client:
+        await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
 
-    assert result.data == _PNG
-    assert result.content_type == "application/octet-stream"
-    assert seen == [("op.example.com", _AUTH), ("bucket.example.net", None)]
+    assert hops[2].url.host == "op.example.com"
+    assert set(hops[2].headers.keys()) == {"host", "accept", "accept-encoding", "user-agent"}
+
+
+def _client_auth_hops(handler) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=f"{BASE_URL}/api/v3/",
+        transport=httpx.MockTransport(handler),
+        follow_redirects=True,
+        auth=httpx.BasicAuth("apikey", "token"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("locations", "expected"),
+    [
+        (["https://bucket.example.net/signed"], [_AUTH, None]),
+        (["https://bucket.example.net/signed", f"{BASE_URL}/attachments/5/report.png"], [_AUTH, None, None]),
+        (["/attachments/5/report.png"], [_AUTH, _AUTH]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_get_binary_applies_client_auth_only_until_the_chain_leaves_the_origin(
+    locations: list[str], expected: list[str | None]
+) -> None:
+    seen: list[str | None] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        if len(seen) <= len(locations):
+            return httpx.Response(302, headers={"Location": locations[len(seen) - 1]}, request=request)
+        return httpx.Response(200, content=_PNG, request=request)
+
+    async with _client_auth_hops(handler) as http_client:
+        await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+
+    assert seen == expected
 
 
 @pytest.mark.asyncio
@@ -337,8 +413,13 @@ async def test_get_binary_through_retry_transport_retries_a_transient_status() -
     assert len(attempts) == 3
 
 
+@pytest.mark.parametrize(
+    "credentials", [{"headers": {"Authorization": _AUTH}}, {"auth": httpx.BasicAuth("apikey", "token")}]
+)
 @pytest.mark.asyncio
-async def test_get_binary_through_retry_transport_keeps_the_byte_limit_on_a_retried_redirect() -> None:
+async def test_get_binary_through_retry_transport_keeps_the_byte_limit_on_a_retried_redirect(
+    credentials: dict,
+) -> None:
     """The full chain in one call: a redirect get_binary follows itself, a
     transient failure on the target that the retry layer absorbs, and the byte
     cap still enforced on the body that finally arrives."""
@@ -354,7 +435,7 @@ async def test_get_binary_through_retry_transport_keeps_the_byte_limit_on_a_retr
             return httpx.Response(503, content=b"try again", request=request)
         return httpx.Response(200, content=b"abcdefghijklmnop", request=request)
 
-    async with _retry_client(handler, headers={"Authorization": _AUTH}) as http_client:
+    async with _retry_client(handler, **credentials) as http_client:
         result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=10)
 
     assert result.data == b"abcdefghij"
