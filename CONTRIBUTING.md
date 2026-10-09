@@ -9,17 +9,17 @@
 `main` is frozen at the last release. Base your PR on the branch that
 matches your change:
 
-- `release/0.4.2`: bugfixes for the released version.
+- `release/0.4.3`: bugfixes for the released version.
 - `release/0.5.0`: new development for the next release.
 
-Fixes on `release/0.4.2` are carried into `release/0.5.0` by the maintainer,
+Fixes on `release/0.4.3` are carried into `release/0.5.0` by the maintainer,
 so a fix needs only one PR.
 
 ## Set up
 
 ```bash
 # bugfix on the released version:
-git clone -b release/0.4.2 https://github.com/jtauschl/openproject-ce-mcp.git
+git clone -b release/0.4.3 https://github.com/jtauschl/openproject-ce-mcp.git
 
 # new development for the next release:
 git clone -b release/0.5.0 https://github.com/jtauschl/openproject-ce-mcp.git
