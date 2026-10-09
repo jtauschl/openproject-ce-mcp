@@ -9,6 +9,15 @@ development baseline.
 
 ## [0.4.3] - Unreleased
 
+### Fixed
+
+- `search_work_packages` no longer requests each free-text search term as a
+  work package; only numeric ids and display ids like `PROJ-42` are looked up
+  directly. A work package id that is neither is rejected as invalid input
+  before any request.
+- A numeric work package id with leading zeros, such as `007`, now resolves
+  on OpenProject 17.4 and later.
+
 ## [0.4.2] - 2026-10-09
 
 ### Security

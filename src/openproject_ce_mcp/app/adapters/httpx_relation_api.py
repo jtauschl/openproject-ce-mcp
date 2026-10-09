@@ -20,11 +20,9 @@ concern applied via `dataclasses.replace` after normalization (see
 RelationService._stamp), keeping this adapter's normalize function structurally
 identical to every other domain's Settings-free normalize_*.
 
-`create()` encodes the source work-package reference itself via the shared
-`work_package_ref()` encoder before building the POST path -- unlike
-`WorkPackageLookupApi.get()`, which encodes internally for its own lookup GET,
-nothing else in the call chain encodes the reference used in the outgoing
-POST path. Passing an already-encoded string here would double-encode it.
+`create()` validates the source work-package reference itself via the shared
+`work_package_ref()` helper before building the POST path, since nothing else
+in the call chain validates the reference used in that path.
 """
 
 from __future__ import annotations
@@ -33,7 +31,7 @@ from typing import Any
 
 from ...models import RelationSummary
 from ..ports.relation_api import RelationRecord
-from ..ports.work_package_ref import work_package_ref as _encode_work_package_ref
+from ..ports.work_package_ref import work_package_ref as _valid_work_package_ref
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
@@ -86,8 +84,8 @@ class HttpxRelationApi:
         return self.to_record(payload)
 
     async def create(self, work_package_ref: str, payload: dict[str, Any]) -> RelationRecord:
-        encoded = _encode_work_package_ref(work_package_ref)
-        response = await self._transport.post_json(f"work_packages/{encoded}/relations", json_body=payload)
+        source = _valid_work_package_ref(work_package_ref)
+        response = await self._transport.post_json(f"work_packages/{source}/relations", json_body=payload)
         return self.to_record(response)
 
     async def update(self, relation_id: int, payload: dict[str, Any]) -> RelationRecord:

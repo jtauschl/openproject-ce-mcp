@@ -7,55 +7,39 @@ depend on. Bound to `WorkPackageResolver.resolve_id`/`.project_link_allowed`
 Attachments/Time Entries/Reminders/Watchers/Emoji Reactions/Relations/
 Notifications/File Links/Activities/Work Packages Services.
 
-Also holds `work_package_ref()`, a pure, synchronous URL-encoding helper
-(no I/O, no scope check). It lives here rather than in `app/adapters/_text.py`
-(its adapters-only home
-would be unreachable from `app/resolvers/`) or inline in
-`work_package_resolver.py` (unreachable from `app/adapters/`) because both
-`HttpxWorkPackageLookupApi` (adapters layer) and `WorkPackageResolver`
-(resolvers layer) need the identical encoding rule, and `ports` is the only
-layer both may import from (see the layer-dependency rules in
-`tests/test_architecture_boundaries.py`).
+Also holds `work_package_ref()`, a pure, synchronous helper that validates
+a reference for a `work_packages/{id}` path (no I/O, no scope check) against
+the shared rule in `work_package_reference.py`. It lives here because the
+adapters, `WorkPackageResolver` and `RelationService` need the identical
+rule, and `ports` is the one layer all of them may import from (see the
+layer-dependency rules in `tests/test_architecture_boundaries.py`).
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Iterable
 from typing import Protocol
-from urllib.parse import quote
 
+from ...work_package_reference import canonical_work_package_ref
 from ..errors import InvalidInputError
 from .work_package_resolution import WorkPackageAllowedContext
 
 
 def work_package_ref(ref: int | str) -> str:
-    """Return a path-safe work-package reference for a ``work_packages/{id}`` path.
+    """Return the reference for a ``work_packages/{id}`` path: a numeric id or
+    a display id such as ``PROJ-123``. On an instance without semantic
+    identifiers a display id simply yields a 404 (``NotFoundError``).
 
-    Both a numeric id and a project-prefixed identifier (e.g. ``PROJ-123``,
-    exposed as ``displayId`` in OpenProject 17.5+) are accepted directly by the
-    ``GET/PATCH/DELETE /api/v3/work_packages/{id}`` endpoints: in semantic mode
-    OpenProject resolves the project-based form on the server. The reference is
-    passed through verbatim (URL-encoded) so the behaviour degrades cleanly — on
-    instances without semantic identifiers a project-prefixed reference simply
-    yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
-    every supported version.
-
-    A literal ``.``/``..`` path segment is rejected first by the generalized
-    path-traversal guard (`app/adapters/_text.py`'s
-    ``reject_path_traversal_segments`` is the adapters-layer twin of this
-    check) -- `quote()` never escapes ``.``, so such a value would otherwise pass
-    through unchanged and httpx would silently normalize it away when building
-    the request, redirecting to an unrelated endpoint. This check is
-    duplicated here, not imported from `_text.py`, because `ports/` may
-    import nothing from `adapters/` (see
-    `tests/test_architecture_boundaries.py`'s layer-dependency rules);
-    `app/errors.py` is shared-kernel and safe to import directly.
+    Raises InvalidInputError for any other value, before a request is made.
+    The accepted shapes contain no character that needs URL-encoding and no
+    path segment, so the result goes into the path as is.
     """
-    text = str(ref).strip()
-    segments = text.split("/")
-    if any(segment in (".", "..") for segment in segments):
-        raise InvalidInputError("OpenProject work_package_id must not contain a '.' or '..' path segment.")
-    return quote(text, safe="")
+    canonical = canonical_work_package_ref(ref)
+    if canonical is None:
+        raise InvalidInputError(
+            f"OpenProject work_package_id must be a numeric id or a display id like PROJ-42, not {str(ref).strip()!r}."
+        )
+    return canonical
 
 
 class WorkPackageIdResolver(Protocol):

@@ -42,12 +42,9 @@ payload.
 `_origin_from_url`/`_reject_path_traversal_segments`/`SUBJECT_LIMIT`/
 `_normalize_text`/`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/
 `FORMATTABLE_LIMIT` are shared via `app/adapters/_text.py`.
-`work_package_ref()` (path-safe reference encoding) is imported from
-`app/ports/work_package_ref.py` rather than re-implemented here: adapters may
-import from ports (see `tests/test_architecture_boundaries.py`'s layer rules),
-and it is already the exact, path-traversal-safe encoding
-`HttpxWorkPackageLookupApi`/`WorkPackageResolver` use today -- a third local
-copy would be needless duplication where reuse is clean.
+`work_package_ref()` (reference validation for `work_packages/{id}` paths) is
+imported from `app/ports/work_package_ref.py`, shared with
+`HttpxWorkPackageLookupApi` and `WorkPackageResolver`.
 """
 
 from __future__ import annotations
@@ -60,7 +57,7 @@ from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
 from ..errors import OpenProjectServerError
 from ..ports.project_resolution import WorkPackageResolutionContext
 from ..ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
-from ..ports.work_package_ref import work_package_ref as _work_package_ref_encode
+from ..ports.work_package_ref import work_package_ref as _valid_work_package_ref
 from ..transport.protocol import Transport
 from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
@@ -654,7 +651,7 @@ class HttpxWorkPackageApi:
         )
 
     async def get(self, work_package_ref: str, *, text_limit: int | None = None) -> WorkPackageRecord:
-        safe_ref = _work_package_ref_encode(work_package_ref)
+        safe_ref = _valid_work_package_ref(work_package_ref)
         payload = await self._transport.get_json(f"work_packages/{safe_ref}")
         return self.to_record(payload, text_limit=text_limit)
 
@@ -662,7 +659,7 @@ class HttpxWorkPackageApi:
         return await self._transport.post_json(f"projects/{project_id}/work_packages/form", json_body=payload)
 
     async def validate_update(self, work_package_ref: str, payload: dict[str, Any]) -> dict[str, Any]:
-        safe_ref = _work_package_ref_encode(work_package_ref)
+        safe_ref = _valid_work_package_ref(work_package_ref)
         return await self._transport.post_json(f"work_packages/{safe_ref}/form", json_body=payload)
 
     async def parse_form(
@@ -723,18 +720,18 @@ class HttpxWorkPackageApi:
     async def commit_update(
         self, work_package_ref: str, payload: dict[str, Any], *, text_limit: int | None
     ) -> WorkPackageRecord:
-        safe_ref = _work_package_ref_encode(work_package_ref)
+        safe_ref = _valid_work_package_ref(work_package_ref)
         response = await self._transport.patch_json(f"work_packages/{safe_ref}", json_body=payload)
         return self.to_record(response, text_limit=text_limit)
 
     async def delete(self, work_package_ref: str) -> None:
-        safe_ref = _work_package_ref_encode(work_package_ref)
+        safe_ref = _valid_work_package_ref(work_package_ref)
         await self._transport.delete(f"work_packages/{safe_ref}")
 
     async def post_comment(
         self, work_package_ref: str, *, comment: str, internal: bool, notify: bool
     ) -> dict[str, Any]:
-        safe_ref = _work_package_ref_encode(work_package_ref)
+        safe_ref = _valid_work_package_ref(work_package_ref)
         return await self._transport.post_json(
             f"work_packages/{safe_ref}/activities",
             params={"notify": str(notify).lower()},

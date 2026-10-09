@@ -173,8 +173,6 @@ async def test_search_work_packages_exact_match_deduplicated_against_results() -
 @pytest.mark.asyncio
 async def test_search_work_packages_exact_match_none_for_unresolvable_query() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path in ("/api/v3/work_packages/garbage%20text", "/api/v3/work_packages/garbage text"):
-            return httpx.Response(404, json={"message": "not found"}, request=request)
         if request.url.path == "/api/v3/work_packages":
             return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -185,6 +183,26 @@ async def test_search_work_packages_exact_match_none_for_unresolvable_query() ->
 
     assert result.exact_match is None
 
+    await client.aclose()
+
+
+@pytest.mark.parametrize("search", ["context token catalog", "a/b?c#d", "2026-10-15", "100%"])
+@pytest.mark.asyncio
+async def test_search_work_packages_looks_up_only_identifier_shaped_terms(search: str) -> None:
+    requested: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.work_package.search(search=search)
+
+    assert result.exact_match is None
+    assert requested == ["/api/v3/work_packages"]
     await client.aclose()
 
 

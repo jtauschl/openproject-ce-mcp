@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from ..errors import OpenProjectServerError
 from ..origin import origin_from_url as _origin_from_url
-from ..ports.work_package_ref import work_package_ref as _encode_work_package_ref
+from ..ports.work_package_ref import work_package_ref as _valid_work_package_ref
 from ..transport.protocol import Transport
 
 
@@ -35,11 +35,7 @@ class HttpxWorkPackageLookupApi:
         self._api_prefix = api_prefix
 
     async def get(self, work_package_ref: str) -> dict[str, Any]:
-        # Same URL-encoding as the shared pure helper in
-        # app/ports/work_package_ref.py -- reused here directly rather than
-        # re-deriving the encoding rule a second time.
-        encoded = _encode_work_package_ref(work_package_ref)
-        return await self._transport.get_json(f"work_packages/{encoded}")
+        return await self._transport.get_json(f"work_packages/{_valid_work_package_ref(work_package_ref)}")
 
     async def get_by_href(self, href: str) -> dict[str, Any]:
         return await self._transport.get_json(self._link_to_api_path(href))

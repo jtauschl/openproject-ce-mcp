@@ -60,8 +60,8 @@ class WorkPackageResolver:
         does not short-circuit: it always triggers a fetch of the work
         package too, so its project can be validated against the allowlist before
         its ``id`` is read back. A project-prefixed identifier is resolved the same
-        way, but additionally only works on OpenProject 17.5+ (and requires the
-        exact, case-sensitive project identifier).
+        way, but additionally only works on OpenProject 17.5+, or 17.4 with its
+        feature flag (and requires the exact, case-sensitive project identifier).
 
         ``write=True`` checks the WRITE allowlist instead of the read one --
         needed wherever the resolved work package is a REPARENT/relation
@@ -75,14 +75,15 @@ class WorkPackageResolver:
         except NotFoundError as exc:
             if reference.isdigit():
                 raise
-            # A project-prefixed reference only resolves on OpenProject 17.5+ (and
-            # requires the exact, case-sensitive project identifier). Give a hint
-            # instead of a bare "not found" so a too-old instance or a case/prefix
-            # mismatch is distinguishable from a genuinely missing work package.
+            # A project-prefixed reference only resolves on OpenProject 17.5+, or
+            # 17.4 with its feature flag, and requires the exact, case-sensitive
+            # project identifier. Give a hint instead of a bare "not found" so a
+            # too-old instance or a case/prefix mismatch is distinguishable from
+            # a genuinely missing work package.
             raise NotFoundError(
                 f"Work package '{reference}' was not found. Semantic references like 'PROJ-123' "
-                "require OpenProject 17.5+ and the exact project identifier (case-sensitive); "
-                "on older instances use the numeric work-package id."
+                "require OpenProject 17.5+ (17.4 with its feature flag) and the exact project identifier "
+                "(case-sensitive); on older instances use the numeric work-package id."
             ) from exc
         project_link = payload.get("_links", {}).get("project")
         if write:

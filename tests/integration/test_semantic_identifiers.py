@@ -8,6 +8,9 @@ e.g. 17.5 with project-based identifiers). See docker/test/ for spinning up both
 
 from __future__ import annotations
 
+import uuid
+
+import httpx
 import pytest
 
 from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
@@ -59,3 +62,34 @@ async def test_reference_resolution_matches_instance_mode(
         # A made-up project-prefixed reference degrades cleanly to not-found.
         with pytest.raises(NotFoundError):
             await client.work_package.get("TST-999999")
+
+
+async def test_search_looks_up_only_identifier_shaped_terms_directly(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    created = await client.work_package.create(project=test_project, type="Task", subject=_SUBJECT, confirm=True)
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+    wp = await client.work_package.get(created.work_package_id)
+    # 16.x has no displayId; the numeric id is the reference there.
+    reference = wp.display_id or str(created.work_package_id)
+    lookup_prefix = f"{client._api_prefix}work_packages/"
+    requested: list[str] = []
+
+    async def record(request: httpx.Request) -> None:
+        requested.append(request.url.path)
+
+    client._http.event_hooks["request"].append(record)
+
+    by_reference = await client.work_package.search(search=reference)
+    found = [item.id for item in by_reference.results]
+    if by_reference.exact_match is not None:
+        found.append(by_reference.exact_match.id)
+    assert created.work_package_id in found
+    assert f"{lookup_prefix}{reference}" in requested
+
+    requested.clear()
+    text = f"no work package is called this {uuid.uuid4().hex}"
+    by_text = await client.work_package.search(search=text)
+    assert by_text.exact_match is None
+    assert [path for path in requested if path.startswith(lookup_prefix)] == []
