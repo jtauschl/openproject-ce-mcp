@@ -14,7 +14,7 @@ updates:
     schedule:
       interval: weekly
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /
     target-branch: release/0.5.0
     schedule:
