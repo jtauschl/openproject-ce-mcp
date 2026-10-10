@@ -73,7 +73,7 @@ This MCP server targets **OpenProject Community Edition** only. It does not supp
 
 - Communicates with the MCP client over stdio — no remote server, no persistent storage
 - Read tools are registered by default, but no project data is accessible until `OPENPROJECT_READ_PROJECTS` is configured
-- The 5 core write categories are enabled by default, but stay inert until a project is listed in `OPENPROJECT_WRITE_PROJECTS` — that allowlist, not the category flags, is the real gate; personal-data and admin writes stay opt-in separately
+- The 6 core write categories are enabled by default, but stay inert until a project is listed in `OPENPROJECT_WRITE_PROJECTS` — that allowlist, not the category flags, is the real gate; personal-data and admin writes stay opt-in separately
 - Create and update operations validate the payload against OpenProject form endpoints before writing; delete and other simple operations execute directly once confirmed
 - Project scope is enforced server-side: the MCP only exposes what the configured allowlists permit
 - Responses are bounded and paginated — compact summaries, not raw HAL payloads
@@ -140,7 +140,7 @@ Your client config (`.mcp.json`, `.codex/config.toml`, or `.vscode/mcp.json`)
 contains your API token — treat it like a password and keep it out of version
 control; choose your client-specific guide from [Clients](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/clients.md)
 for the exact `.gitignore` step. `configure` writes a minimal config: only the values that differ from a
-safe default. Read tools are registered by default, and so are the 5 core
+safe default. Read tools are registered by default, and so are the 6 core
 write categories — but project access stays denied either way until you list
 projects in `OPENPROJECT_READ_PROJECTS` (and, for writes, in
 `OPENPROJECT_WRITE_PROJECTS` too); that allowlist pair, not the category

@@ -10,10 +10,10 @@ Boards have their own dedicated OPENPROJECT_ENABLE_BOARD_READ/_WRITE flags
 scope="board" throughout.
 
 List filtering follows Views'/Documents'/News' shape (ProjectRefResolver +
-project_scoped_list.py), not Grids' raw-scope-string shape: `project: str |
-None` on `list`/`create` is a genuine project reference needing resolution
-against a real project payload, unlike Grids' `scope` (an arbitrary
-href/path passed straight through).
+project_scoped_list.py), not Grids' scope shape: `project: str | None` on
+`list`/`create` is a project reference resolved against a real project
+payload, while a grid's `scope` is a web path (`/my/page`,
+`/projects/<identifier>[/boards]`) that grid_policy parses itself.
 
 Client-side vs. server-side list branching: the server-paginated path is
 reachable only when `project is None`, no `search`, and `read_projects` is

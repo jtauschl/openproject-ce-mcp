@@ -17,7 +17,9 @@ so a single Service bundling both, rather than two separate Services, avoids
 depending on the exact same seam twice for no behavioral difference.
 
 `list_capabilities` also allowlist-checks each RETURNED record's own
-`context` link (via `scope.ensure_project_link_allowed`, same "nullable link,
+`context` link (via `scope.ensure_project_link_allowed`; the global context,
+a capability without a project, goes through the optional-link contract
+instead and is visible only under a wide-open read scope; same "nullable link,
 no dedicated policy file" shape as `ViewService._allowed` -- Capabilities has
 no dedicated policy file for the same reason Views doesn't), independent of
 whether a `project` filter was supplied server-side. This matters because

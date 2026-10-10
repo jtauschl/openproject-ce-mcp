@@ -117,9 +117,11 @@ async def search_work_packages(
     category, description, or other linked-resource fields. To filter by
     version, use list_work_packages(version=..., project=...) instead.
 
-    In parallel with that text/id search, search is always also resolved
-    directly (numeric id or display id like "PROJ-42") the same way
-    get_work_package does. When that resolves to a work package that also
+    In parallel with that text/id search, a search shaped like a work package
+    reference (a numeric id or a display id like "PROJ-42", but not a date
+    such as 2026-10-15) is also resolved directly the same way
+    get_work_package does; other text is never looked up as an id. When that
+    resolves to a work package that also
     satisfies every other filter given here (project/status/assignee/dates/
     custom fields/etc.), it's returned separately as exact_match — never
     folded into results, and never counted toward total/count/pagination,

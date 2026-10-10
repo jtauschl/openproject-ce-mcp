@@ -389,6 +389,35 @@ not archived) and rescans when the last scan is older than five minutes. A test
 asserts that every adapter holds the one `LearningTransport`; only the
 directory's own project lookups bypass it.
 
+### Project links
+
+`scope.parse_project_href` (`app/policies/scope.py`) is the one definition of a
+project link: exactly what OpenProject emits for this instance,
+`<root>api/v3/(projects|programs|portfolios|workspaces)/<id>`, as a relative
+path or an absolute URL on the instance's origin, without query, fragment,
+parameters, dot segments or percent-encoding, the id within PostgreSQL's
+bigint. The root path comes from `OPENPROJECT_BASE_URL`. Every allowlist check
+classifies a link through it before any wildcard shortcut, so a link to
+another host or another resource is denied under every scope; the directory,
+work package writes, capabilities, time entries and embedded projects read
+project ids through it too. A link with the right shape under another root
+path raises `ProjectLinkPrefixError`, reported as `[configuration_error]`, so a
+base URL that does not match the server fails loudly instead of denying
+everything.
+
+A grid's `_links.scope` is a web path, not an API link: `<root>my/page`,
+`<root>projects/<identifier>` or `<root>projects/<identifier>/boards`.
+`grid_policy.parse_grid_scope` reads it; under a restrictive allowlist the
+service resolves the identifier through `GET /projects/{identifier}`, so
+OpenProject itself maps former identifiers (17.3+) and the allowlist matches
+the project's id, current identifier and name. A grid's `_links.project`
+(17.1+), when present, must also be allowed and name the same project.
+
+Work package references follow the same idea in
+`work_package_reference.py`: a canonical numeric id or `<slug>-<sequence>`,
+the slug semantic (`PROJ`) or classic (`my-proj`), which is what
+`WorkPackage.find` resolves; anything else is rejected before a request.
+
 An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer
 directions above, confines `httpx` to `HttpxTransport`, forbids importing the
 `mcp` SDK or reading environment variables directly anywhere under `app/`, and
@@ -634,10 +663,11 @@ The model has two independent layers:
   `OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES` while streaming — the cap protects
   memory and network transfer, not just the response — is authorized against
   the container work package's project before a single byte is fetched, is
-  never written to disk, and follows OpenProject's storage redirect with the
-  `Authorization` header kept on a same-origin hop and dropped on a
-  cross-origin one, so instance credentials never reach a pre-signed
-  object-storage URL
+  never written to disk, and follows OpenProject's storage redirect itself: a
+  same-origin hop keeps its headers, a hop to another origin carries only
+  `Accept`, `Accept-Encoding` and `User-Agent`, and once the chain has left
+  the instance's origin no hop gets the client's authentication, so no
+  credential reaches a pre-signed object-storage URL
 
 **Layer 2 — OpenProject server permissions** (enforced by the API, not the MCP):
 
