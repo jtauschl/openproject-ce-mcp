@@ -52,6 +52,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ...config import Settings
+from ...context_gather import gather_in_current_context
 from ...models import GridListResult, GridSummary, GridWriteResult
 from ..errors import InvalidInputError, NotFoundError, PermissionDeniedError
 from ..pagination import clamp_limit, scan_records_and_paginate
@@ -60,11 +61,12 @@ from ..policies.grid_policy import (
     MyPageScope,
     ProjectScope,
     ResolvedProject,
+    emitted_grid_scope,
     ensure_grid_allowed,
     needs_resolution,
     parse_grid_scope,
 )
-from ..policies.scope import PrefixMismatch, prefix_mismatch_error
+from ..policies.scope import PrefixMismatch
 from ..ports.grid_api import GridApi, GridRecord
 from ..ports.project_lookup_api import ProjectLookupApi
 from ._write_outcome import _finalize_write, _WriteOutcome
@@ -93,13 +95,8 @@ class GridService:
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
 
-    def _emitted_scope(self, scope_link: Any) -> MyPageScope | ProjectScope:
-        scope = parse_grid_scope(_href(scope_link), settings=self._settings)
-        if isinstance(scope, PrefixMismatch):
-            raise prefix_mismatch_error(scope, settings=self._settings)
-        if scope is None:
-            raise PermissionDeniedError("OpenProject grid has a scope that is not a project, its boards or /my/page.")
-        return scope
+    def _emitted_scope(self, scope_link: Any, *, write: bool) -> MyPageScope | ProjectScope:
+        return emitted_grid_scope(_href(scope_link), write=write, settings=self._settings)
 
     async def _resolve(self, refs: Iterable[str], cache: dict[str, _Resolution]) -> None:
         slots = asyncio.Semaphore(_CONCURRENT_SCOPE_LOOKUPS)
@@ -119,7 +116,7 @@ class GridService:
             summary = record.summary
             cache[ref] = ResolvedProject(summary.id, summary.identifier or ref, summary.name)
 
-        await asyncio.gather(*(resolve_one(ref) for ref in dict.fromkeys(refs) if ref not in cache))
+        await gather_in_current_context(*(resolve_one(ref) for ref in dict.fromkeys(refs) if ref not in cache))
 
     def _authorize(
         self, scope: MyPageScope | ProjectScope, project_link: Any, *, write: bool, cache: dict[str, _Resolution]
@@ -141,7 +138,9 @@ class GridService:
         filters it out, any other failure is kept for the scan to raise only
         if it reaches that grid."""
         try:
-            self._authorize(self._emitted_scope(record.scope_link), record.project_link, write=False, cache=cache)
+            self._authorize(
+                self._emitted_scope(record.scope_link, write=False), record.project_link, write=False, cache=cache
+            )
         except PermissionDeniedError:
             return False
         except Exception as exc:  # noqa: BLE001 -- see docstring
@@ -156,7 +155,9 @@ class GridService:
         self._authorize(scope, project_link, write=write, cache=cache)
 
     async def _check_record(self, record: GridRecord, *, write: bool) -> None:
-        await self._check(self._emitted_scope(record.scope_link), record.project_link, write=write, cache={})
+        await self._check(
+            self._emitted_scope(record.scope_link, write=write), record.project_link, write=write, cache={}
+        )
 
     def _stamp(self, value: Any) -> Any:
         return hidden_fields.apply_hidden_fields("grid", value, settings=self._settings)
@@ -240,7 +241,10 @@ class GridService:
             # The form renders scope and project from the project OpenProject
             # resolved, which is what the commit writes to.
             await self._check(
-                self._emitted_scope(form_links.get("scope")), form_links.get("project"), write=True, cache=cache
+                self._emitted_scope(form_links.get("scope"), write=True),
+                form_links.get("project"),
+                write=True,
+                cache=cache,
             )
         identity_scope = form_links.get("scope", {}).get("href")
         outcome = await _finalize_write(

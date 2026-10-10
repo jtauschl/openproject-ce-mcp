@@ -6,7 +6,7 @@ import pytest
 from _client_test_helpers import make_settings
 
 from openproject_ce_mcp import policy_observation
-from openproject_ce_mcp.app.errors import PermissionDeniedError, ProjectScopeDeniedError
+from openproject_ce_mcp.app.errors import ProjectScopeDeniedError
 from openproject_ce_mcp.app.policies.grid_policy import (
     MyPageScope,
     ProjectScope,
@@ -132,7 +132,7 @@ def test_a_resolved_project_is_matched_by_id_identifier_or_name(allowlist: tuple
     ],
 )
 def test_a_resolved_project_outside_the_allowlist_is_denied(read, write, is_write: bool, message: str) -> None:
-    with pytest.raises(PermissionDeniedError, match=message):
+    with pytest.raises(ProjectScopeDeniedError, match=message):
         ensure_grid_allowed(
             ProjectScope("demo"),
             project_link=None,
@@ -144,7 +144,7 @@ def test_a_resolved_project_outside_the_allowlist_is_denied(read, write, is_writ
 
 
 def test_an_unresolved_project_scope_is_denied_under_a_restrictive_scope() -> None:
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         ensure_grid_allowed(
             ProjectScope("gone"),
             project_link=None,
@@ -165,7 +165,7 @@ def test_an_unresolved_project_scope_is_denied_under_a_restrictive_scope() -> No
     ],
 )
 def test_a_grid_project_link_must_be_a_project_link_of_this_instance_even_when_wide_open(project_link) -> None:
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         ensure_grid_allowed(
             ProjectScope("demo"),
             project_link=project_link,
@@ -177,7 +177,7 @@ def test_a_grid_project_link_must_be_a_project_link_of_this_instance_even_when_w
 
 
 def test_an_allowed_project_link_does_not_mask_a_disallowed_scope_project() -> None:
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         ensure_grid_allowed(
             ProjectScope("secret"),
             project_link={"href": "/api/v3/projects/6", "title": "Demo Project"},
@@ -189,7 +189,7 @@ def test_an_allowed_project_link_does_not_mask_a_disallowed_scope_project() -> N
 
 
 def test_an_allowed_scope_project_does_not_mask_a_disallowed_project_link() -> None:
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         ensure_grid_allowed(
             ProjectScope("demo"),
             project_link={"href": "/api/v3/projects/9", "title": "Secret"},
@@ -212,7 +212,7 @@ def test_a_grid_whose_scope_and_project_link_agree_is_allowed() -> None:
 
 
 def test_a_scope_and_project_link_naming_two_allowed_projects_are_denied() -> None:
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         ensure_grid_allowed(
             ProjectScope("demo-two"),
             project_link={"href": "/api/v3/projects/6", "title": "Demo Project"},

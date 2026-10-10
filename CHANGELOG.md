@@ -89,9 +89,10 @@ development baseline.
   uppercase agent-facing codes (`AUTHENTICATION_FAILED`, `PROJECT_SCOPE_DENIED`,
   `CAPABILITY_DISABLED`, `OPENPROJECT_PERMISSION_DENIED`, `RESOURCE_NOT_FOUND`,
   `VALIDATION_FAILED`, `CONFLICT`, `RATE_LIMITED`, `OPENPROJECT_UNAVAILABLE`,
-  `NETWORK_ERROR`, `INTERNAL_ERROR`) instead of the previous lowercase
-  categories (`validation_error`, `auth_error`, `permission_denied`,
-  `not_found`, `transport_error`, `server_error`, `openproject_error`). A
+  `NETWORK_ERROR`, `CONFIGURATION_ERROR`, `INTERNAL_ERROR`) instead of the
+  previous lowercase categories (`validation_error`, `auth_error`,
+  `permission_denied`, `not_found`, `transport_error`, `server_error`,
+  `configuration_error`, `openproject_error`). A
   caller matching on the old `[category]` prefixes must update to the new
   codes. Three distinctions that were previously conflated are now separate:
   a project outside `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`

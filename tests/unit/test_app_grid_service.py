@@ -5,13 +5,16 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
+from openproject_ce_mcp import http_request_counter, policy_observation
 from openproject_ce_mcp.app.errors import (
     AuthenticationError,
+    CapabilityDisabledError,
     InvalidInputError,
     NotFoundError,
     OpenProjectServerError,
     PermissionDeniedError,
     ProjectLinkPrefixError,
+    ProjectScopeDeniedError,
     TransportError,
 )
 from openproject_ce_mcp.app.ports.grid_api import GridFormResult, GridRecord
@@ -183,7 +186,7 @@ async def test_list_checks_read_enabled() -> None:
     api = _FakeGridApi()
     service = _service(api, settings=settings)
 
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(CapabilityDisabledError):
         await service.list()
 
     assert api.list_page_calls == []
@@ -229,7 +232,7 @@ async def test_get_checks_project_read_allowlist() -> None:
     api = _FakeGridApi()
     service = _service(api, settings=settings)
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+    with pytest.raises(ProjectScopeDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await service.get(1)
 
 
@@ -250,7 +253,7 @@ async def test_get_checks_read_enabled() -> None:
     api = _FakeGridApi()
     service = _service(api, settings=settings)
 
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(CapabilityDisabledError):
         await service.get(1)
 
     assert api.get_calls == []
@@ -288,7 +291,7 @@ async def test_create_checks_write_allowlist_unconditionally_even_without_confir
     api = _FakeGridApi()
     service = _service(api, settings=settings)
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+    with pytest.raises(ProjectScopeDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.create(name="My Grid", scope="/projects/6", confirm=False)
 
     assert api.create_form_calls == []
@@ -467,7 +470,7 @@ async def test_update_checks_write_allowlist_using_the_fetched_grids_own_scope()
     api = _FakeGridApi(records=[_record(grid_id=1, scope="/projects/6")])
     service = _service(api, settings=settings)
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+    with pytest.raises(ProjectScopeDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(grid_id=1, name="Renamed", confirm=False)
 
     assert api.update_form_calls == []
@@ -513,7 +516,7 @@ async def test_delete_checks_write_allowlist_using_the_fetched_grids_own_scope()
     api = _FakeGridApi(records=[_record(grid_id=1, scope="/projects/6")])
     service = _service(api, settings=settings)
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+    with pytest.raises(ProjectScopeDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.delete(grid_id=1, confirm=False)
 
     assert api.delete_calls == []
@@ -644,7 +647,7 @@ async def test_create_rechecks_the_scope_openproject_resolved_before_preview() -
     api.create_form = resolved_elsewhere  # type: ignore[method-assign]
     projects = _FakeProjectLookup([(6, "demo", "Demo"), (9, "secret", "Secret")])
 
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         await _service(api, settings=_restricted(), projects=projects).create(name="G", scope="/projects/demo")
 
     assert api.commit_create_calls == []
@@ -660,7 +663,7 @@ async def test_create_rechecks_the_project_link_of_the_form() -> None:
 
     api.create_form = with_foreign_project  # type: ignore[method-assign]
 
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         await _service(api).create(name="G", scope="/projects/demo", confirm=True)
 
     assert api.commit_create_calls == []
@@ -687,10 +690,56 @@ async def test_update_and_delete_check_the_grids_own_project_link() -> None:
     projects = _FakeProjectLookup([(6, "demo", "Demo")])
     service = _service(api, settings=_restricted(), projects=projects)
 
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         await service.update(grid_id=1, name="Renamed", confirm=True)
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(ProjectScopeDeniedError):
         await service.delete(grid_id=1, confirm=True)
 
     assert api.commit_update_calls == []
     assert api.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_grid_without_a_known_scope_is_denied_and_recorded_on_the_service_path() -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope=None)])
+    service = _service(api, settings=_restricted())
+    policy_observation.reset()
+
+    with pytest.raises(ProjectScopeDeniedError, match="scope that is not a project"):
+        await service.get(1)
+
+    assert policy_observation.current_policy_decision() == "project_scope_read_denied"
+    assert policy_observation.current_project_scope() is None
+
+
+@pytest.mark.asyncio
+async def test_grid_scope_lookups_count_toward_the_calls_http_requests() -> None:
+    class _CountingLookup(_FakeProjectLookup):
+        async def get(self, project_ref: str, **kwargs: object) -> _Resolved:
+            http_request_counter.increment()
+            return await super().get(project_ref, **kwargs)
+
+    api = _FakeGridApi([_record(grid_id=1, scope="/projects/demo"), _record(grid_id=2, scope="/projects/secret")])
+    projects = _CountingLookup([(6, "demo", "Demo"), (9, "secret", "Secret")])
+    http_request_counter.reset()
+
+    await _service(api, settings=_restricted(), projects=projects).list()
+
+    assert http_request_counter.current() == 2
+
+
+@pytest.mark.parametrize("action", ["update", "delete"])
+@pytest.mark.asyncio
+async def test_a_write_to_a_grid_without_a_known_scope_records_a_write_denial(action: str) -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope=None)])
+    service = _service(api, settings=_restricted())
+    policy_observation.reset()
+
+    with pytest.raises(ProjectScopeDeniedError, match="scope that is not a project"):
+        if action == "update":
+            await service.update(grid_id=1, name="Renamed", confirm=True)
+        else:
+            await service.delete(grid_id=1, confirm=True)
+
+    assert policy_observation.current_policy_decision() == "project_scope_write_denied"
+    assert policy_observation.current_project_scope() is None

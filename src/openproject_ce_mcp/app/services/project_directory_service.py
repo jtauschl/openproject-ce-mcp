@@ -197,6 +197,9 @@ class ProjectDirectoryService:
         if rescan:
             await self.ensure_fresh()
         if lookups:
+            # Plain gather on purpose: each lookup runs in a shared,
+            # deduplicated task that may serve several tool calls, so its
+            # requests belong to no single call's counters.
             await asyncio.gather(*(self._look_up(project_id) for project_id in lookups))
 
     async def _look_up(self, project_id: int) -> None:

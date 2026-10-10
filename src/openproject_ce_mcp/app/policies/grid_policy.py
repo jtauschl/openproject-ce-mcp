@@ -25,6 +25,7 @@ from .scope import (
     PrefixMismatch,
     ensure_project_link_allowed,
     ensure_project_write_link_allowed,
+    prefix_mismatch_error,
     project_id_from_href,
     project_record_candidates,
     scope_allows_all,
@@ -72,6 +73,19 @@ def parse_grid_scope(href: Any, *, settings: Settings) -> MyPageScope | ProjectS
         return MyPageScope() if target.group("my_page") else ProjectScope(target.group("ref"))
     other = _SCOPE_UNDER_ANY_ROOT.fullmatch(href)
     return PrefixMismatch(f"{other.group('root')}api/v3/") if other else None
+
+
+def emitted_grid_scope(href: Any, *, write: bool, settings: Settings) -> MyPageScope | ProjectScope:
+    """The scope of a grid OpenProject returned. The server chose its shape, so
+    another root path is a configuration error and any other shape a denial."""
+    scope = parse_grid_scope(href, settings=settings)
+    if isinstance(scope, PrefixMismatch):
+        raise prefix_mismatch_error(scope, settings=settings)
+    if scope is None:
+        policy_observation.record_project_scope(None)
+        policy_observation.record_policy_decision(f"project_scope_{'write' if write else 'read'}_denied")
+        raise ProjectScopeDeniedError("OpenProject grid has a scope that is not a project, its boards or /my/page.")
+    return scope
 
 
 def needs_resolution(*, write: bool, settings: Settings) -> bool:

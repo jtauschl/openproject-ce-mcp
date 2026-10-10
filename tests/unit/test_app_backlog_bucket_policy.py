@@ -83,3 +83,25 @@ def test_embedded_payload_branch_records_allowed_decision_and_scope() -> None:
     )
     assert policy_observation.current_policy_decision() == "project_scope_read_allowed"
     assert policy_observation.current_project_scope() == "demo"
+
+
+@pytest.mark.parametrize(
+    ("self_href", "link"),
+    [
+        ("/api/v3/projects/7", None),
+        ("/api/v3/projects/6", {"href": "https://evil.example.com/api/v3/projects/6"}),
+    ],
+)
+def test_embedded_payload_naming_another_project_is_denied_and_recorded(self_href, link) -> None:
+    policy_observation.reset()
+
+    with pytest.raises(ProjectScopeDeniedError):
+        ensure_backlog_bucket_workspace_allowed(
+            defining_workspace_payload={"id": 6, "identifier": "demo", "_links": {"self": {"href": self_href}}},
+            defining_workspace_link=link,
+            settings=dataclasses.replace(make_settings(), read_projects=("*",)),
+            project_id_to_identifier={},
+        )
+
+    assert policy_observation.current_policy_decision() == "project_scope_read_denied"
+    assert policy_observation.current_project_scope() == "demo"
