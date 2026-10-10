@@ -46,6 +46,9 @@ test_() {
     uv run pytest --cov=src/openproject_ce_mcp --cov=tools --cov-report= --cov-fail-under=0 "$@"
     uv run coverage report --include='*/src/openproject_ce_mcp/*' --fail-under=88
     uv run coverage report --include='*/tools/*' --fail-under=85
+    # The client wraps httpx internals, so the lowest supported httpx minor is tested too.
+    uv run --with 'httpx[socks]==0.27.*' pytest -q -p no:cacheprovider \
+        tests/unit/test_client_http_stack.py tests/unit/test_app_httpx_transport.py tests/test_retry_transport.py
 }
 
 build() {

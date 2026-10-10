@@ -37,6 +37,13 @@ development baseline.
 
 ### Fixed
 
+- `OPENPROJECT_VERIFY_SSL=false` and the proxy settings now take effect while
+  retries are enabled, which is the default. They used to apply only with
+  `OPENPROJECT_MAX_RETRIES=0`. Proxies come from `HTTP_PROXY`, `HTTPS_PROXY`
+  or `ALL_PROXY`, `socks5://` URLs included, and a host listed in `NO_PROXY`
+  is reached directly. Only while none of these variables is set do the
+  system proxy settings apply on macOS and Windows, without the system's own
+  proxy exceptions.
 - Project grids, including the boards page grid of a project, are now matched
   against a restrictive `OPENPROJECT_READ_PROJECTS` and
   `OPENPROJECT_WRITE_PROJECTS` by their project. Boards page grids were

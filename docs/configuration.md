@@ -180,6 +180,14 @@ defense in depth.
 | `OPENPROJECT_RETRY_MAX_DELAY` | no | `60.0` | Maximum retry delay in seconds; must be ≥ `OPENPROJECT_RETRY_BASE_DELAY` |
 | `OPENPROJECT_LOG_LEVEL` | no | `WARNING` | `CRITICAL`, `ERROR`, `WARNING`, or `INFO` |
 
+Proxies come from the standard `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY`
+variables (`http://`, `https://` and `socks5://` URLs); hosts listed in
+`NO_PROXY` are reached directly. Only while none of these variables is set do
+the system proxy settings apply on macOS and Windows, and then without the
+system's own list of proxy exceptions. To reach OpenProject directly despite
+a system proxy, set `NO_PROXY` to its host, for example
+`NO_PROXY=openproject.example.com`.
+
 Invalid combinations (e.g. `MAX_RETRIES` above 10, `DEFAULT_PAGE_SIZE` above
 `MAX_PAGE_SIZE`) fail at startup with a clear error rather than being silently
 clamped.

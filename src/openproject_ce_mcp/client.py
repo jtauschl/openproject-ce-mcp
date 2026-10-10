@@ -219,6 +219,7 @@ from .models import (
     ProjectWriteResult,
     WorkPackageFieldSchema,
 )
+from .retry_transport import RetryTransport
 
 LOGGER = logging.getLogger(__name__)
 
@@ -256,21 +257,6 @@ class OpenProjectClient:
         self._priorities_cache: SingletonCache[list[PriorityRecord]] = SingletonCache()
         self._instance_configuration_cache: SingletonCache[InstanceConfigurationRecord] = SingletonCache()
 
-        # Wrap transport with retry logic if max_retries > 0
-        if settings.max_retries > 0:
-            from .retry_transport import RetryTransport
-
-            # Don't double-wrap if user already provided RetryTransport
-            if not isinstance(transport, RetryTransport):
-                # If no transport provided, use default httpx transport
-                base_transport = transport or httpx.AsyncHTTPTransport()
-                transport = RetryTransport(
-                    wrapped_transport=base_transport,
-                    max_retries=settings.max_retries,
-                    base_delay=settings.retry_base_delay,
-                    max_delay=settings.retry_max_delay,
-                )
-
         self._http = httpx.AsyncClient(
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
@@ -281,8 +267,16 @@ class OpenProjectClient:
             timeout=httpx.Timeout(settings.timeout),
             verify=settings.verify_ssl,
             follow_redirects=True,
-            transport=transport,
+            transport=None if transport is None else _with_retries(transport, settings),
         )
+        if transport is None:
+            # httpx applies verify= and the proxy environment only to transports
+            # it builds itself, so retries wrap those after construction.
+            self._http._transport = _with_retries(self._http._transport, settings)
+            self._http._mounts = {
+                pattern: None if mount is None else _with_retries(mount, settings)
+                for pattern, mount in self._http._mounts.items()
+            }
 
         # Every HttpxTransport wraps the SAME httpx.AsyncClient constructed
         # above (one connection pool). The directory looks projects up on a
@@ -1385,6 +1379,17 @@ class OpenProjectClient:
         self, version_ref: str, *, project: str | None = None, context: ProjectResolutionContext | None = None
     ) -> str:
         return await self._version_resolver.resolve_id(version_ref, project=project, context=context)
+
+
+def _with_retries(transport: httpx.AsyncBaseTransport, settings: Settings) -> httpx.AsyncBaseTransport:
+    if settings.max_retries == 0 or isinstance(transport, RetryTransport):
+        return transport
+    return RetryTransport(
+        wrapped_transport=transport,
+        max_retries=settings.max_retries,
+        base_delay=settings.retry_base_delay,
+        max_delay=settings.retry_max_delay,
+    )
 
 
 def _trim_text(value: Any, *, limit: int) -> str | None:
