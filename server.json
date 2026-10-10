@@ -1,0 +1,49 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jtauschl/openproject-ce-mcp",
+  "title": "OpenProject CE",
+  "description": "MCP server for OpenProject Community Edition with guarded read/write support.",
+  "repository": {
+    "url": "https://github.com/jtauschl/openproject-ce-mcp",
+    "source": "github"
+  },
+  "version": "0.5.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "openproject-ce-mcp",
+      "version": "0.5.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "OPENPROJECT_BASE_URL",
+          "description": "Base URL of the OpenProject instance",
+          "isRequired": true,
+          "placeholder": "https://openproject.example.com"
+        },
+        {
+          "name": "OPENPROJECT_API_TOKEN",
+          "description": "OpenProject API token",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "OPENPROJECT_READ_PROJECTS",
+          "description": "Comma-separated project identifiers or glob patterns that may be read, * for all; unset allows none",
+          "isRequired": false,
+          "placeholder": "PROJ1,PROJ2 or *"
+        },
+        {
+          "name": "OPENPROJECT_WRITE_PROJECTS",
+          "description": "Comma-separated project identifiers or glob patterns that may be written, * for all; unset allows none",
+          "isRequired": false,
+          "placeholder": "PROJ1,PROJ2 or *"
+        }
+      ]
+    }
+  ]
+}

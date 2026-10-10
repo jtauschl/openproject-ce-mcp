@@ -1,5 +1,7 @@
 # OpenProject CE MCP
 
+<!-- mcp-name: io.github.jtauschl/openproject-ce-mcp -->
+
 [![PyPI](https://img.shields.io/pypi/v/openproject-ce-mcp.svg)](https://pypi.org/project/openproject-ce-mcp/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/jtauschl/openproject-ce-mcp/blob/main/LICENSE)
