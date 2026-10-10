@@ -375,7 +375,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
     },
     "create_grid": {
-        "description_hash": "96246e5c63693292e339c34b0c93ddb8ed9cef01d74410b35b4518fb799aa2bc",
+        "description_hash": "88ecbed24d75f9091ffd45ab9c0bda556f5b0a4aa24976e09b351341dc0fc4bc",
         "input_schema": {
             "properties": {
                 "name": {"title": "Name", "type": "string"},

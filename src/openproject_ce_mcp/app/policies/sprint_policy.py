@@ -11,7 +11,8 @@ the workspace-allowlist check has TWO branches, not one.
   `httpx_sprint_api.py`'s `_defining_workspace_link`).
 
 The link branch maps 1:1 onto `scope.ensure_project_link_allowed`. The
-embedded-object branch is composed here from
+embedded-object branch first requires the object's own self link to name
+its id (`scope.ensure_embedded_project_consistent`), then is composed from
 `scope.project_candidates(payload=...)` + `scope.scope_matches_candidates(...)`.
 
 Takes `SprintRecord.defining_workspace_payload`/`.defining_workspace_link`
@@ -51,11 +52,18 @@ def ensure_sprint_workspace_allowed(
 ) -> None:
     if defining_workspace_payload is not None:
         policy_observation.record_project_scope(_payload_display_value(defining_workspace_payload))
+        try:
+            scope.ensure_embedded_project_consistent(
+                defining_workspace_payload, link=defining_workspace_link, settings=settings
+            )
+        except ProjectScopeDeniedError:
+            policy_observation.record_policy_decision("project_scope_read_denied")
+            raise
         if scope.scope_allows_all(settings.read_projects):
             policy_observation.record_policy_decision("project_scope_read_allowed")
             return
         candidates = scope.project_candidates(
-            project_id_to_identifier=project_id_to_identifier, payload=defining_workspace_payload
+            project_id_to_identifier=project_id_to_identifier, settings=settings, payload=defining_workspace_payload
         )
         if not scope.scope_matches_candidates(settings.read_projects, candidates):
             policy_observation.record_policy_decision("project_scope_read_denied")

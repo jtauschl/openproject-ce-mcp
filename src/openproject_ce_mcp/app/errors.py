@@ -130,3 +130,10 @@ class TransportError(OpenProjectError):
 
     code: ClassVar[str] = "NETWORK_ERROR"
     layer: ClassVar[str] = "transport"
+
+
+class ProjectLinkPrefixError(OpenProjectError):
+    """OpenProject links its projects under a different path than the configured base URL."""
+
+    code: ClassVar[str] = "CONFIGURATION_ERROR"
+    layer: ClassVar[str] = "policy"

@@ -82,13 +82,25 @@ def _create_membership_handler(request: httpx.Request) -> httpx.Response:
 
 
 def _update_membership_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+        return httpx.Response(
+            200,
+            json={
+                "_type": "Project",
+                "id": 7,
+                "identifier": "demo-id",
+                "name": "Demo",
+                "_links": {"self": {"href": "/api/v3/projects/7"}},
+            },
+            request=request,
+        )
     if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
         return httpx.Response(
             200,
             json={
                 "id": 3,
                 "_links": {
-                    "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                    "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                     "principal": {"href": "/api/v3/users/5", "title": "Alice"},
                     "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
                 },
@@ -106,7 +118,7 @@ def _update_membership_handler(request: httpx.Request) -> httpx.Response:
             json={
                 "id": 3,
                 "_links": {
-                    "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                    "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                     "principal": {"href": "/api/v3/users/5", "title": "Alice"},
                     "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
                 },
@@ -117,13 +129,25 @@ def _update_membership_handler(request: httpx.Request) -> httpx.Response:
 
 
 def _delete_membership_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+        return httpx.Response(
+            200,
+            json={
+                "_type": "Project",
+                "id": 7,
+                "identifier": "demo-id",
+                "name": "Demo",
+                "_links": {"self": {"href": "/api/v3/projects/7"}},
+            },
+            request=request,
+        )
     if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
         return httpx.Response(
             200,
             json={
                 "id": 3,
                 "_links": {
-                    "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                    "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                     "principal": {"href": "/api/v3/users/5", "title": "Alice"},
                     "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
                 },

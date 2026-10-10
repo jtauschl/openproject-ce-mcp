@@ -63,7 +63,7 @@ from ..policies import scope as scope_policy
 from ..ports.board_api import BoardApi
 from ..ports.project_ref import ProjectRefResolver
 from ._write_outcome import _finalize_write, _WriteOutcome
-from .project_scoped_list import resolve_project_filter_candidates, summary_matches_project_candidates
+from .project_scoped_list import record_in_project, resolve_project_filter_id
 
 
 class BoardService:
@@ -129,9 +129,7 @@ class BoardService:
         )
 
         if use_client_side_filtering:
-            project_candidates = await resolve_project_filter_candidates(
-                project, resolve_project_ref=self._resolve_project_ref
-            )
+            filter_project_id = await resolve_project_filter_id(project, resolve_project_ref=self._resolve_project_ref)
             search_key = search.casefold() if search else None
 
             def _record_allowed(record: Any) -> bool:
@@ -141,8 +139,8 @@ class BoardService:
                     project_id_to_identifier=self._project_id_to_identifier,
                 ):
                     return False
-                if project_candidates is not None and not summary_matches_project_candidates(
-                    record.summary, project_candidates
+                if filter_project_id is not None and not record_in_project(
+                    record.project_link, filter_project_id, settings=self._settings
                 ):
                     return False
                 return search_key is None or search_key in (record.summary.name or "").casefold()
@@ -179,7 +177,8 @@ class BoardService:
         filtered = [
             record
             for record in records
-            if scope_policy.classify_project_link(record.project_link) is not scope_policy.LinkState.MALFORMED
+            if scope_policy.classify_project_link(record.project_link, settings=self._settings)
+            is not scope_policy.LinkState.MALFORMED
         ]
         results = [self._stamp(record.summary) for record in filtered]
         next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=total)

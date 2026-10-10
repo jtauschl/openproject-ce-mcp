@@ -198,3 +198,47 @@ async def test_paginate_all_returns_empty_list_when_no_items() -> None:
     result = await paginate_all(fetch_page, page_size=10)
 
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_scan_records_bulk_outcomes_filter_and_raise_only_where_reached() -> None:
+    pages = {1: ([1, 2, 3, 4], 4)}
+    bulk_calls: list[list[int]] = []
+
+    async def fetch(offset: int, page_size: int):
+        return pages.get(offset, ([], 4))
+
+    async def bulk(items: list[int]) -> list[bool | Exception]:
+        bulk_calls.append(items)
+        return [True, False, True, RuntimeError("never reached")]
+
+    results, truncated = await scan_records_and_paginate(
+        fetch, item_allowed_bulk=bulk, server_page_size=10, offset=1, limit=1
+    )
+
+    assert results == [1]
+    assert truncated is True
+    assert bulk_calls == [[1, 2, 3, 4]]
+
+
+@pytest.mark.asyncio
+async def test_scan_records_bulk_outcome_exception_is_raised_when_reached() -> None:
+    async def fetch(offset: int, page_size: int):
+        return ([1, 2], 2) if offset == 1 else ([], 2)
+
+    async def bulk(items: list[int]) -> list[bool | Exception]:
+        return [True, RuntimeError("reached")]
+
+    with pytest.raises(RuntimeError, match="reached"):
+        await scan_records_and_paginate(fetch, item_allowed_bulk=bulk, server_page_size=10, offset=1, limit=5)
+
+
+@pytest.mark.asyncio
+async def test_scan_records_without_a_filter_scans_unfiltered() -> None:
+    async def fetch(offset: int, page_size: int):
+        return ([1, 2, 3], 3) if offset == 1 else ([], 3)
+
+    results, truncated = await scan_records_and_paginate(fetch, server_page_size=10, offset=1, limit=5)
+
+    assert results == [1, 2, 3]
+    assert truncated is False

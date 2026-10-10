@@ -1,8 +1,15 @@
 """Project-scope / allowlist policy. Pure, no I/O.
 
-Contains small, deliberately duplicated private copies of `_trim_text`/
-`_slug_from_href` (+ `SUBJECT_LIMIT`) rather than a single shared helper, to
-keep this module free of dependencies on other, less-stable modules.
+Contains a small, deliberately duplicated private copy of `_trim_text`
+(+ `SUBJECT_LIMIT`) rather than a shared helper, to keep this module free of
+dependencies on other, less-stable modules.
+
+`parse_project_href` is the one definition of a project link: what
+OpenProject emits for this instance, nothing else. Every check, the project
+directory and the services that need a linked project's id use it; a link
+under another root path raises ProjectLinkPrefixError where it is checked, so
+a base URL that does not match the server fails loudly instead of denying
+everything.
 
 `id_from_href` is exported (not underscore-prefixed) because it is shared
 across `app/` itself (this module's own copy, `app/services/project_service.py`,
@@ -37,33 +44,114 @@ link is never the same thing as "deliberately no link".
 from __future__ import annotations
 
 import functools
+import re
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from enum import Enum, auto
 from fnmatch import fnmatch
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import urlsplit
 
 from ... import policy_observation
 from ...config import Settings
-from ..errors import PermissionDeniedError, ProjectScopeDeniedError
+from ..errors import PermissionDeniedError, ProjectLinkPrefixError, ProjectScopeDeniedError
+from ..origin import api_prefix_from_url, strict_origin
 
 SUBJECT_LIMIT = 255
 
 URN_UNDISCLOSED = "urn:openproject-org:api:v3:undisclosed"
 
+# OpenProject renders a project link from the project's workspace type
+# (`/projects`, and on 17.x `/programs` or `/portfolios`) and reads
+# `/workspaces` as a project reference too; all four address one Project id
+# space. The id is a PostgreSQL bigint.
+_PROJECT_TARGET = re.compile(r"(?:projects|programs|portfolios|workspaces)/(?P<id>[1-9][0-9]{0,18})")
+# Only for naming another root path; the instance's own prefix is matched
+# first and exactly.
+_PROJECT_UNDER_ANY_ROOT = re.compile(r"(?P<root>/(?:[A-Za-z0-9._~!$&'()*+,=:@/-]*/)?)api/v3/" + _PROJECT_TARGET.pattern)
+_BIGINT_MAX = 2**63 - 1
+# urlsplit silently drops tabs, newlines and leading control characters, so
+# anything outside printable ASCII is rejected before it can be normalized
+# into a valid-looking link.
+_PRINTABLE_ASCII = re.compile(r"[!-~]+")
+
+
+@dataclass(frozen=True, slots=True)
+class LinkedProject:
+    id: int
+
+
+@dataclass(frozen=True, slots=True)
+class PrefixMismatch:
+    """A project link on the instance's origin under another root path than
+    OPENPROJECT_BASE_URL implies."""
+
+    emitted_prefix: str
+
+
+@functools.lru_cache(maxsize=8)
+def _instance(base_url: str) -> tuple[tuple[str, str, int] | None, str]:
+    return strict_origin(base_url), api_prefix_from_url(base_url)
+
+
+def parse_project_href(href: Any, *, settings: Settings) -> LinkedProject | PrefixMismatch | None:
+    """The project an href links to, or None when it is not a project link of
+    this instance. Accepts exactly what OpenProject emits: a relative path, or
+    an absolute URL on the instance's origin, without query, fragment,
+    parameters, dot segments or percent-encoding."""
+    if not isinstance(href, str) or not _PRINTABLE_ASCII.fullmatch(href):
+        return None
+    if any(char in href for char in "?#;%"):
+        return None
+    origin, api_prefix = _instance(settings.base_url)
+    try:
+        parts = urlsplit(href)
+    except ValueError:
+        return None
+    if (parts.scheme or parts.netloc) and (origin is None or strict_origin(href) != origin):
+        return None
+    path = parts.path
+    if any(segment in (".", "..") for segment in path.split("/")):
+        return None
+    target = _PROJECT_TARGET.fullmatch(path[len(api_prefix) :]) if path.startswith(api_prefix) else None
+    if target is not None:
+        project_id = int(target.group("id"))
+        return LinkedProject(project_id) if project_id <= _BIGINT_MAX else None
+    other = _PROJECT_UNDER_ANY_ROOT.fullmatch(path)
+    if other is None or int(other.group("id")) > _BIGINT_MAX:
+        return None
+    return PrefixMismatch(f"{other.group('root')}api/v3/")
+
+
+def prefix_mismatch_error(mismatch: PrefixMismatch, *, settings: Settings) -> ProjectLinkPrefixError:
+    return ProjectLinkPrefixError(
+        f"OpenProject links its projects under {mismatch.emitted_prefix}, but OPENPROJECT_BASE_URL "
+        f"implies {api_prefix_from_url(settings.base_url)}. Set OPENPROJECT_BASE_URL to the path "
+        "OpenProject itself uses."
+    )
+
+
+def project_id_from_href(href: Any, *, settings: Settings) -> int | None:
+    """The linked project's id; raises ProjectLinkPrefixError for a prefix mismatch."""
+    parsed = parse_project_href(href, settings=settings)
+    if isinstance(parsed, PrefixMismatch):
+        raise prefix_mismatch_error(parsed, settings=settings)
+    return parsed.id if parsed is not None else None
+
 
 class LinkState(Enum):
     """Classification of a raw HAL project-link value.
 
-    RESOLVED: a real project link ({"href": "/api/v3/projects/7", ...}).
+    RESOLVED: a project link of this instance ({"href": "/api/v3/projects/7", ...}).
     UNDISCLOSED: OpenProject's own URN placeholder for an existing-but-
       invisible project -- structurally complete, only the identity is
       redacted server-side.
     EXPLICITLY_UNSCOPED: the link key is present but its value is
       documented-empty ({"href": None}) -- e.g. a global Membership/View/Query.
     MISSING: the Python value itself is None (no _links.project key at all).
-    MALFORMED: present but structurally broken (not a dict, no "href" key,
-      href is not a non-blank string and not None, or href is whitespace-only).
+    MALFORMED: present but not a project link of this instance (not a dict,
+      no "href" key, href not a string, or an href `parse_project_href`
+      rejects: another origin, another resource, any other shape).
     """
 
     RESOLVED = auto()
@@ -73,7 +161,9 @@ class LinkState(Enum):
     MALFORMED = auto()
 
 
-def classify_project_link(link: Any) -> LinkState:
+def classify_project_link(link: Any, *, settings: Settings) -> LinkState:
+    """Raises ProjectLinkPrefixError for a project link under another root
+    path, so a misconfigured base URL fails loudly instead of denying all."""
     if link is None:
         return LinkState.MISSING
     if not isinstance(link, dict):
@@ -85,11 +175,28 @@ def classify_project_link(link: Any) -> LinkState:
     href = link.get("href")
     if href is None:
         return LinkState.EXPLICITLY_UNSCOPED
-    if not isinstance(href, str) or not href.strip():
-        return LinkState.MALFORMED
     if href == URN_UNDISCLOSED:
         return LinkState.UNDISCLOSED
+    if project_id_from_href(href, settings=settings) is None:
+        return LinkState.MALFORMED
     return LinkState.RESOLVED
+
+
+def ensure_embedded_project_consistent(payload: dict[str, Any], *, link: Any, settings: Settings) -> None:
+    """An embedded project is trusted by its own id, identifier and name, so
+    its self link, and the top-level link sent next to it if any, must be
+    project links of this instance naming that same id."""
+    links = payload.get("_links")
+    self_link = links.get("self") if isinstance(links, dict) else None
+    linked_ids = [project_id_from_href(_href(self_link), settings=settings)]
+    if link is not None:
+        linked_ids.append(project_id_from_href(_href(link), settings=settings))
+    if any(linked_id is None or linked_id != payload.get("id") for linked_id in linked_ids):
+        raise ProjectScopeDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
+
+
+def _href(link: Any) -> Any:
+    return link.get("href") if isinstance(link, dict) else None
 
 
 def _trim_text(value: Any, *, limit: int) -> str | None:
@@ -113,18 +220,7 @@ def id_from_href(href: str | None) -> int | None:
         return None
 
 
-def _slug_from_href(href: str | None) -> str | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        slug = parts[-1]
-        return unquote(slug) or None
-    except IndexError:
-        return None
-
-
-def _project_scope_display(link: Any, *, project_id_to_identifier: Mapping[int, str]) -> str | None:
+def _project_scope_display(link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]) -> str | None:
     """A single, unambiguous display value for the OPM-2709 `project_scope`
     log field -- the project's own known identifier if this server has
     already learned it, else its numeric id from the link's own href. Never
@@ -132,12 +228,10 @@ def _project_scope_display(link: Any, *, project_id_to_identifier: Mapping[int, 
     from `project_candidates`' full candidate set (that set exists for
     allowlist MATCHING, where over-including aliases is safe; a log field
     wants exactly one value, not a set)."""
-    if not isinstance(link, dict):
+    parsed = parse_project_href(link.get("href") if isinstance(link, dict) else None, settings=settings)
+    if not isinstance(parsed, LinkedProject):
         return None
-    project_id = id_from_href(link.get("href"))
-    if project_id is None:
-        return None
-    return project_id_to_identifier.get(project_id) or str(project_id)
+    return project_id_to_identifier.get(parsed.id) or str(parsed.id)
 
 
 def scope_allows_all(values: tuple[str, ...]) -> bool:
@@ -174,6 +268,7 @@ def project_record_candidates(project_id: int, identifier: str, name: str | None
 def project_candidates(
     *,
     project_id_to_identifier: Mapping[int, str],
+    settings: Settings,
     project_ref: str | None = None,
     payload: dict[str, Any] | None = None,
     link: Any = None,
@@ -198,10 +293,7 @@ def project_candidates(
         href = link.get("href")
         title = link.get("title")
         if href:
-            slug = _slug_from_href(href)
-            if slug:
-                candidates.add(slug.casefold())
-            project_id = id_from_href(href)
+            project_id = project_id_from_href(href, settings=settings)
             if project_id is not None:
                 candidates.add(str(project_id).casefold())
                 known_identifier = project_id_to_identifier.get(project_id)
@@ -256,7 +348,7 @@ def _observe_project_scope_check(fn):
     @functools.wraps(fn)
     def wrapper(link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]) -> None:
         policy_observation.record_project_scope(
-            _project_scope_display(link, project_id_to_identifier=project_id_to_identifier)
+            _project_scope_display(link, settings=settings, project_id_to_identifier=project_id_to_identifier)
         )
         decision_prefix = "write" if "write" in fn.__name__ else "read"
         try:
@@ -281,7 +373,7 @@ def ensure_project_link_allowed(link: Any, *, settings: Settings, project_id_to_
     instead for the handful of resources (Membership, View, Board, Job
     Status) with a genuinely optional project association.
     """
-    state = classify_project_link(link)
+    state = classify_project_link(link, settings=settings)
     if state in (LinkState.MISSING, LinkState.MALFORMED, LinkState.EXPLICITLY_UNSCOPED):
         raise ProjectScopeDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
     if state is LinkState.UNDISCLOSED:
@@ -290,7 +382,7 @@ def ensure_project_link_allowed(link: Any, *, settings: Settings, project_id_to_
         raise ProjectScopeDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
     if scope_allows_all(settings.read_projects):
         return
-    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, link=link)
+    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, settings=settings, link=link)
     if not scope_matches_candidates(settings.read_projects, candidates):
         raise ProjectScopeDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
 
@@ -307,14 +399,14 @@ def ensure_project_write_link_allowed(
     # so the values only ever differ in the read-vs-write decision suffix,
     # and the outer (write) decision is what actually decided this call.
     ensure_project_link_allowed(link, settings=settings, project_id_to_identifier=project_id_to_identifier)
-    state = classify_project_link(link)
+    state = classify_project_link(link, settings=settings)
     if state is LinkState.UNDISCLOSED:
         if scope_allows_all(settings.write_projects):
             return
         raise ProjectScopeDeniedError("OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS.")
     if scope_allows_all(settings.write_projects):
         return
-    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, link=link)
+    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, settings=settings, link=link)
     if not scope_matches_candidates(settings.write_projects, candidates):
         raise ProjectScopeDeniedError("OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS.")
 
@@ -332,7 +424,7 @@ def ensure_project_link_allowed_if_present(
     scope, since a structurally broken link is never the same thing as
     "deliberately none".
     """
-    state = classify_project_link(link)
+    state = classify_project_link(link, settings=settings)
     if state is LinkState.MALFORMED:
         raise ProjectScopeDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
     if state is LinkState.UNDISCLOSED:
@@ -341,7 +433,7 @@ def ensure_project_link_allowed_if_present(
         raise ProjectScopeDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
     if scope_allows_all(settings.read_projects):
         return
-    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, link=link)
+    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, settings=settings, link=link)
     if not scope_matches_candidates(settings.read_projects, candidates):
         raise ProjectScopeDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
 
@@ -351,13 +443,13 @@ def ensure_project_write_link_allowed_if_present(
     link: Any, *, settings: Settings, project_id_to_identifier: Mapping[int, str]
 ) -> None:
     ensure_project_link_allowed_if_present(link, settings=settings, project_id_to_identifier=project_id_to_identifier)
-    state = classify_project_link(link)
+    state = classify_project_link(link, settings=settings)
     if state is LinkState.UNDISCLOSED:
         if scope_allows_all(settings.write_projects):
             return
         raise ProjectScopeDeniedError("OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS.")
     if scope_allows_all(settings.write_projects):
         return
-    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, link=link)
+    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, settings=settings, link=link)
     if not scope_matches_candidates(settings.write_projects, candidates):
         raise ProjectScopeDeniedError("OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS.")

@@ -270,11 +270,12 @@ async def scan_and_paginate(
 async def scan_records_and_paginate(
     fetch_page: Callable[[int, int], Awaitable[tuple[list[_T], int]]],
     *,
-    item_allowed: Callable[[_T], bool],
+    item_allowed: Callable[[_T], bool] | None = None,
     server_page_size: int,
     offset: int,
     limit: int,
     key: Callable[[_T], Any] | None = None,
+    item_allowed_bulk: Callable[[list[_T]], Awaitable[list[bool | Exception]]] | None = None,
 ) -> tuple[list[_T], bool]:
     """Early-stopping counterpart to `paginate_all`, for callers whose
     `fetch_page` already returns normalized records (not raw HAL dicts) --
@@ -290,10 +291,12 @@ async def scan_records_and_paginate(
     three siblings rather than one.
 
     `item_allowed` here is SYNCHRONOUS (unlike `scan_and_paginate`'s async
-    version) -- every `paginate_all` caller's own per-item filter
-    (allowlist/search) already runs on normalized fields with no further
-    I/O, so there's no async ACL lookup to support here the way Relations'
-    cross-work-package check needs.
+    version): a per-item filter on normalized fields needs no I/O. A filter
+    that does needs I/O passes `item_allowed_bulk` instead, with the same
+    page-at-a-time contract as `fetch_bounded_and_paginate`'s: outcomes are
+    resolved for the whole fetched page, and an `Exception` outcome is raised
+    only for an element the loop actually reaches. At most one of the two is
+    given; neither scans unfiltered.
 
     Deliberately does NOT use the server-reported `total` from `fetch_page`'s
     return tuple as an exhaustion signal: several adapters using this
@@ -324,8 +327,18 @@ async def scan_records_and_paginate(
             seen_keys.update(page_keys)
         is_first_page = False
 
-        for item in page_items:
-            if not item_allowed(item):
+        page_outcomes = await item_allowed_bulk(page_items) if item_allowed_bulk is not None else None
+        for index, item in enumerate(page_items):
+            if page_outcomes is not None:
+                outcome = page_outcomes[index]
+                if isinstance(outcome, Exception):
+                    raise outcome
+                allowed = outcome
+            elif item_allowed is not None:
+                allowed = item_allowed(item)
+            else:
+                allowed = True
+            if not allowed:
                 continue
             if skipped < skip_count:
                 skipped += 1

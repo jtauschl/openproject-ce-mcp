@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
-from openproject_ce_mcp.app.errors import OpenProjectServerError
+from openproject_ce_mcp.app.errors import InvalidInputError, OpenProjectServerError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -39,7 +39,7 @@ async def test_get_fetches_by_numeric_ref() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_url_encodes_a_semantic_reference() -> None:
+async def test_get_fetches_by_display_id() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/work_packages/PROJ-123"
         return httpx.Response(200, json=_wp_payload(7), request=request)
@@ -52,14 +52,14 @@ async def test_get_url_encodes_a_semantic_reference() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_url_encodes_special_characters_in_the_ref() -> None:
+async def test_get_rejects_a_ref_that_is_no_work_package_id_before_any_request() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert b"/api/v3/work_packages/a%2Fb" in bytes(request.url.raw_path)
-        return httpx.Response(200, json=_wp_payload(1), request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
         api = HttpxWorkPackageLookupApi(HttpxTransport(http_client), base_url=BASE_URL)
-        await api.get("a/b")
+        with pytest.raises(InvalidInputError, match="work_package_id"):
+            await api.get("a/b")
 
 
 @pytest.mark.asyncio

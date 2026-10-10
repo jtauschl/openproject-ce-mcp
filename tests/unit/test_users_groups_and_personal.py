@@ -20,13 +20,25 @@ async def test_update_membership_returns_preview_when_not_confirmed() -> None:
     refactors of the underlying write helper don't change them silently."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo-id",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
             return httpx.Response(
                 200,
                 json={
                     "id": 3,
                     "_links": {
-                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                         "principal": {"href": "/api/v3/users/5", "title": "Alice"},
                         "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
                     },
@@ -59,13 +71,25 @@ async def test_update_membership_returns_preview_when_not_confirmed() -> None:
 @pytest.mark.asyncio
 async def test_update_membership_writes_after_confirmation_when_enabled() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo-id",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
             return httpx.Response(
                 200,
                 json={
                     "id": 3,
                     "_links": {
-                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                         "principal": {"href": "/api/v3/users/5", "title": "Alice"},
                         "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
                     },
@@ -86,7 +110,7 @@ async def test_update_membership_writes_after_confirmation_when_enabled() -> Non
                 json={
                     "id": 3,
                     "_links": {
-                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                         "principal": {"href": "/api/v3/users/5", "title": "Alice"},
                         "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
                     },

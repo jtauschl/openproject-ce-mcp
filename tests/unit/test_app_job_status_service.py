@@ -175,3 +175,28 @@ async def test_get_passes_job_status_id_through_to_api() -> None:
     await service.get(123)
 
     assert api.get_calls == [123]
+
+
+@pytest.mark.parametrize("read_projects", [("*",), ("demo",)])
+@pytest.mark.asyncio
+async def test_get_allows_the_canonical_project_link_of_a_copy_job(read_projects) -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=read_projects)
+
+    result = await _service(settings=settings).get(77)
+
+    assert result.project_id == 6
+
+
+@pytest.mark.parametrize(
+    "href", ["https://evil.example.com/api/v3/projects/6", "/api/v3/users/6", "/api/v3/projects/6/copy"]
+)
+@pytest.mark.parametrize("read_projects", [("*",), ("demo",), ("6",)])
+@pytest.mark.asyncio
+async def test_get_denies_a_job_whose_project_link_is_no_project_link_of_this_instance(
+    href: str, read_projects
+) -> None:
+    api = _FakeJobStatusApi(JobStatusRecord(summary=_detail(), project_link={"href": href, "title": "Demo"}))
+    settings = dataclasses.replace(make_settings(), read_projects=read_projects)
+
+    with pytest.raises(PermissionDeniedError):
+        await _service(api, settings=settings).get(77)

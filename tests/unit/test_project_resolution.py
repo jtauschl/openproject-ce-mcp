@@ -26,6 +26,12 @@ from openproject_ce_mcp.client import (
 @pytest.mark.asyncio
 async def test_get_grid_denies_disallowed_project_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":
             return httpx.Response(200, json=_make_grid_payload(), request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")

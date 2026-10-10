@@ -7,6 +7,7 @@ import pytest
 from _client_test_helpers import _make_grid_payload, _make_grid_settings, started_client
 
 from openproject_ce_mcp.client import (
+    InvalidInputError,
     OpenProjectClient,
     PermissionDeniedError,
 )
@@ -472,6 +473,12 @@ async def test_list_grids_filters_disallowed_project_scope() -> None:
     # read_projects excludes "demo" — the project-scoped grid must be filtered out,
     # while a personal (/my/page) grid stays visible regardless of the allowlist.
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
         if request.url.path == "/api/v3/grids" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -506,6 +513,12 @@ async def test_list_grids_filters_disallowed_project_scope() -> None:
 @pytest.mark.asyncio
 async def test_get_grid_returns_summary_for_allowed_project() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":
             return httpx.Response(200, json=_make_grid_payload(), request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -540,7 +553,7 @@ async def test_get_grid_denies_missing_or_malformed_scope_under_restrictive_allo
     settings = _make_grid_settings({"read_projects": ("demo",), "write_projects": ("demo",)})
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+    with pytest.raises(PermissionDeniedError, match="scope that is not a project"):
         await client.grid.get(77)
 
     await client.aclose()
@@ -548,14 +561,13 @@ async def test_get_grid_denies_missing_or_malformed_scope_under_restrictive_allo
 
 @pytest.mark.asyncio
 async def test_create_grid_denies_unrecognized_scope_under_restrictive_allowlist() -> None:
-    # create_grid must fail closed when the scope href isn't a recognized
-    # "/projects/<id>" link, not silently skip the write-ACL check.
+    # create_grid rejects a scope of no known grid shape before any request.
     client = OpenProjectClient(
         _make_grid_settings(),
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r)),
     )
 
-    with pytest.raises(PermissionDeniedError, match="disabled by OPENPROJECT_"):
+    with pytest.raises(InvalidInputError, match="grid scope must be"):
         await client.grid.create(name="Rogue Grid", scope="/api/v3/grids/some_bogus_scope", confirm=True)
 
     await client.aclose()
@@ -582,10 +594,10 @@ async def test_update_and_delete_grid_deny_unrecognized_scope_under_restrictive_
 
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+    with pytest.raises(PermissionDeniedError, match="scope that is not a project"):
         await client.grid.update(grid_id=77, name="Renamed", confirm=True)
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+    with pytest.raises(PermissionDeniedError, match="scope that is not a project"):
         await client.grid.delete(grid_id=77, confirm=True)
 
     await client.aclose()

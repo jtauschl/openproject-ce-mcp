@@ -73,7 +73,9 @@ async def create_grid(
     column_count: int | None = None,
     confirm: bool = False,
 ) -> GridWriteResult:
-    """Prepare or create a dashboard grid for a scope such as `/my/page` or `/projects/<identifier>`."""
+    """Prepare or create a dashboard grid for the scope `/my/page`, `/projects/<identifier>` or
+    `/projects/<identifier>/boards` (after the instance's root path on a subpath install).
+    Any other scope is rejected before a request."""
     client = _client_from_context(ctx)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
     safe_scope = _validate_required_query(scope, field_name="scope", max_length=500)

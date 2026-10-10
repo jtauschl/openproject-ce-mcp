@@ -327,8 +327,12 @@ has
 ## Work packages
 
 > Single work-package tools accept either a numeric id or a project-prefixed
-> `displayId` reference such as `PROJ-123` (OpenProject 17.5+). The bulk tools
-> (`bulk_create_work_packages`, `bulk_update_work_packages`) are numeric-only.
+> `displayId` reference such as `PROJ-123` (OpenProject 17.5+, or 17.4 with
+> its semantic identifier feature flag): a current or former project
+> identifier, semantic (`PROJ`) or classic (`my-proj`), a hyphen, then the
+> number. Any other value is rejected as invalid input before a request is
+> made. The bulk tools (`bulk_create_work_packages`,
+> `bulk_update_work_packages`) are numeric-only.
 
 | Tool | Description |
 | --- | --- |
@@ -342,7 +346,7 @@ has
 | `get_category` | Fetch a single category from a project's category list |
 | `get_project_work_package_context` | Return project metadata plus the writable work-package schema for an optional type, including custom fields, project phases, and allowed values |
 | `list_work_packages` | List work packages with structured filters such as `project`, `type`, `version`, `version_status` (open/closed/locked), `assignee`, `status`, `priority`, and `custom_field_filters` (filter by custom field value, keyed by `cf_<N>`/`customField<N>` — see [filters.md](filters.md#custom-field-filters)) |
-| `search_work_packages` | Search work packages by free-text query matching only subject/ID (not version); optional `project`, `status`, `open_only`, `assignee_me`, and `custom_field_filters` filters — for version-based filtering use `list_work_packages(version=...)` instead. Also resolves the query directly as a numeric id or display id (e.g. `PROJ-42`) in parallel; a match satisfying every other active filter is returned separately as `exact_match`, never merged into `results`/`total`/pagination |
+| `search_work_packages` | Search work packages by free-text query matching only subject/ID (not version); optional `project`, `status`, `open_only`, `assignee_me`, and `custom_field_filters` filters — for version-based filtering use `list_work_packages(version=...)` instead. Also resolves the query directly, in parallel, when it is a numeric id or display id (e.g. `PROJ-42`) and not shaped like a date; a match satisfying every other active filter is returned separately as `exact_match`, never merged into `results`/`total`/pagination |
 | `get_work_package` | Fetch a detailed work package summary by id or `displayId` reference |
 | `get_work_packages` | Fetch multiple work packages by ID in parallel (max 100 IDs per batch) |
 | `create_work_package` | Validate and then create a work package; only writes when called again with `confirm=true` |
@@ -619,7 +623,7 @@ later still). Meeting Outcomes require 17.6+ throughout.
 | --- | --- |
 | `list_grids` | List dashboard grids globally or scoped to a project or user |
 | `get_grid` | Fetch a single grid by id |
-| `create_grid` | Validate and then create a dashboard grid for a scope such as `/my/page` or `/projects/<identifier>`; only writes when called again with `confirm=true` |
+| `create_grid` | Validate and then create a dashboard grid for the scope `/my/page`, `/projects/<identifier>` or `/projects/<identifier>/boards` (after the instance's root path on a subpath install); any other scope is rejected before a request. Only writes when called again with `confirm=true` |
 | `update_grid` | Validate and then update a dashboard grid (name, row/column count); only writes when called again with `confirm=true` |
 | `delete_grid` | Validate and then delete a dashboard grid; only deletes when called again with `confirm=true` |
 
@@ -681,6 +685,7 @@ type instead of parsing free text. The categories are:
 | `[RATE_LIMITED]` | OpenProject is rate-limiting this client (safe to retry after a delay) |
 | `[NETWORK_ERROR]` | OpenProject could not be reached (transient — safe to retry) |
 | `[OPENPROJECT_UNAVAILABLE]` | OpenProject returned an unexpected failure |
+| `[CONFIGURATION_ERROR]` | OpenProject links its projects under a different path than `OPENPROJECT_BASE_URL` implies (set it to the path OpenProject itself uses) |
 | `[INTERNAL_ERROR]` | An unexpected error in this server itself (not OpenProject) — the underlying detail is logged locally, never returned to the caller |
 
 Successful write previews are not errors — they return a structured result with

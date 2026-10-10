@@ -37,15 +37,9 @@ hold here. delete() implements its own inline preview/commit branching
 directly (no shared cross-layer helper exists for this shape in
 app/services/ yet).
 
-`create()` validates the source work-package reference (traversal-segment
-rejection) via the shared, pure `work_package_ref()` encoder BEFORE resolving
-the target, so an invalid source reference is rejected before any I/O
-happens against the target. The encoded return value itself is discarded
-here (only the validation side effect matters) -- the raw reference is passed
-through to `RelationApi.create()` unchanged, which re-encodes it itself when
-building the outgoing POST path (see httpx_relation_api.py's module
-docstring for why encoding must happen there, not be threaded through
-pre-encoded).
+`create()` validates the source work-package reference via the shared, pure
+`work_package_ref()` helper BEFORE resolving the target, so an invalid source
+reference is rejected before any I/O happens against the target.
 
 RelationSummary.from_subject/to_subject additionally honor the work_package
 entity's OWN subject hide list (not just relation's), since those two fields
@@ -306,10 +300,6 @@ class RelationService:
         lag: int | None = None,
         confirm: bool = False,
     ) -> RelationWriteResult:
-        # Validate the source reference (traversal-segment rejection) before
-        # any I/O, including the target resolution below. The encoded
-        # return value is unused; RelationApi.create() re-encodes the raw
-        # reference itself.
         _validate_work_package_ref(work_package_id)
         related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id, write=True)
         work_package = await self._work_package_lookup_api.get(str(work_package_id))

@@ -5,10 +5,18 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
+from openproject_ce_mcp.app.errors import (
+    AuthenticationError,
+    InvalidInputError,
+    NotFoundError,
+    OpenProjectServerError,
+    PermissionDeniedError,
+    ProjectLinkPrefixError,
+    TransportError,
+)
 from openproject_ce_mcp.app.ports.grid_api import GridFormResult, GridRecord
 from openproject_ce_mcp.app.services.grid_service import GridService
-from openproject_ce_mcp.models import GridSummary
+from openproject_ce_mcp.models import GridSummary, ProjectSummary
 from openproject_ce_mcp.presentation import _to_payload
 
 BASE_URL = "https://op.example.com"
@@ -31,11 +39,36 @@ def _summary(
     )
 
 
-def _record(*, scope_link: dict | None = None, **kwargs: object) -> GridRecord:
+def _record(*, scope_link: dict | None = None, project_link: dict | None = None, **kwargs: object) -> GridRecord:
     summary = _summary(**kwargs)  # type: ignore[arg-type]
     if scope_link is None and summary.scope is not None:
         scope_link = {"href": summary.scope}
-    return GridRecord(summary=summary, scope_link=scope_link)
+    return GridRecord(summary=summary, scope_link=scope_link, project_link=project_link)
+
+
+@dataclasses.dataclass
+class _Resolved:
+    summary: ProjectSummary
+
+
+class _FakeProjectLookup:
+    """OpenProject's own resolution of a grid scope reference: identifier or id."""
+
+    def __init__(self, projects: list[tuple[int, str, str]] | None = None) -> None:
+        self._projects = projects if projects is not None else [(6, "demo", "Demo")]
+        self.get_calls: list[str] = []
+
+    async def list(self, **kwargs: object):
+        raise AssertionError("grid checks never list projects")
+
+    async def get(self, project_ref: str, **kwargs: object) -> _Resolved:
+        self.get_calls.append(project_ref)
+        for project_id, identifier, name in self._projects:
+            if project_ref in (str(project_id), identifier):
+                return _Resolved(
+                    ProjectSummary(id=project_id, name=name, identifier=identifier, active=True, description=None)
+                )
+        raise NotFoundError(f"no project {project_ref}")
 
 
 class _FakeGridApi:
@@ -88,9 +121,16 @@ class _FakeGridApi:
         self.delete_calls.append(grid_id)
 
 
-def _service(api: _FakeGridApi | None = None, *, settings=None) -> GridService:
+def _service(
+    api: _FakeGridApi | None = None, *, settings=None, projects: _FakeProjectLookup | None = None
+) -> GridService:
     api = api or _FakeGridApi()
-    return GridService(api=api, settings=settings or make_settings(), project_id_to_identifier={6: "demo"})
+    return GridService(
+        api=api,
+        project_lookup=projects or _FakeProjectLookup(),
+        settings=settings or make_settings(),
+        project_id_to_identifier={6: "demo"},
+    )
 
 
 @pytest.mark.asyncio
@@ -265,14 +305,18 @@ async def test_create_always_allows_my_page_scope_even_under_fully_restrictive_w
     assert result.state == "preview"
 
 
+@pytest.mark.parametrize(
+    "scope", ["", "/projects/demo/settings", "https://evil.example.com/projects/demo", "/x/my/page"]
+)
 @pytest.mark.asyncio
-async def test_create_allows_missing_scope_when_both_read_and_write_wide_open() -> None:
+async def test_create_rejects_a_scope_of_no_known_shape_even_when_wide_open(scope: str) -> None:
     api = _FakeGridApi()
     service = _service(api)  # make_settings() defaults to read_projects=write_projects=("*",)
 
-    result = await service.create(name="My Grid", scope="", confirm=False)
+    with pytest.raises(InvalidInputError, match="grid scope must be"):
+        await service.create(name="My Grid", scope=scope, confirm=False)
 
-    assert result.state == "preview"
+    assert api.create_form_calls == []
 
 
 @pytest.mark.asyncio
@@ -484,3 +528,169 @@ async def test_delete_allows_my_page_grid_under_fully_restrictive_write_projects
     result = await service.delete(grid_id=1, confirm=False)
 
     assert result.state == "preview"
+
+
+def _restricted(read: tuple[str, ...] = ("demo",), write: tuple[str, ...] = ("demo",)):
+    return dataclasses.replace(make_settings(), read_projects=read, write_projects=write)
+
+
+class _FailingProjectLookup(_FakeProjectLookup):
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self._error = error
+
+    async def get(self, project_ref: str, **kwargs: object) -> _Resolved:
+        self.get_calls.append(project_ref)
+        raise self._error
+
+
+@pytest.mark.asyncio
+async def test_list_resolves_each_distinct_scope_project_once_per_call() -> None:
+    api = _FakeGridApi(
+        [
+            _record(grid_id=1, scope="/projects/demo"),
+            _record(grid_id=2, scope="/projects/demo/boards"),
+            _record(grid_id=3, scope="/projects/secret"),
+            _record(grid_id=4, scope="/my/page"),
+        ]
+    )
+    projects = _FakeProjectLookup([(6, "demo", "Demo"), (9, "secret", "Secret")])
+
+    result = await _service(api, settings=_restricted(), projects=projects).list()
+
+    assert [grid.id for grid in result.results] == [1, 2, 4]
+    assert sorted(projects.get_calls) == ["demo", "secret"]
+
+
+@pytest.mark.asyncio
+async def test_list_needs_no_project_lookup_when_wide_open() -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope="/projects/demo/boards")])
+    projects = _FakeProjectLookup()
+
+    result = await _service(api, projects=projects).list()
+
+    assert [grid.id for grid in result.results] == [1]
+    assert projects.get_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_scope_project_is_matched_by_its_name_and_by_a_former_identifier() -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope="/projects/old-demo")])
+    projects = _FakeProjectLookup([(6, "old-demo", "Demo Project")])
+
+    result = await _service(api, settings=_restricted(read=("Demo Project",)), projects=projects).list()
+
+    assert [grid.id for grid in result.results] == [1]
+
+
+@pytest.mark.parametrize("error", [NotFoundError("gone"), PermissionDeniedError("hidden")])
+@pytest.mark.asyncio
+async def test_a_scope_project_openproject_does_not_resolve_hides_the_grid(error: Exception) -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope="/projects/demo"), _record(grid_id=2, scope="/my/page")])
+
+    result = await _service(api, settings=_restricted(), projects=_FailingProjectLookup(error)).list()
+
+    assert [grid.id for grid in result.results] == [2]
+
+
+@pytest.mark.parametrize(
+    "error", [TransportError("down"), OpenProjectServerError("boom"), AuthenticationError("token")]
+)
+@pytest.mark.asyncio
+async def test_any_other_lookup_failure_propagates_instead_of_hiding_grids(error: Exception) -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope="/projects/demo")])
+
+    with pytest.raises(type(error)):
+        await _service(api, settings=_restricted(), projects=_FailingProjectLookup(error)).list()
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_failure_for_a_grid_the_scan_never_reaches_is_not_raised() -> None:
+    # limit=1 reads one grid past the page to decide `truncated`; the third is never reached.
+    api = _FakeGridApi(
+        [
+            _record(grid_id=1, scope="/my/page"),
+            _record(grid_id=2, scope="/my/page"),
+            _record(grid_id=3, scope="/projects/demo"),
+        ]
+    )
+
+    result = await _service(api, settings=_restricted(), projects=_FailingProjectLookup(TransportError("down"))).list(
+        limit=1
+    )
+
+    assert [grid.id for grid in result.results] == [1]
+    assert result.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_a_grid_scope_under_another_root_path_is_a_configuration_error() -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope="/openproject/projects/demo")])
+
+    with pytest.raises(ProjectLinkPrefixError, match="/openproject/api/v3/"):
+        await _service(api).get(1)
+
+
+@pytest.mark.asyncio
+async def test_create_rechecks_the_scope_openproject_resolved_before_preview() -> None:
+    api = _FakeGridApi()
+
+    async def resolved_elsewhere(payload: dict) -> GridFormResult:
+        api.create_form_calls.append(payload)
+        return GridFormResult(
+            payload={**payload, "_links": {"scope": {"href": "/projects/secret"}}}, validation_errors={}
+        )
+
+    api.create_form = resolved_elsewhere  # type: ignore[method-assign]
+    projects = _FakeProjectLookup([(6, "demo", "Demo"), (9, "secret", "Secret")])
+
+    with pytest.raises(PermissionDeniedError):
+        await _service(api, settings=_restricted(), projects=projects).create(name="G", scope="/projects/demo")
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rechecks_the_project_link_of_the_form() -> None:
+    api = _FakeGridApi()
+
+    async def with_foreign_project(payload: dict) -> GridFormResult:
+        links = {**payload["_links"], "project": {"href": "https://evil.example.com/api/v3/projects/6"}}
+        return GridFormResult(payload={**payload, "_links": links}, validation_errors={})
+
+    api.create_form = with_foreign_project  # type: ignore[method-assign]
+
+    with pytest.raises(PermissionDeniedError):
+        await _service(api).create(name="G", scope="/projects/demo", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_shows_validation_errors_without_rechecking_an_incomplete_form() -> None:
+    api = _FakeGridApi()
+    api.validation_errors = {"scope": "is invalid"}
+
+    async def without_links(payload: dict) -> GridFormResult:
+        return GridFormResult(payload={"name": payload["name"]}, validation_errors=api.validation_errors)
+
+    api.create_form = without_links  # type: ignore[method-assign]
+
+    result = await _service(api).create(name="G", scope="/projects/demo")
+
+    assert result.validation_errors == {"scope": "is invalid"}
+
+
+@pytest.mark.asyncio
+async def test_update_and_delete_check_the_grids_own_project_link() -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope="/projects/demo", project_link={"href": "/api/v3/projects/9"})])
+    projects = _FakeProjectLookup([(6, "demo", "Demo")])
+    service = _service(api, settings=_restricted(), projects=projects)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.update(grid_id=1, name="Renamed", confirm=True)
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(grid_id=1, confirm=True)
+
+    assert api.commit_update_calls == []
+    assert api.delete_calls == []

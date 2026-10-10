@@ -241,14 +241,10 @@ class TimeEntryService:
                 if isinstance(href, str) and href:
                     time_entries_href = href
 
-        project_candidates: set[str] = set()
+        filter_project_id: int | None = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project)
-            project_candidates = scope_policy.project_candidates(
-                project_id_to_identifier=self._project_id_to_identifier,
-                project_ref=project,
-                payload=project_payload,
-            )
+            filter_project_id = int(project_payload["id"])
 
         user_name: str | None = None
         if user is not None:
@@ -272,12 +268,12 @@ class TimeEntryService:
             )
             if not allowed:
                 return False
-            if project_candidates:
-                item_candidates = scope_policy.project_candidates(
-                    project_id_to_identifier=self._project_id_to_identifier,
-                    link=item.get("_links", {}).get("project"),
+            if filter_project_id is not None:
+                project_link = item.get("_links", {}).get("project")
+                linked_id = scope_policy.project_id_from_href(
+                    project_link.get("href") if isinstance(project_link, dict) else None, settings=self._settings
                 )
-                if item_candidates.isdisjoint(project_candidates):
+                if linked_id != filter_project_id:
                     return False
             # The remaining filters (work_package_id/user/spent_on) run
             # against NORMALIZED fields -- normalize once here rather than

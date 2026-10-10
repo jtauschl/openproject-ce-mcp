@@ -1,20 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pytest
+from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.services.project_scoped_list import (
-    resolve_project_filter_candidates,
-    summary_matches_project_candidates,
+    record_in_project,
+    resolve_project_filter_id,
     trim_text,
 )
-
-
-@dataclass
-class _Summary:
-    project_id: int | None
-    project: str | None
 
 
 def test_trim_text_short_text_passes_through() -> None:
@@ -33,36 +26,36 @@ def test_trim_text_truncates_and_appends_ellipsis() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_project_filter_candidates_returns_none_when_no_project() -> None:
+async def test_resolve_project_filter_id_returns_none_when_no_project() -> None:
     async def resolve_project_ref(project_ref: str, *, write: bool = False, context=None) -> dict:
         raise AssertionError("must not be called when project is None")
 
-    result = await resolve_project_filter_candidates(None, resolve_project_ref=resolve_project_ref)
+    result = await resolve_project_filter_id(None, resolve_project_ref=resolve_project_ref)
 
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_resolve_project_filter_candidates_builds_id_identifier_name_set() -> None:
+async def test_resolve_project_filter_id_returns_the_resolved_projects_id() -> None:
     async def resolve_project_ref(project_ref: str, *, write: bool = False, context=None) -> dict:
         assert write is False
         return {"id": 6, "identifier": "demo", "name": "Demo Project"}
 
-    result = await resolve_project_filter_candidates("demo", resolve_project_ref=resolve_project_ref)
+    result = await resolve_project_filter_id("demo", resolve_project_ref=resolve_project_ref)
 
-    assert result == {"6", "demo", "demo project"}
-
-
-def test_summary_matches_project_candidates_by_id() -> None:
-    summary = _Summary(project_id=6, project="Other Name")
-    assert summary_matches_project_candidates(summary, {"6"}) is True
+    assert result == 6
 
 
-def test_summary_matches_project_candidates_by_name() -> None:
-    summary = _Summary(project_id=99, project="Demo Project")
-    assert summary_matches_project_candidates(summary, {"demo project"}) is True
-
-
-def test_summary_matches_project_candidates_no_overlap_returns_false() -> None:
-    summary = _Summary(project_id=99, project="Other Project")
-    assert summary_matches_project_candidates(summary, {"demo project", "6"}) is False
+@pytest.mark.parametrize(
+    ("project_link", "expected"),
+    [
+        ({"href": "/api/v3/projects/6", "title": "Demo"}, True),
+        ({"href": "/api/v3/projects/99", "title": "Demo"}, False),
+        ({"href": "https://evil.example.com/api/v3/projects/6"}, False),
+        ({"href": "urn:openproject-org:api:v3:undisclosed"}, False),
+        ({"href": None}, False),
+        (None, False),
+    ],
+)
+def test_record_in_project_compares_the_strictly_parsed_link_id(project_link, expected: bool) -> None:
+    assert record_in_project(project_link, 6, settings=make_settings()) is expected

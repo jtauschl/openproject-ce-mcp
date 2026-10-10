@@ -66,12 +66,14 @@ class Transport(Protocol):
         Redirects are followed explicitly here rather than left to httpx's
         client-level `follow_redirects=True`, because this is the one path
         whose redirect target is routinely a foreign origin (a pre-signed
-        object-storage URL on an S3-backed instance): the `Authorization`
-        header is kept on a same-origin hop and dropped on a cross-origin one,
-        so instance credentials never reach a third-party bucket. httpx's own
-        default happens to behave the same way, but this path states it
-        outright and tests it, matching how `_link_to_api_path` refuses to
-        follow an unexpected link host rather than trusting a default.
+        object-storage URL on an S3-backed instance): a same-origin hop keeps
+        its headers, a cross-origin one carries only content negotiation and
+        the user agent, so no credential reaches a third-party bucket. httpx's
+        own redirect handling forwards every header but Authorization and
+        Cookie, and keeps even Authorization on an http-to-https upgrade of
+        the same host, so this path states the rule outright and tests it,
+        matching how `_link_to_api_path` refuses to follow an unexpected link
+        host rather than trusting a default.
         """
         ...
 

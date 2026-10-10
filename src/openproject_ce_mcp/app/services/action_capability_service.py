@@ -53,6 +53,7 @@ from typing import Any
 from ...config import Settings
 from ...models import ActionListResult, CapabilityListResult
 from ..errors import InvalidInputError
+from ..origin import api_prefix_from_url
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server
 from ..policies import access, hidden_fields
@@ -61,16 +62,8 @@ from ..ports.action_capability_api import ActionCapabilityApi
 from ..ports.project_ref import ProjectRefResolver
 
 
-def _context_matches_project(context_link: dict[str, Any] | None, project_id: int) -> bool:
-    if not isinstance(context_link, dict):
-        return False
-    href = context_link.get("href")
-    if not href:
-        return False
-    try:
-        return int(href.rstrip("/").split("/")[-1]) == project_id
-    except (ValueError, IndexError):
-        return False
+def _context_href(context_link: dict[str, Any] | None) -> Any:
+    return context_link.get("href") if isinstance(context_link, dict) else None
 
 
 class ActionCapabilityService:
@@ -86,13 +79,22 @@ class ActionCapabilityService:
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
         self._resolve_project_ref = resolve_project_ref
+        self._global_context_href = f"{api_prefix_from_url(settings.base_url)}capabilities/contexts/global"
 
     def _context_allowed(self, context_link: dict[str, Any] | None) -> bool:
+        ensure = scope_policy.ensure_project_link_allowed
+        if _context_href(context_link) == self._global_context_href:
+            # A capability without a project: allowed only where the read
+            # scope is wide open, like any explicitly unscoped link.
+            ensure, context_link = scope_policy.ensure_project_link_allowed_if_present, {"href": None}
         return scope_policy.payload_allowed(
-            lambda: scope_policy.ensure_project_link_allowed(
+            lambda: ensure(
                 context_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
             )
         )
+
+    def _context_matches_project(self, context_link: dict[str, Any] | None, project_id: int) -> bool:
+        return scope_policy.project_id_from_href(_context_href(context_link), settings=self._settings) == project_id
 
     async def list_actions(self, *, offset: int = 1, limit: int | None = None) -> ActionListResult:
         access.ensure_read_enabled("membership", settings=self._settings)
@@ -134,7 +136,7 @@ class ActionCapabilityService:
             record = await self._api.get_capability(capability_id)
             records = [record] if self._context_allowed(record.context_link) else []
             if project_id is not None:
-                records = [r for r in records if _context_matches_project(r.context_link, project_id)]
+                records = [r for r in records if self._context_matches_project(r.context_link, project_id)]
             total = len(records)
         else:
             filters: list[dict[str, object]] = [{"context": {"operator": "=", "values": [f"p{project_id}"]}}]

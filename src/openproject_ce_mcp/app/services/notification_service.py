@@ -94,7 +94,8 @@ class NotificationService:
             records = [
                 record
                 for record in page.records
-                if scope_policy.classify_project_link(record.project_link) is not scope_policy.LinkState.MALFORMED
+                if scope_policy.classify_project_link(record.project_link, settings=self._settings)
+                is not scope_policy.LinkState.MALFORMED
             ]
             total = page.total
             truncated = total > offset * resolved_limit

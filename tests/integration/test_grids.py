@@ -137,7 +137,7 @@ async def test_create_grid_rejects_hidden_name_field(client: OpenProjectClient, 
 async def test_create_update_delete_grid_denied_outside_write_allowlist(
     client: OpenProjectClient, project_refs: list[str]
 ) -> None:
-    """Must use a project-scoped grid, not /my/page -- ensure_grid_write_allowed
+    """Must use a project-scoped grid, not /my/page -- ensure_grid_allowed
     (grid_policy.py) deliberately bypasses the allowlist entirely for
     /my/page, so a /my/page grid would prove nothing about allowlist
     enforcement here.
@@ -221,3 +221,25 @@ async def test_list_grids_paginates_beyond_a_single_page(client: OpenProjectClie
     second_page = await client.grid.list(limit=1, offset=2)
     assert second_page.count == 1
     assert second_page.results[0].id != first_page.results[0].id
+
+
+async def test_a_projects_boards_page_grid_is_matched_by_its_project(start_scoped_client) -> None:
+    """A boards page grid's scope is /projects/<identifier>/boards; a restrictive
+    allowlist naming that project, by identifier or by name, must reach it."""
+    unrestricted = await start_scoped_client(read_projects=("*",), write_projects=("*",))
+    grids = await unrestricted.grid.list(limit=100)
+    boards_grids = [grid for grid in grids.results if grid.scope and grid.scope.endswith("/boards")]
+    if not boards_grids:
+        pytest.skip("this instance has no boards page grid")
+    target = boards_grids[0]
+    identifier = target.scope.split("/")[-2]
+    project = await unrestricted.project.get(identifier)
+
+    for allowlist in ((identifier,), (project.name,)):
+        scoped = await start_scoped_client(read_projects=allowlist, write_projects=allowlist)
+        assert (await scoped.grid.get(target.id)).id == target.id
+        assert target.id in [grid.id for grid in (await scoped.grid.list(limit=100)).results]
+
+    elsewhere = await start_scoped_client(read_projects=("no-such-project",), write_projects=("no-such-project",))
+    with pytest.raises(PermissionDeniedError):
+        await elsewhere.grid.get(target.id)

@@ -1,8 +1,7 @@
 """Shared "list all, then filter by resolved project ref" logic.
 
-`DocumentService` and `NewsService` share the exact "fetch the full
-collection client-side, then filter rows against a resolved project
-id/identifier/name candidate set" shape (as opposed to Memberships/Projects/
+Documents, News, Views, Boards and Project Storages share the shape "fetch
+the collection, then filter rows by the resolved project's id" (as opposed to Memberships/Projects/
 Versions, which filter server-side or via a project-scoped href). A future
 domain with the same shape (e.g. a project-scoped, non-server-filterable
 list) should depend on this module rather than duplicating it.
@@ -10,16 +9,13 @@ list) should depend on this module rather than duplicating it.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
+from ...config import Settings
+from ..policies.scope import project_id_from_href
 from ..ports.project_ref import ProjectRefResolver
 
 SUBJECT_LIMIT = 255
-
-
-class _ProjectScopedSummary(Protocol):
-    project_id: int | None
-    project: str | None
 
 
 def trim_text(value: Any, *, limit: int) -> str | None:
@@ -33,23 +29,15 @@ def trim_text(value: Any, *, limit: int) -> str | None:
     return text[: limit - 1].rstrip() + "…"
 
 
-async def resolve_project_filter_candidates(
-    project: str | None, *, resolve_project_ref: ProjectRefResolver
-) -> set[str] | None:
+async def resolve_project_filter_id(project: str | None, *, resolve_project_ref: ProjectRefResolver) -> int | None:
     if project is None:
         return None
     project_payload = await resolve_project_ref(project, write=False)
-    return {
-        str(project_payload["id"]).casefold(),
-        (trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
-        (trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
-    }
+    return int(project_payload["id"])
 
 
-def summary_matches_project_candidates(item: _ProjectScopedSummary, project_candidates: set[str]) -> bool:
-    return not project_candidates.isdisjoint(
-        {
-            str(item.project_id).casefold() if item.project_id is not None else "",
-            (item.project or "").casefold(),
-        }
-    )
+def record_in_project(project_link: Any, project_id: int, *, settings: Settings) -> bool:
+    # Project names are not unique; the id of the project the item links to,
+    # read by the same strict parser as the allowlist check, is.
+    href = project_link.get("href") if isinstance(project_link, dict) else None
+    return project_id_from_href(href, settings=settings) == project_id

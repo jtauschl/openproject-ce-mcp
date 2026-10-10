@@ -823,3 +823,30 @@ async def test_list_all_total_hours_truncated_when_page_cap_reached() -> None:
     result = await service.list_all(include_total_hours=True)
 
     assert result.total_hours_truncated is True
+
+
+class _TwoSameNamedProjectsTimeEntryApi(_FakeTimeEntryApi):
+    """Entry 7 belongs to project 1, entry 8 to project 2; both projects are called "Demo"."""
+
+    def __init__(self) -> None:
+        super().__init__(records=[_summary(7), _summary(8)])
+
+    async def fetch_page(self, *, offset: int, page_size: int) -> dict:
+        self.fetch_page_calls.append((offset, page_size))
+        links = [{"href": "/api/v3/projects/1", "title": "Demo"}, {"href": "/api/v3/projects/2", "title": "Demo"}]
+        elements = [
+            {"id": index, "__summary__": summary, "_links": {"project": link}}
+            for index, (summary, link) in enumerate(zip(self._list_summaries, links, strict=True))
+        ]
+        return {"_embedded": {"elements": elements}}
+
+
+@pytest.mark.asyncio
+async def test_list_all_project_filter_matches_the_project_id_not_its_name() -> None:
+    service = _service(
+        api=_TwoSameNamedProjectsTimeEntryApi(), resolve_project_ref=_resolve_project_ref_ok(project_id=2)
+    )
+
+    result = await service.list_all(project="demo-two")
+
+    assert [entry.id for entry in result.results] == [8]

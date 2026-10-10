@@ -26,12 +26,10 @@ project filter at all); `list_for_project()` hits the project-scoped
 client-side afterward -- a sprint shared into a project via Backlogs sharing
 can be *defined* by a different, possibly disallowed project. Because
 `SprintSummary`'s project-ish fields are named
-`defining_workspace_id`/`defining_workspace` (not `project_id`/`project`),
-`project_scoped_list.py`'s `summary_matches_project_candidates` (whose
-Protocol requires the latter names) is not usable here -- and is not needed
-anyway, since neither list method does client-side project-*candidate*
-matching (list_for_project scopes via the request URL, not by matching a
-resolved candidate set against each row).
+`defining_workspace_id`/`defining_workspace` (not `project_id`),
+`project_scoped_list.py`'s `record_in_project` is not needed here: neither
+list method filters rows by project client-side (list_for_project scopes via
+the request URL).
 
 NotFoundError rewrap (three distinct "Backlogs module" messages) happens
 here, not in the adapter -- mirrors the existing ProjectService

@@ -193,8 +193,9 @@ def test_get_grid_schema() -> None:
 def test_create_grid_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_grid"]
     assert (
-        tool.description
-        == "Prepare or create a dashboard grid for a scope such as `/my/page` or `/projects/<identifier>`."
+        tool.description == "Prepare or create a dashboard grid for the scope `/my/page`, `/projects/<identifier>` or\n"
+        "`/projects/<identifier>/boards` (after the instance's root path on a subpath install).\n"
+        "Any other scope is rejected before a request."
     )
     assert tool.output_schema is None
     assert tool.parameters == {

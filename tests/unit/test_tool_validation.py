@@ -532,6 +532,20 @@ def test_validate_work_package_ref_rejects_invalid() -> None:
         _validate_work_package_ref("PROJ")
 
 
+@pytest.mark.parametrize(
+    ("ref", "expected"),
+    [("007", "7"), ("0" + "9" * 4400, "9" * 4400), ("my-proj-42", "my-proj-42"), ("2026-10-15", "2026-10-15")],
+)
+def test_validate_work_package_ref_returns_what_openproject_resolves(ref: str, expected: str) -> None:
+    assert _validate_work_package_ref(ref) == expected
+
+
+@pytest.mark.parametrize("ref", ["Proj-42", "a.b-1", "PROJ-007", "12-34", "١٢٣"])
+def test_validate_work_package_ref_rejects_what_openproject_cannot_resolve(ref: str) -> None:
+    with pytest.raises(ValueError, match="use internal id.*or display_id"):
+        _validate_work_package_ref(ref)
+
+
 def test_validate_positive_int_is_type_safe() -> None:
     # A wrong JSON type must raise a clean ValueError, not a raw TypeError.
     for bad in ("5", "abc", None, True, False, 1.5):
@@ -605,6 +619,7 @@ async def test_run_tool_prefixes_client_error_categories() -> None:
         NotFoundError,
         OpenProjectPermissionDeniedError,
         OpenProjectServerError,
+        ProjectLinkPrefixError,
         ProjectScopeDeniedError,
         RateLimitedError,
         TransportError,
@@ -629,6 +644,7 @@ async def test_run_tool_prefixes_client_error_categories() -> None:
         RateLimitedError("x"): "RATE_LIMITED",
         TransportError("x"): "NETWORK_ERROR",
         OpenProjectServerError("x"): "OPENPROJECT_UNAVAILABLE",
+        ProjectLinkPrefixError("x"): "CONFIGURATION_ERROR",
     }
     for exc, category in cases.items():
         with pytest.raises(RuntimeError, match=rf"^\[{category}\] "):

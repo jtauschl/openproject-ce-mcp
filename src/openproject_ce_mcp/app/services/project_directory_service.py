@@ -16,16 +16,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 from collections.abc import Callable, Iterator
 from typing import Any, NamedTuple
-from urllib.parse import urlparse
 
 from ...config import Settings
 from ...models import ProjectSummary
 from ..errors import NotFoundError, OpenProjectError
-from ..policies.scope import project_record_candidates, scope_allows_all, scope_matches_candidates
+from ..policies.scope import (
+    LinkedProject,
+    parse_project_href,
+    project_record_candidates,
+    scope_allows_all,
+    scope_matches_candidates,
+)
 from ..ports.project_lookup_api import ProjectLookupApi
 
 LOGGER = logging.getLogger(__name__)
@@ -38,10 +42,6 @@ FRESHNESS_SECONDS = 300.0
 # One response can link any number of unseen projects.
 _CONCURRENT_LOOKUPS = 10
 
-# CE project links render as /api/v3/projects/<id>, and on 17.x also as
-# /api/v3/workspaces/<id>; programs and portfolios are Enterprise.
-_PROJECT_PATH = re.compile(r"(?:projects|workspaces)/(\d+)")
-
 
 class ProjectDirectoryService:
     def __init__(
@@ -49,14 +49,10 @@ class ProjectDirectoryService:
         *,
         api: ProjectLookupApi,
         settings: Settings,
-        origin: str,
-        api_prefix: str,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._api = api
         self._settings = settings
-        self._origin = origin
-        self._api_prefix = api_prefix
         self._clock = clock
         self._read_restricted = _restricted(settings.read_projects)
         self._write_restricted = _restricted(settings.write_projects)
@@ -245,16 +241,10 @@ class ProjectDirectoryService:
         return _Project(project_id, identifier, name if isinstance(name, str) else None, node.get("active") is False)
 
     def _project_id_from_href(self, href: Any) -> int | None:
-        if not isinstance(href, str):
-            return None
-        parsed = urlparse(href)
-        if (parsed.scheme or parsed.netloc) and f"{parsed.scheme}://{parsed.netloc}" != self._origin:
-            return None
-        path = parsed.path
-        if not path.startswith(self._api_prefix):
-            return None
-        match = _PROJECT_PATH.fullmatch(path[len(self._api_prefix) :].rstrip("/"))
-        return int(match.group(1)) if match else None
+        # Learning runs on every response; a link under another root path is
+        # reported where it is checked, not here.
+        parsed = parse_project_href(href, settings=self._settings)
+        return parsed.id if isinstance(parsed, LinkedProject) else None
 
 
 class _Project(NamedTuple):

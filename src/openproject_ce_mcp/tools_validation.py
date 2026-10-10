@@ -17,11 +17,9 @@ from typing import Any
 
 from .config import TEXT_LIMIT_MAX
 from .models import SortCriterion
+from .work_package_reference import canonical_work_package_ref
 
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-# A project-based work package reference: a project identifier followed by "-<number>"
-# (e.g. PROJ-123). The numeric form is handled separately before this pattern applies.
-WORK_PACKAGE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}-\d+$")
 RELATION_TYPE_RE = re.compile(
     r"^(relates|duplicates|duplicated|blocks|blocked|precedes|follows|includes|partof|requires|required)$"
 )
@@ -612,15 +610,15 @@ def _validate_work_package_ref(value: int | str, *, field_name: str = "work_pack
     normalized = " ".join(str(value).split())
     if not normalized:
         raise ValueError(f"{field_name} is required.")
-    if normalized.isdigit():
-        _validate_positive_int(int(normalized), field_name=field_name)
-        return normalized
-    if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
+    if normalized.isascii() and normalized.isdigit() and not normalized.lstrip("0"):
+        raise ValueError(f"{field_name} must be at least 1.")
+    canonical = canonical_work_package_ref(normalized)
+    if canonical is None:
         raise ValueError(
-            f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'PROJ-51'), "
-            f"not UI display number (e.g., 51)."
+            f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'PROJ-51', "
+            f"project identifier case-sensitive), not UI display number (e.g., 51)."
         )
-    return normalized
+    return canonical
 
 
 def _validate_optional_work_package_ref(value: int | str | None, *, field_name: str = "work_package_id") -> str | None:

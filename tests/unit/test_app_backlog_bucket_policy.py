@@ -13,7 +13,7 @@ from openproject_ce_mcp.app.policies.backlog_bucket_policy import ensure_backlog
 def test_embedded_payload_branch_permits_when_scope_allows_all() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
     ensure_backlog_bucket_workspace_allowed(
-        defining_workspace_payload={"id": 6, "identifier": "demo"},
+        defining_workspace_payload={"id": 6, "identifier": "demo", "_links": {"self": {"href": "/api/v3/projects/6"}}},
         defining_workspace_link=None,
         settings=settings,
         project_id_to_identifier={},
@@ -24,7 +24,11 @@ def test_embedded_payload_branch_denies_outside_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("other",))
     with pytest.raises(ProjectScopeDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         ensure_backlog_bucket_workspace_allowed(
-            defining_workspace_payload={"id": 6, "identifier": "demo"},
+            defining_workspace_payload={
+                "id": 6,
+                "identifier": "demo",
+                "_links": {"self": {"href": "/api/v3/projects/6"}},
+            },
             defining_workspace_link=None,
             settings=settings,
             project_id_to_identifier={},
@@ -55,7 +59,11 @@ def test_embedded_payload_branch_records_denied_decision_and_scope() -> None:
     policy_observation.reset()
     with pytest.raises(ProjectScopeDeniedError):
         ensure_backlog_bucket_workspace_allowed(
-            defining_workspace_payload={"id": 6, "identifier": "demo"},
+            defining_workspace_payload={
+                "id": 6,
+                "identifier": "demo",
+                "_links": {"self": {"href": "/api/v3/projects/6"}},
+            },
             defining_workspace_link=None,
             settings=settings,
             project_id_to_identifier={},
@@ -68,7 +76,7 @@ def test_embedded_payload_branch_records_allowed_decision_and_scope() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
     policy_observation.reset()
     ensure_backlog_bucket_workspace_allowed(
-        defining_workspace_payload={"id": 6, "identifier": "demo"},
+        defining_workspace_payload={"id": 6, "identifier": "demo", "_links": {"self": {"href": "/api/v3/projects/6"}}},
         defining_workspace_link=None,
         settings=settings,
         project_id_to_identifier={},

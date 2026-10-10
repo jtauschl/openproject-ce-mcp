@@ -146,11 +146,10 @@ class HttpxAttachmentApi:
         return self._record(await self._transport.get_json(f"attachments/{attachment_id}"))
 
     async def get_content(self, attachment_id: int, *, max_bytes: int) -> AttachmentContent:
-        # GET /attachments/{id}/content answers 302 to wherever the instance
-        # actually stores the file: a same-origin path under local filesystem
-        # storage, a pre-signed URL on an S3-backed one. The Transport walks
-        # that redirect itself (dropping Authorization only when it leaves the
-        # origin) and stops reading at max_bytes.
+        # GET /attachments/{id}/content serves a locally stored file directly
+        # and answers an S3-backed one with a redirect to a pre-signed URL. The
+        # Transport walks that redirect itself (dropping every credential when
+        # it leaves the origin) and stops reading at max_bytes.
         content = await self._transport.get_binary(f"attachments/{attachment_id}/content", max_bytes=max_bytes)
         return AttachmentContent(
             data=content.data,

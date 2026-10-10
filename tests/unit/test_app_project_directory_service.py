@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from collections.abc import Sequence
 
@@ -14,7 +15,6 @@ from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.models import ProjectDetail, ProjectSummary
 
 ORIGIN = "https://op.example.com"
-PREFIX = "/api/v3/"
 
 
 class _Clock:
@@ -89,13 +89,13 @@ def _directory(
     *,
     settings: Settings | None = None,
     clock: _Clock | None = None,
-    api_prefix: str = PREFIX,
+    base_url: str = ORIGIN,
 ) -> ProjectDirectoryService:
     return ProjectDirectoryService(
         api=api,
-        settings=settings or _base_settings(read_projects=("demo*",), write_projects=("demo*",)),
-        origin=ORIGIN,
-        api_prefix=api_prefix,
+        settings=dataclasses.replace(
+            settings or _base_settings(read_projects=("demo*",), write_projects=("demo*",)), base_url=base_url
+        ),
         clock=clock or _Clock(),
     )
 
@@ -559,8 +559,10 @@ async def test_an_archived_project_stays_known_but_is_not_readable() -> None:
     ("href", "looked_up"),
     [
         ("/op/api/v3/projects/7", True),
-        ("/op/api/v3/projects/7/", True),
+        ("/op/api/v3/projects/7/", False),
         ("/op/api/v3/workspaces/7", True),
+        ("/op/api/v3/programs/7", True),
+        ("/op/api/v3/portfolios/7", True),
         ("https://op.example.com/op/api/v3/projects/7", True),
         ("https://evil.example.com/op/api/v3/projects/7", False),
         ("/api/v3/projects/7", False),
@@ -572,7 +574,7 @@ async def test_an_archived_project_stays_known_but_is_not_readable() -> None:
 @pytest.mark.asyncio
 async def test_only_project_hrefs_under_the_configured_api_are_project_links(href: str, looked_up: bool) -> None:
     api = _FakeProjectApi([(7, "demo-a", "Demo a")])
-    directory = _directory(api, api_prefix="/op/api/v3/")
+    directory = _directory(api, base_url=f"{ORIGIN}/op")
 
     await directory.learn({"_links": {"project": {"href": href}}})
 

@@ -23,15 +23,15 @@ from ..form_result import FormResult
 @dataclass(frozen=True)
 class GridRecord:
     """One grid as read from the API: the normalized `summary` plus the raw
-    `scope` HAL link. `scope_link` must be carried as the RAW link dict, not
-    just an extracted href string -- the allowlist check passes the whole
-    raw link to `ensure_project_link_allowed`, and `scope.project_candidates()`
-    also reads `link.get("title")` off it, not just `href`; a synthesized
-    `{"href": ...}` would silently drop any title-based matching.
+    `scope` and `project` HAL links. Both stay raw: the grid policy checks
+    every project reference a grid carries, and the project link's title is
+    an allowlist candidate. `project_link` is None before OpenProject 17.1
+    and for grids without a project.
     """
 
     summary: GridSummary
     scope_link: dict[str, Any] | None
+    project_link: dict[str, Any] | None
 
 
 GridFormResult = FormResult

@@ -534,22 +534,58 @@ def test_main_unrecognized_flag_hints_at_help_when_config_is_missing(monkeypatch
     assert "configure" in err
 
 
-def test_main_no_args_raises_bare_config_error_when_config_is_missing(monkeypatch, capsys) -> None:
-    # A real MCP client launch passes no argv at all -- there is no
-    # unrecognized flag to point at, so the original ConfigError propagates
-    # unchanged.
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({}, "OPENPROJECT_BASE_URL is required"),
+        ({"OPENPROJECT_BASE_URL": "ftp://op.example.com", "OPENPROJECT_API_TOKEN": "token"}, "http or https"),
+    ],
+)
+def test_main_no_args_reports_a_config_error_without_a_traceback(monkeypatch, capsys, env, message) -> None:
+    # How every MCP client launches the server: no argv. The person reading
+    # stderr is setting up a client, so a configuration error must be a short,
+    # actionable message and a non-zero exit, not a traceback.
     import os
 
     import openproject_ce_mcp.server as srv
-    from openproject_ce_mcp.config import ConfigError
 
     for name in list(os.environ):
         if name.startswith("OPENPROJECT_"):
             monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
     monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp"])
 
-    with pytest.raises(ConfigError, match="OPENPROJECT_BASE_URL is required"):
+    with pytest.raises(SystemExit) as exc_info:
         srv.main()
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: ")
+    assert message in err
+    assert "openproject-ce-mcp configure" in err
+
+
+def test_main_no_args_config_error_through_the_installed_console_script() -> None:
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(sys.executable).with_name("openproject-ce-mcp")
+    assert script.exists(), f"console script not installed next to {sys.executable}"
+    env = {name: value for name, value in os.environ.items() if not name.startswith("OPENPROJECT_")}
+    result = subprocess.run(
+        [str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert "error: OPENPROJECT_BASE_URL is required." in result.stderr
 
 
 def test_main_unrecognized_subcommand_errors_instead_of_running_server(monkeypatch, capsys) -> None:
@@ -673,3 +709,20 @@ def test_select_examples_in_the_instructions_are_accepted_by_their_tools(
     select = json.loads(example)
 
     assert _validate_select(select, row_type=row_type, wrapper_fields=wrapper_fields, nested=nested) == select
+
+
+def test_a_config_error_from_a_defect_after_settings_loaded_keeps_its_traceback(monkeypatch) -> None:
+    import openproject_ce_mcp.server as srv
+    from openproject_ce_mcp.config import ConfigError
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://op.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "token")
+
+    def defect(settings):
+        raise ConfigError("Unknown read scope: nonsense")
+
+    monkeypatch.setattr(srv, "create_app", defect)
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp"])
+
+    with pytest.raises(ConfigError, match="Unknown read scope"):
+        srv.main()
