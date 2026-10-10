@@ -13,7 +13,7 @@ bootstrap() {
     uv sync --dev
 }
 
-shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh)
+shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/install-mcp-publisher.sh)
 required_shfmt_version="3.14.1"
 
 lint() {

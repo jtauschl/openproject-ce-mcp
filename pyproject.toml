@@ -83,6 +83,7 @@ include = [
   "/configure_mcp.py",
   "/.mcp.json.example",
   "/README.md",
+  "/server.json",
   "/CHANGELOG.md",
   "/SECURITY.md",
   "/CONTRIBUTING.md",

@@ -21,8 +21,26 @@ jobs:
     permissions:
       contents: read
 
+  # Kept out of the publish job so the downloaded mcp-publisher has no access
+  # to that job's PyPI OIDC token or write-scoped GITHUB_TOKEN.
+  validate-server-json:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate server.json against the MCP Registry
+        run: |
+          tools/install-mcp-publisher.sh "$RUNNER_TEMP"
+          "$RUNNER_TEMP/mcp-publisher" validate server.json
+
   publish:
-    needs: test
+    needs: [test, validate-server-json]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: pypi
@@ -125,3 +143,42 @@ jobs:
           fi
           gh release upload "$GITHUB_REF_NAME" --clobber \
             dist/*.whl dist/*.tar.gz dist/SHA256SUMS
+
+  registry:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write       # MCP Registry login via GitHub OIDC
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The registry listing follows main, the public release line; a tag
+      # that was not promoted to main is published to PyPI but not listed.
+      # Ancestry, not equality, so a re-run still publishes after main has
+      # moved on.
+      - name: Check that main contains this tag
+        id: main
+        run: |
+          status=0
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || status=$?
+          case "$status" in
+            0) echo "on_main=true" >> "$GITHUB_OUTPUT" ;;
+            1)
+              echo "::notice::$GITHUB_SHA is not on main — not publishing to the MCP Registry"
+              echo "on_main=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *) exit "$status" ;;
+          esac
+
+      - name: Publish to the MCP Registry
+        if: steps.main.outputs.on_main == 'true'
+        run: |
+          tools/install-mcp-publisher.sh "$RUNNER_TEMP"
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish server.json

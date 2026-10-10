@@ -20,6 +20,11 @@ development baseline.
   subpath install, and rejects any other scope before a request, also under
   `*`.
 
+### Added
+
+- Listed in the official MCP Registry as
+  `io.github.jtauschl/openproject-ce-mcp`.
+
 ### Changed
 
 - If `OPENPROJECT_BASE_URL` has a different path than the one OpenProject uses
