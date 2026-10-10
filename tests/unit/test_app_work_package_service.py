@@ -13,6 +13,7 @@ from openproject_ce_mcp.app.errors import (
     OpenProjectError,
     OpenProjectServerError,
     PermissionDeniedError,
+    ProjectLinkPrefixError,
 )
 from openproject_ce_mcp.app.ports.activity_api import ActivityRecord
 from openproject_ce_mcp.app.ports.status_priority_type_api import StatusRecord
@@ -3230,3 +3231,30 @@ async def test_list_no_regression_to_built_in_filters_alongside_custom_field_fil
     filters = api.list_calls[0]["filters"]
     assert {"status_id": {"operator": "=", "values": ["5"]}} in filters
     assert {"cf_12": {"operator": "=", "values": ["42"]}} in filters
+
+
+@pytest.mark.parametrize(
+    "project_href", ["https://evil.example.com/api/v3/projects/6", "/api/v3/users/6", "/api/v3/projects/6/versions"]
+)
+@pytest.mark.asyncio
+async def test_create_subtask_and_update_deny_a_project_link_that_is_no_project_link_of_this_instance(
+    project_href: str,
+) -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href=project_href, project_title="Demo"))
+    service, _ = _service(api)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.create_subtask(parent_work_package_id=6, type="Task", subject="Child task", confirm=False)
+    with pytest.raises(PermissionDeniedError):
+        await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_update_reports_a_project_link_under_another_root_path() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/openproject/api/v3/projects/6"))
+    service, _ = _service(api)
+
+    with pytest.raises(ProjectLinkPrefixError, match="/openproject/api/v3/"):
+        await service.update(work_package_id=6, subject="Renamed", confirm=False)

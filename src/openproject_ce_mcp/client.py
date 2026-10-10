@@ -4,7 +4,6 @@ import logging
 from dataclasses import replace
 from fnmatch import fnmatchcase
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 
@@ -74,8 +73,10 @@ from .app.errors import (
     OpenProjectError,  # noqa: F401
     OpenProjectServerError,
     PermissionDeniedError,  # noqa: F401
+    ProjectLinkPrefixError,  # noqa: F401
     TransportError,
 )
+from .app.origin import api_prefix_from_url, origin_from_url
 from .app.pagination import (
     paginate_client as _paginate_client,  # noqa: F401 -- re-exported, test_versions_and_sprints.py imports it directly
 )
@@ -245,8 +246,8 @@ class OpenProjectClient:
 
     def __init__(self, settings: Settings, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.settings = settings
-        self._origin = _origin_from_url(settings.base_url)
-        self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
+        self._origin = origin_from_url(settings.base_url)
+        self._api_prefix = api_prefix_from_url(settings.base_url)
         # Process-lifetime caches for read-only, process-global API responses
         # (see app/caches.py) -- each is shared by every real consumer of
         # that value (Service and, where one exists, Resolver alike).
@@ -291,8 +292,6 @@ class OpenProjectClient:
         self._project_directory = ProjectDirectoryService(
             api=HttpxProjectApi(HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix),
             settings=settings,
-            origin=self._origin,
-            api_prefix=self._api_prefix,
         )
         self._project_id_to_identifier = self._project_directory.positives
         self._transport = LearningTransport(HttpxTransport(self._http), learn=self._project_directory.learn)
@@ -462,6 +461,7 @@ class OpenProjectClient:
         self._grid_api: GridApi = HttpxGridApi(self._transport)
         self._grid_service = GridService(
             api=self._grid_api,
+            project_lookup=self._project_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
@@ -1385,11 +1385,6 @@ class OpenProjectClient:
         self, version_ref: str, *, project: str | None = None, context: ProjectResolutionContext | None = None
     ) -> str:
         return await self._version_resolver.resolve_id(version_ref, project=project, context=context)
-
-
-def _origin_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def _trim_text(value: Any, *, limit: int) -> str | None:

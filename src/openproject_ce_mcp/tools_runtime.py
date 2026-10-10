@@ -36,6 +36,7 @@ from .client import (
     OpenProjectError,
     OpenProjectServerError,
     PermissionDeniedError,
+    ProjectLinkPrefixError,
     TransportError,
 )
 from .presentation import ContentBundle, _to_payload
@@ -157,6 +158,7 @@ _ERROR_CATEGORY: dict[type[Exception], str] = {
     NotFoundError: "not_found",
     TransportError: "transport_error",
     OpenProjectServerError: "server_error",
+    ProjectLinkPrefixError: "configuration_error",
     OpenProjectError: "openproject_error",  # base fallback
 }
 

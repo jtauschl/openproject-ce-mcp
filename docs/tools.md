@@ -590,7 +590,7 @@ later still). Meeting Outcomes require 17.6+ throughout.
 | --- | --- |
 | `list_grids` | List dashboard grids globally or scoped to a project or user |
 | `get_grid` | Fetch a single grid by id |
-| `create_grid` | Validate and then create a dashboard grid for a scope such as `/my/page` or `/projects/<identifier>`; only writes when called again with `confirm=true` |
+| `create_grid` | Validate and then create a dashboard grid for the scope `/my/page`, `/projects/<identifier>` or `/projects/<identifier>/boards` (after the instance's root path on a subpath install); any other scope is rejected before a request. Only writes when called again with `confirm=true` |
 | `update_grid` | Validate and then update a dashboard grid (name, row/column count); only writes when called again with `confirm=true` |
 | `delete_grid` | Validate and then delete a dashboard grid; only deletes when called again with `confirm=true` |
 
@@ -648,6 +648,7 @@ type instead of parsing free text. The categories are:
 | `[not_found]` | The resource does not exist (or the feature needs a newer OpenProject) |
 | `[transport_error]` | OpenProject could not be reached (transient — safe to retry) |
 | `[server_error]` | OpenProject returned an unexpected failure |
+| `[configuration_error]` | OpenProject links its projects under a different path than `OPENPROJECT_BASE_URL` implies (set it to the path OpenProject itself uses) |
 | `[openproject_error]` | Any other OpenProject-side failure |
 
 Successful write previews are not errors — they return a structured result with

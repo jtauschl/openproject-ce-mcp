@@ -30,7 +30,7 @@ def ensure_project_read_allowed(
     if scope_allows_all(settings.read_projects):
         return
     candidates = project_candidates(
-        project_id_to_identifier=project_id_to_identifier, project_ref=project_ref, payload=payload
+        project_id_to_identifier=project_id_to_identifier, settings=settings, project_ref=project_ref, payload=payload
     )
     if not scope_matches_candidates(settings.read_projects, candidates):
         raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
@@ -45,7 +45,7 @@ def ensure_project_write_allowed(
 ) -> None:
     """Read- AND write-allowlist check (write implies read), for update/delete/favorite."""
     candidates = project_candidates(
-        project_id_to_identifier=project_id_to_identifier, project_ref=project_ref, payload=payload
+        project_id_to_identifier=project_id_to_identifier, settings=settings, project_ref=project_ref, payload=payload
     )
     ensure_project_read_allowed(
         payload, project_ref=project_ref, settings=settings, project_id_to_identifier=project_id_to_identifier
@@ -69,7 +69,9 @@ def ensure_project_create_target_allowed(
     the intended identifier/name directly -- read is checked first, then
     write, since a writable target must also be readable.
     """
-    candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, identifier=identifier, name=name)
+    candidates = project_candidates(
+        project_id_to_identifier=project_id_to_identifier, settings=settings, identifier=identifier, name=name
+    )
     if not scope_allows_all(settings.read_projects) and not scope_matches_candidates(
         settings.read_projects, candidates
     ):

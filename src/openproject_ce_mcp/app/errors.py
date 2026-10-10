@@ -34,3 +34,7 @@ class OpenProjectServerError(OpenProjectError):
 
 class TransportError(OpenProjectError):
     """The request could not reach OpenProject safely."""
+
+
+class ProjectLinkPrefixError(OpenProjectError):
+    """OpenProject links its projects under a different path than the configured base URL."""

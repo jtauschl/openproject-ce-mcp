@@ -534,6 +534,18 @@ async def test_get_membership_respects_project_scope() -> None:
 @pytest.mark.asyncio
 async def test_delete_membership_allows_identifier_write_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo-id",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -541,7 +553,7 @@ async def test_delete_membership_allows_identifier_write_scope() -> None:
                     "id": 3,
                     "_links": {
                         "self": {"href": "/api/v3/memberships/3"},
-                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                         "principal": {"href": "/api/v3/users/5", "title": "Alice"},
                         "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
                     },
@@ -578,6 +590,18 @@ async def test_delete_membership_allows_identifier_write_scope() -> None:
 @pytest.mark.asyncio
 async def test_delete_news_allows_identifier_write_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo-id",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/news/7" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -587,7 +611,7 @@ async def test_delete_news_allows_identifier_write_scope() -> None:
                     "title": "Release",
                     "_links": {
                         "self": {"href": "/api/v3/news/7"},
-                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                     },
                 },
                 request=request,
@@ -622,6 +646,18 @@ async def test_delete_news_allows_identifier_write_scope() -> None:
 @pytest.mark.asyncio
 async def test_delete_time_entry_allows_identifier_write_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo-id",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/time_entries/10" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -632,7 +668,7 @@ async def test_delete_time_entry_allows_identifier_write_scope() -> None:
                     "spentOn": "2026-03-20",
                     "_links": {
                         "self": {"href": "/api/v3/time_entries/10"},
-                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                         "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
                     },
                 },
@@ -668,6 +704,18 @@ async def test_delete_time_entry_allows_identifier_write_scope() -> None:
 @pytest.mark.asyncio
 async def test_delete_version_allows_identifier_write_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo-id",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/versions/8" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -677,7 +725,7 @@ async def test_delete_version_allows_identifier_write_scope() -> None:
                     "name": "Release 1",
                     "_links": {
                         "self": {"href": "/api/v3/versions/8"},
-                        "definingProject": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "definingProject": {"href": "/api/v3/projects/7", "title": "Demo"},
                     },
                 },
                 request=request,
@@ -712,6 +760,18 @@ async def test_delete_version_allows_identifier_write_scope() -> None:
 @pytest.mark.asyncio
 async def test_delete_board_allows_identifier_write_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo-id",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/queries/12" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -721,7 +781,7 @@ async def test_delete_board_allows_identifier_write_scope() -> None:
                     "name": "Sprint Board",
                     "_links": {
                         "self": {"href": "/api/v3/queries/12", "title": "Sprint Board"},
-                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                         "delete": {"href": "/api/v3/queries/12", "method": "delete"},
                     },
                 },

@@ -9,8 +9,34 @@ development baseline.
 
 ## [0.4.3] - Unreleased
 
+### Security
+
+- A project link now counts for `OPENPROJECT_READ_PROJECTS` and
+  `OPENPROJECT_WRITE_PROJECTS` only when it points to a project on the
+  configured OpenProject instance; wherever a project link is checked, a link
+  to another host or to a different resource is denied, also under `*`.
+- `create_grid` accepts only the scopes `/my/page`, `/projects/<identifier>`
+  and `/projects/<identifier>/boards` and rejects any other scope before a
+  request, also under `*`.
+
+### Changed
+
+- If `OPENPROJECT_BASE_URL` has a different path than the one OpenProject uses
+  in its links, for example behind a path-rewriting proxy, project checks now
+  fail with a `[configuration_error]` naming both paths. Such links used to
+  pass unchecked under `*`; set `OPENPROJECT_BASE_URL` to the path OpenProject
+  itself uses.
+- A capability without a project (the global context) is now visible only
+  when `OPENPROJECT_READ_PROJECTS` is `*`.
+
 ### Fixed
 
+- Project grids, including the boards page grid of a project, are now matched
+  against a restrictive `OPENPROJECT_READ_PROJECTS` and
+  `OPENPROJECT_WRITE_PROJECTS` by their project. Boards page grids were
+  hidden from `list_grids` and `get_grid` and could not be updated or deleted.
+- `list_time_entries` with a `project` filter no longer returns time entries of
+  another project with the same name.
 - `search_work_packages` no longer requests each free-text search term as a
   work package; only numeric ids and display ids like `PROJ-42` are looked up
   directly. A work package id that is neither is rejected as invalid input

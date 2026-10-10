@@ -178,7 +178,8 @@ class BoardService:
         filtered = [
             record
             for record in records
-            if scope_policy.classify_project_link(record.project_link) is not scope_policy.LinkState.MALFORMED
+            if scope_policy.classify_project_link(record.project_link, settings=self._settings)
+            is not scope_policy.LinkState.MALFORMED
         ]
         results = [self._stamp(record.summary) for record in filtered]
         next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=total)

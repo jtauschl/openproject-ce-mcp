@@ -330,3 +330,69 @@ async def test_capability_hidden_by_capability_scope_not_action_scope() -> None:
     service_capability_hidden = _service(settings=settings_capability_hidden)
     result_capability_hidden = await service_capability_hidden.list_capabilities(capability_id="update-project")
     assert getattr(result_capability_hidden.results[0], "_hidden_keys", frozenset()) == {"principal_name"}
+
+
+_GLOBAL_CONTEXT = {"href": "/api/v3/capabilities/contexts/global", "title": "global"}
+
+
+@pytest.mark.parametrize(
+    ("read_projects", "count"),
+    [(("*",), 1), (("global",), 0), (("demo",), 0)],
+)
+@pytest.mark.asyncio
+async def test_a_global_capability_is_visible_only_under_a_wide_open_read_scope(read_projects, count: int) -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=read_projects)
+    api = _FakeActionCapabilityApi(
+        capability_by_id={"update-project": _capability_record(context_link=_GLOBAL_CONTEXT)}
+    )
+
+    result = await _service(api, settings=settings).list_capabilities(capability_id="update-project")
+
+    assert result.count == count
+
+
+@pytest.mark.parametrize("namespace", ["projects", "programs", "portfolios"])
+@pytest.mark.parametrize(("read_projects", "count"), [(("*",), 1), (("demo",), 1), (("other",), 0)])
+@pytest.mark.asyncio
+async def test_a_project_context_of_any_workspace_type_is_matched_like_a_project(
+    namespace: str, read_projects, count: int
+) -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=read_projects)
+    context = {"href": f"/api/v3/{namespace}/6", "title": "Demo"}
+    api = _FakeActionCapabilityApi(capability_by_id={"update-project": _capability_record(context_link=context)})
+
+    result = await _service(api, settings=settings).list_capabilities(capability_id="update-project")
+
+    assert result.count == count
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://evil.example.com/api/v3/projects/6",
+        "/api/v3/capabilities/contexts/global/x",
+        "https://evil.example.com/api/v3/capabilities/contexts/global",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_context_that_is_neither_a_project_nor_the_global_context_is_denied_even_when_wide_open(
+    href: str,
+) -> None:
+    api = _FakeActionCapabilityApi(capability_by_id={"update-project": _capability_record(context_link={"href": href})})
+
+    result = await _service(api).list_capabilities(capability_id="update-project")
+
+    assert result.count == 0
+
+
+@pytest.mark.asyncio
+async def test_a_project_filter_matches_the_context_by_the_parsed_id_only() -> None:
+    api = _FakeActionCapabilityApi(
+        capability_by_id={
+            "update-project": _capability_record(context_link={"href": "https://evil.example.com/api/v3/projects/6"})
+        }
+    )
+
+    result = await _service(api).list_capabilities(capability_id="update-project", project="demo")
+
+    assert result.count == 0

@@ -4,18 +4,19 @@ Depends on the GridApi Protocol, never HttpxGridApi concretely (enforced by
 the architecture-boundary test). No dedicated GridResolver: a `grid_id` is
 always a numeric value already validated by tools_grids.py.
 
-No ProjectRefResolver seam: unlike every domain with a `project` filter
-parameter, Grids never resolves a project ref -- `scope` is a raw href/path
-string (e.g. "/my/page" or "/projects/6") passed straight through as a
-filter value and/or an allowlist-check input, never resolved against a
-project payload.
+A project scope is resolved through `ProjectLookupApi` only under a
+restrictive allowlist, once per distinct reference per call: OpenProject maps
+the identifier (or, from 17.3, a former identifier) to the project, and its
+id, identifier and name are the allowlist candidates. Not found or forbidden
+denies the grid; every other failure propagates.
 
 Grids shares the "project" read/write scope with Projects/News/Documents/
 Categories/Views -- no dedicated OPENPROJECT_ENABLE_GRID_* flag exists.
 
-Write-allowlist ordering: the grid_policy.ensure_grid_write_allowed check
-runs UNCONDITIONALLY at the top of create()/update()/delete() (during
-preview AND confirm) -- it is not confirm-gated. Only
+Write-allowlist ordering: the grid check (`_check`/`_check_record`, deciding
+through grid_policy.ensure_grid_allowed) runs UNCONDITIONALLY at the top of
+create()/update()/delete() (during preview AND confirm) -- it is not
+confirm-gated. Only
 access.ensure_write_enabled (inside _finalize_write's confirm branch) is
 confirm-gated. This mirrors MembershipService's existing create()/update()
 ordering exactly.
@@ -46,21 +47,36 @@ detail/summary on confirmed delete.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ...config import Settings
 from ...models import GridListResult, GridSummary, GridWriteResult
+from ..errors import InvalidInputError, NotFoundError, PermissionDeniedError
 from ..pagination import clamp_limit, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..policies.grid_policy import (
-    ensure_grid_read_allowed,
-    ensure_grid_write_allowed,
-    grid_read_allowed,
-    grid_scope_href,
+    MyPageScope,
+    ProjectScope,
+    ResolvedProject,
+    ensure_grid_allowed,
+    needs_resolution,
+    parse_grid_scope,
 )
-from ..ports.grid_api import GridApi
+from ..policies.scope import PrefixMismatch, prefix_mismatch_error
+from ..ports.grid_api import GridApi, GridRecord
+from ..ports.project_lookup_api import ProjectLookupApi
 from ._write_outcome import _finalize_write, _WriteOutcome
+
+# Bounds the project lookups one page of grids can start at once.
+_CONCURRENT_SCOPE_LOOKUPS = 10
+
+_Resolution = ResolvedProject | None | Exception
+
+
+def _href(link: Any) -> Any:
+    return link.get("href") if isinstance(link, dict) else None
 
 
 class GridService:
@@ -68,12 +84,79 @@ class GridService:
         self,
         *,
         api: GridApi,
+        project_lookup: ProjectLookupApi,
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
     ) -> None:
         self._api = api
+        self._project_lookup = project_lookup
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
+
+    def _emitted_scope(self, scope_link: Any) -> MyPageScope | ProjectScope:
+        scope = parse_grid_scope(_href(scope_link), settings=self._settings)
+        if isinstance(scope, PrefixMismatch):
+            raise prefix_mismatch_error(scope, settings=self._settings)
+        if scope is None:
+            raise PermissionDeniedError("OpenProject grid has a scope that is not a project, its boards or /my/page.")
+        return scope
+
+    async def _resolve(self, refs: Iterable[str], cache: dict[str, _Resolution]) -> None:
+        slots = asyncio.Semaphore(_CONCURRENT_SCOPE_LOOKUPS)
+
+        async def resolve_one(ref: str) -> None:
+            async with slots:
+                try:
+                    record = await self._project_lookup.get(ref)
+                except (NotFoundError, PermissionDeniedError):
+                    cache[ref] = None
+                    return
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 -- a deferred outcome, raised only where it is reached
+                    cache[ref] = exc
+                    return
+            summary = record.summary
+            cache[ref] = ResolvedProject(summary.id, summary.identifier or ref, summary.name)
+
+        await asyncio.gather(*(resolve_one(ref) for ref in dict.fromkeys(refs) if ref not in cache))
+
+    def _authorize(
+        self, scope: MyPageScope | ProjectScope, project_link: Any, *, write: bool, cache: dict[str, _Resolution]
+    ) -> None:
+        resolved = cache.get(scope.ref) if isinstance(scope, ProjectScope) else None
+        if isinstance(resolved, Exception):
+            raise resolved
+        ensure_grid_allowed(
+            scope,
+            project_link=project_link,
+            resolved=resolved,
+            write=write,
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+    def _read_outcome(self, record: GridRecord, cache: dict[str, _Resolution]) -> bool | Exception:
+        """One grid's outcome in a page-batched list: a permission denial
+        filters it out, any other failure is kept for the scan to raise only
+        if it reaches that grid."""
+        try:
+            self._authorize(self._emitted_scope(record.scope_link), record.project_link, write=False, cache=cache)
+        except PermissionDeniedError:
+            return False
+        except Exception as exc:  # noqa: BLE001 -- see docstring
+            return exc
+        return True
+
+    async def _check(
+        self, scope: MyPageScope | ProjectScope, project_link: Any, *, write: bool, cache: dict[str, _Resolution]
+    ) -> None:
+        if isinstance(scope, ProjectScope) and needs_resolution(write=write, settings=self._settings):
+            await self._resolve([scope.ref], cache)
+        self._authorize(scope, project_link, write=write, cache=cache)
+
+    async def _check_record(self, record: GridRecord, *, write: bool) -> None:
+        await self._check(self._emitted_scope(record.scope_link), record.project_link, write=write, cache={})
 
     def _stamp(self, value: Any) -> Any:
         return hidden_fields.apply_hidden_fields("grid", value, settings=self._settings)
@@ -87,17 +170,21 @@ class GridService:
             max_results=self._settings.max_results,
         )
 
-        def _record_allowed(record: Any) -> bool:
-            return grid_read_allowed(
-                record.scope_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
-            )
+        cache: dict[str, _Resolution] = {}
+        resolve = needs_resolution(write=False, settings=self._settings)
+
+        async def _page_allowed(records: list[GridRecord]) -> list[bool | Exception]:
+            if resolve:
+                scopes = (parse_grid_scope(_href(record.scope_link), settings=self._settings) for record in records)
+                await self._resolve([scope.ref for scope in scopes if isinstance(scope, ProjectScope)], cache)
+            return [self._read_outcome(record, cache) for record in records]
 
         # Scan server pages rather than a single fetch capped at
         # settings.max_results, which would silently hide any grid beyond
         # that server-side cap.
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: self._api.list_page(offset=o, page_size=ps, scope_filter=scope),
-            item_allowed=_record_allowed,
+            item_allowed_bulk=_page_allowed,
             server_page_size=self._settings.max_page_size,
             offset=offset,
             limit=effective_limit,
@@ -118,9 +205,7 @@ class GridService:
     async def get(self, grid_id: int) -> GridSummary:
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._api.get(grid_id)
-        ensure_grid_read_allowed(
-            record.scope_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
-        )
+        await self._check_record(record, write=False)
         return self._stamp(record.summary)
 
     async def create(
@@ -132,9 +217,14 @@ class GridService:
         column_count: int | None = None,
         confirm: bool = False,
     ) -> GridWriteResult:
-        ensure_grid_write_allowed(
-            scope, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
-        )
+        requested_scope = parse_grid_scope(scope, settings=self._settings)
+        if requested_scope is None or isinstance(requested_scope, PrefixMismatch):
+            raise InvalidInputError(
+                "OpenProject grid scope must be /my/page, /projects/<identifier> or /projects/<identifier>/boards "
+                "(after the instance's root path, if any)."
+            )
+        cache: dict[str, _Resolution] = {}
+        await self._check(requested_scope, None, write=True, cache=cache)
         hidden_fields.ensure_field_writable("grid", "name", settings=self._settings)
         hidden_fields.ensure_field_writable("grid", "scope", settings=self._settings)
         payload: dict[str, Any] = {"name": name, "_links": {"scope": {"href": scope}}}
@@ -145,7 +235,14 @@ class GridService:
             hidden_fields.ensure_field_writable("grid", "column_count", settings=self._settings)
             payload["columnCount"] = column_count
         form = await self._api.create_form(payload)
-        identity_scope = form.payload.get("_links", {}).get("scope", {}).get("href")
+        form_links = form.payload.get("_links", {})
+        if not form.validation_errors:
+            # The form renders scope and project from the project OpenProject
+            # resolved, which is what the commit writes to.
+            await self._check(
+                self._emitted_scope(form_links.get("scope")), form_links.get("project"), write=True, cache=cache
+            )
+        identity_scope = form_links.get("scope", {}).get("href")
         outcome = await _finalize_write(
             confirm=confirm,
             payload=form.payload,
@@ -170,10 +267,8 @@ class GridService:
         confirm: bool = False,
     ) -> GridWriteResult:
         current = await self._api.get(grid_id)
-        current_scope_href = grid_scope_href(current.scope_link)
-        ensure_grid_write_allowed(
-            current_scope_href, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
-        )
+        await self._check_record(current, write=True)
+        current_scope_href = _href(current.scope_link)
         payload: dict[str, Any] = {}
         if name is not None:
             hidden_fields.ensure_field_writable("grid", "name", settings=self._settings)
@@ -202,10 +297,7 @@ class GridService:
 
     async def delete(self, *, grid_id: int, confirm: bool = False) -> GridWriteResult:
         current = await self._api.get(grid_id)
-        current_scope_href = grid_scope_href(current.scope_link)
-        ensure_grid_write_allowed(
-            current_scope_href, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
-        )
+        await self._check_record(current, write=True)
         grid = self._stamp(current.summary)
         payload = {"id": grid.id}
 

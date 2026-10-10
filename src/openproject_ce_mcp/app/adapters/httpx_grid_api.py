@@ -54,6 +54,7 @@ class HttpxGridApi:
         return GridRecord(
             summary=normalize_grid(payload),
             scope_link=payload.get("_links", {}).get("scope"),
+            project_link=payload.get("_links", {}).get("project"),
         )
 
     async def list_page(self, *, offset: int, page_size: int, scope_filter: str | None) -> tuple[list[GridRecord], int]:

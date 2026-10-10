@@ -160,7 +160,12 @@ async def test_list_excludes_sprints_outside_read_allowlist_via_embedded_branch(
     a full `_embedded.definingWorkspace` payload (with an `identifier` the
     synthesized link never has) instead of just a link."""
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
-    disallowed_embedded = {"id": 99, "identifier": "secret-project", "name": "Secret Project"}
+    disallowed_embedded = {
+        "id": 99,
+        "identifier": "secret-project",
+        "name": "Secret Project",
+        "_links": {"self": {"href": "/api/v3/projects/99"}},
+    }
     api = _FakeSprintApi(
         records=[_record(sprint_id=1, defining_workspace_link=None, defining_workspace_payload=disallowed_embedded)]
     )
@@ -174,7 +179,12 @@ async def test_list_excludes_sprints_outside_read_allowlist_via_embedded_branch(
 @pytest.mark.asyncio
 async def test_list_includes_sprint_allowed_via_embedded_branch() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
-    allowed_embedded = {"id": 7, "identifier": "demo", "name": "Demo"}
+    allowed_embedded = {
+        "id": 7,
+        "identifier": "demo",
+        "name": "Demo",
+        "_links": {"self": {"href": "/api/v3/projects/7"}},
+    }
     api = _FakeSprintApi(
         records=[_record(sprint_id=1, defining_workspace_link=None, defining_workspace_payload=allowed_embedded)]
     )
@@ -254,8 +264,18 @@ async def test_list_for_project_still_filters_by_allowlist_despite_project_scope
     different, disallowed project -- list_for_project must filter those out
     the same way list() already does."""
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
-    allowed_embedded = {"id": 6, "identifier": "demo", "name": "Demo Project"}
-    disallowed_embedded = {"id": 99, "identifier": "secret-project", "name": "Secret Project"}
+    allowed_embedded = {
+        "id": 6,
+        "identifier": "demo",
+        "name": "Demo Project",
+        "_links": {"self": {"href": "/api/v3/projects/6"}},
+    }
+    disallowed_embedded = {
+        "id": 99,
+        "identifier": "secret-project",
+        "name": "Secret Project",
+        "_links": {"self": {"href": "/api/v3/projects/99"}},
+    }
     api = _FakeSprintApi(
         records=[
             _record(sprint_id=1, defining_workspace_link=None, defining_workspace_payload=allowed_embedded),
@@ -333,7 +353,12 @@ async def test_get_checks_allowlist_for_a_linked_sprint() -> None:
 @pytest.mark.asyncio
 async def test_get_checks_allowlist_via_embedded_branch() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
-    disallowed_embedded = {"id": 99, "identifier": "secret-project", "name": "Secret Project"}
+    disallowed_embedded = {
+        "id": 99,
+        "identifier": "secret-project",
+        "name": "Secret Project",
+        "_links": {"self": {"href": "/api/v3/projects/99"}},
+    }
     api = _FakeSprintApi(
         records=[_record(sprint_id=1, defining_workspace_link=None, defining_workspace_payload=disallowed_embedded)]
     )

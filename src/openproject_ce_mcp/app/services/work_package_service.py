@@ -122,7 +122,12 @@ from ..errors import (
 from ..pagination import effective_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import work_package_policy as _work_package_policy
-from ..policies.scope import ensure_project_link_allowed, ensure_project_write_link_allowed, scope_allows_all
+from ..policies.scope import (
+    ensure_project_link_allowed,
+    ensure_project_write_link_allowed,
+    project_id_from_href,
+    scope_allows_all,
+)
 from ..policies.scope import id_from_href as _id_from_href
 from ..ports.activity_api import ActivityApi
 from ..ports.assignee_ref import AssigneeRefResolver
@@ -1823,8 +1828,7 @@ class WorkPackageService:
         # reusing the semantic ref.
         parent_numeric_id = int(parent_payload["id"])
         parent_project_link = parent_payload.get("_links", {}).get("project")
-        project_id = _id_from_href(parent_project_link.get("href") if parent_project_link else None)
-        if project_id is None:
+        if not isinstance(parent_project_link, dict) or parent_project_link.get("href") is None:
             # A server-data anomaly (an unexpected/malformed OpenProject
             # response), not a caller mistake -- OpenProjectServerError, not
             # InvalidInputError.
@@ -1832,6 +1836,11 @@ class WorkPackageService:
         ensure_project_write_link_allowed(
             parent_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
+        project_id = project_id_from_href(parent_project_link["href"], settings=self._settings)
+        if project_id is None:
+            # An undisclosed project passes under a wide-open scope but names
+            # no id to create in.
+            raise OpenProjectServerError("OpenProject work package is missing a project link.")
 
         wp_context = self._new_wp_context()
         payload = await self._build_write_payload(
@@ -2050,17 +2059,20 @@ class WorkPackageService:
                     "'version' parameter (including clearing it) can only be used on a single-valued "
                     "assignment. Use 'target_versions' instead to explicitly set or clear the full list."
                 )
-        project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
-        if project_id is None:
+        current_project_link = current.get("_links", {}).get("project")
+        if not isinstance(current_project_link, dict) or current_project_link.get("href") is None:
             # A server-data anomaly (an unexpected/malformed OpenProject
             # response), not a caller mistake -- OpenProjectServerError, not
             # InvalidInputError.
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         ensure_project_write_link_allowed(
-            current.get("_links", {}).get("project"),
-            settings=self._settings,
-            project_id_to_identifier=self._project_id_to_identifier,
+            current_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
+        project_id = project_id_from_href(current_project_link["href"], settings=self._settings)
+        if project_id is None:
+            # An undisclosed project passes under a wide-open scope but names
+            # no id to write to.
+            raise OpenProjectServerError("OpenProject work package is missing a project link.")
 
         # Default: a fresh context per call. A bulk caller (bulk_update)
         # passes one shared across all its items instead.

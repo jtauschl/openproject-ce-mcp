@@ -647,6 +647,7 @@ async def test_run_tool_prefixes_client_error_categories() -> None:
         InvalidInputError,
         NotFoundError,
         PermissionDeniedError,
+        ProjectLinkPrefixError,
         TransportError,
     )
     from openproject_ce_mcp.tools_runtime import _run_tool
@@ -664,6 +665,7 @@ async def test_run_tool_prefixes_client_error_categories() -> None:
         PermissionDeniedError("x"): "permission_denied",
         NotFoundError("x"): "not_found",
         TransportError("x"): "transport_error",
+        ProjectLinkPrefixError("x"): "configuration_error",
     }
     for exc, category in cases.items():
         with pytest.raises(RuntimeError, match=rf"^\[{category}\] "):

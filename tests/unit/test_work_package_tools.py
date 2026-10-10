@@ -1568,3 +1568,41 @@ async def test_add_work_package_comment_accepts_a_comment_longer_than_the_retire
     long_comment = "z" * 40_000
     result = await add_work_package_comment(FakeContext(StubClient()), 42, long_comment, confirm=True)  # type: ignore[arg-type]
     assert result["comment"] == long_comment
+
+
+def _work_package_under_another_root(request: httpx.Request) -> httpx.Response:
+    element = {
+        "id": 42,
+        "subject": "WP",
+        "_links": {
+            "self": {"href": "/openproject/api/v3/work_packages/42"},
+            "project": {"href": "/openproject/api/v3/projects/1", "title": "Demo"},
+        },
+    }
+    if request.url.path == "/api/v3/work_packages/42":
+        return httpx.Response(200, json=element, request=request)
+    if request.url.path == "/api/v3/work_packages":
+        return httpx.Response(200, json={"total": 1, "count": 1, "_embedded": {"elements": [element]}}, request=request)
+    if request.url.path == "/api/v3/projects":
+        project = {
+            "_type": "Project",
+            "id": 1,
+            "identifier": "demo",
+            "name": "Demo",
+            "_links": {"self": {"href": "/openproject/api/v3/projects/1"}},
+        }
+        return httpx.Response(200, json={"total": 1, "count": 1, "_embedded": {"elements": [project]}}, request=request)
+    raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+
+@pytest.mark.asyncio
+async def test_a_project_link_under_another_root_path_is_reported_as_a_configuration_error() -> None:
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(_work_package_under_another_root))
+
+    with pytest.raises(RuntimeError, match=r"^\[configuration_error\] .*/openproject/api/v3/.*OPENPROJECT_BASE_URL"):
+        await get_work_package(FakeContext(client), 42)
+    with pytest.raises(RuntimeError, match=r"^\[configuration_error\] "):
+        await list_work_packages(FakeContext(client))

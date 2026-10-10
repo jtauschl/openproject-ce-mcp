@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import PermissionDeniedError, ProjectLinkPrefixError
 from openproject_ce_mcp.app.ports.notification_api import NotificationPage, NotificationRecord
 from openproject_ce_mcp.app.services.notification_service import NotificationService
 from openproject_ce_mcp.models import NotificationSummary
@@ -550,3 +550,27 @@ async def test_project_name_hidden_by_notification_scope_not_project_scope() -> 
     service_notification_hidden = _service(api=api, settings=settings_notification_hidden)
     result_notification_hidden = await service_notification_hidden.list_all()
     assert getattr(result_notification_hidden.results[0], "_hidden_keys", frozenset()) == {"project_name"}
+
+
+@pytest.mark.parametrize(
+    "href", ["https://evil.example.com/api/v3/projects/1", "/api/v3/users/1", "/api/v3/projects/1/versions"]
+)
+@pytest.mark.asyncio
+async def test_list_all_drops_a_record_whose_project_link_is_no_project_link_even_when_wide_open(href: str) -> None:
+    api = _FakeNotificationApi(records=[_record(1, project_link={"href": href}), _record(2)])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("*",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all()
+
+    assert [item.id for item in result.results] == [2]
+
+
+@pytest.mark.asyncio
+async def test_list_all_reports_a_project_link_under_another_root_path_when_wide_open() -> None:
+    api = _FakeNotificationApi(records=[_record(1, project_link={"href": "/openproject/api/v3/projects/1"})])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("*",))
+    service = _service(api=api, settings=settings)
+
+    with pytest.raises(ProjectLinkPrefixError, match="/openproject/api/v3/"):
+        await service.list_all()

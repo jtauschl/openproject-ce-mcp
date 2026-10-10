@@ -111,8 +111,6 @@ async def test_a_failed_project_lookup_does_not_lose_a_confirmed_write() -> None
     directory = ProjectDirectoryService(
         api=_UnreachableProjects(),
         settings=_base_settings(read_projects=("demo",), write_projects=("demo",)),
-        origin="https://op.example.com",
-        api_prefix="/api/v3/",
     )
     inner = _Inner()
 
