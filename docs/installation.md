@@ -110,10 +110,12 @@ config shape.
 ### Homebrew (macOS)
 
 A dedicated tap provides a native `brew install` path on both Apple Silicon
-and Intel macOS:
+and Intel macOS. Homebrew installs a formula from a third-party tap only after
+you trust it:
 
 ```bash
 brew tap jtauschl/tap
+brew trust --formula jtauschl/tap/openproject-ce-mcp
 brew install openproject-ce-mcp
 openproject-ce-mcp configure
 openproject-ce-mcp --version
