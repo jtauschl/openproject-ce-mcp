@@ -25,7 +25,7 @@ from openproject_ce_mcp.tools import (
     update_relation,
     update_work_package,
 )
-from openproject_ce_mcp.tools_validation import _validate_work_package_ref
+from openproject_ce_mcp.tools_validation import _validate_optional_user_ref, _validate_work_package_ref
 
 
 @pytest.mark.asyncio
@@ -1197,7 +1197,7 @@ async def test_bulk_update_work_packages_tool_invalid_parent_alias_reports_own_f
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["assignee", "responsible", "category", "project_phase", "version"])
+@pytest.mark.parametrize("field", ["category", "project_phase", "version"])
 async def test_bulk_update_work_packages_tool_rejects_non_string_scalar_cleanly(field) -> None:
     # Regression guard: a bare JSON number/bool for a field that expects a string
     # (e.g. an LLM caller sending assignee=42 instead of assignee="42") must raise
@@ -1606,3 +1606,111 @@ async def test_a_project_link_under_another_root_path_is_reported_as_a_configura
         await get_work_package(FakeContext(client), 42)
     with pytest.raises(RuntimeError, match=r"^\[configuration_error\] "):
         await list_work_packages(FakeContext(client))
+
+
+class _EchoWorkPackageClient:
+    @property
+    def work_package(self):
+        return self
+
+    async def create(self, **kwargs):
+        return kwargs
+
+    async def update(self, **kwargs):
+        return kwargs
+
+    async def create_subtask(self, **kwargs):
+        return kwargs
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_tool_accepts_numeric_parent_assignee_responsible() -> None:
+    result = await create_work_package(
+        FakeContext(_EchoWorkPackageClient()),  # type: ignore[arg-type]
+        project="PROJ",
+        type="Task",
+        subject="child",
+        parent=341,
+        assignee=7,
+        responsible=8,
+        confirm=False,
+    )
+
+    assert result["parent_work_package_id"] == "341"
+    assert result["assignee"] == "7"
+    assert result["responsible"] == "8"
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_accepts_numeric_parent_assignee_responsible() -> None:
+    result = await update_work_package(
+        FakeContext(_EchoWorkPackageClient()),  # type: ignore[arg-type]
+        "42",
+        parent=341,
+        assignee=7,
+        responsible=8,
+        confirm=False,
+    )
+
+    assert result["parent_work_package_id"] == "341"
+    assert result["assignee"] == "7"
+    assert result["responsible"] == "8"
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_tool_accepts_numeric_assignee_responsible() -> None:
+    result = await create_subtask(
+        FakeContext(_EchoWorkPackageClient()),  # type: ignore[arg-type]
+        341,
+        "Task",
+        "Child ticket",
+        assignee=7,
+        responsible=8,
+        confirm=False,
+    )
+
+    assert result["parent_work_package_id"] == "341"
+    assert result["assignee"] == "7"
+    assert result["responsible"] == "8"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [True, False])
+async def test_work_package_tools_still_reject_bool_user_refs(value) -> None:
+    ctx = FakeContext(_EchoWorkPackageClient())  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="assignee must be a string"):
+        await create_work_package(ctx, project="PROJ", type="Task", subject="s", assignee=value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="responsible must be a string"):
+        await update_work_package(ctx, "42", responsible=value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="assignee must be a string"):
+        await create_subtask(ctx, 341, "Task", "s", assignee=value)  # type: ignore[arg-type]
+
+
+def test_validate_optional_user_ref_numeric_and_bool() -> None:
+    assert _validate_optional_user_ref(42) == "42"
+    assert _validate_optional_user_ref("42") == "42"
+    with pytest.raises(ValueError, match="must be at least 1"):
+        _validate_optional_user_ref(0)
+    with pytest.raises(ValueError, match="must be a string"):
+        _validate_optional_user_ref(True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "fields"),
+    [
+        ("create_work_package", ("parent", "assignee", "responsible")),
+        ("update_work_package", ("parent", "assignee", "responsible")),
+        ("create_subtask", ("assignee", "responsible")),
+    ],
+)
+async def test_work_package_write_tool_schema_allows_a_number(tool_name, fields) -> None:
+    from openproject_ce_mcp.server import create_app
+
+    tools = {t.name: t for t in await create_app(make_settings()).list_tools()}
+    properties = tools[tool_name].input_schema["properties"]
+
+    for field in fields:
+        branches = {branch.get("type") for branch in properties[field]["anyOf"]}
+        assert "integer" in branches, f"{tool_name}.{field} schema rejects a number: {properties[field]!r}"
