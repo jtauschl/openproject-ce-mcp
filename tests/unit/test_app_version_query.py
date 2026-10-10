@@ -164,7 +164,7 @@ async def test_project_scoped_branch_passes_write_false_to_resolve_project_ref()
     Version's list path specifically during the 18th domain's step-6
     self-audit -- Version's list routing lives in this separate
     resolvers/version_query.py module rather than going through
-    project_scoped_list.resolve_project_filter_candidates (which is itself
+    project_scoped_list.resolve_project_filter_id (which is itself
     correctly pinned), so it never inherited that shared coverage.
     """
     calls: list[bool] = []

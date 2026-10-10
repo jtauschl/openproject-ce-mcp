@@ -134,7 +134,7 @@ async def test_list_passes_an_explicit_text_limit_through() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_filters_by_project_candidate() -> None:
+async def test_list_filters_by_project() -> None:
     api = _FakeDocumentApi(
         records=[
             _record(document_id=1, project_id=6, project="Demo Project"),
@@ -150,7 +150,7 @@ async def test_list_filters_by_project_candidate() -> None:
 
 @pytest.mark.asyncio
 async def test_list_passes_write_false_to_resolve_project_ref() -> None:
-    """list()'s project filter resolves via resolve_project_filter_candidates
+    """list()'s project filter resolves via resolve_project_filter_id
     (project_scoped_list.py), which forwards straight to resolve_project_ref
     -- must ask for a READ-checked (write=False) resolution. Found missing
     during the Views domain's step-6 self-audit; ViewService.list() has the
@@ -378,3 +378,18 @@ async def test_update_does_not_call_resolve_project_ref() -> None:
     await service.update(document_id=1, title="Updated", confirm=True)
 
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_project_filter_excludes_a_project_of_the_same_name() -> None:
+    api = _FakeDocumentApi(
+        records=[
+            _record(document_id=1, project_id=6, project="Demo Project"),
+            _record(document_id=2, project_id=7, project="Demo Project"),
+        ]
+    )
+    service = _service(api)
+
+    result = await service.list(project="demo")
+
+    assert [item.id for item in result.results] == [1]

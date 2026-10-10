@@ -53,7 +53,7 @@ from ..policies import scope as scope_policy
 from ..policies.project_storage_policy import project_storage_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_storage_api import ProjectStorageApi
-from .project_scoped_list import resolve_project_filter_candidates, summary_matches_project_candidates
+from .project_scoped_list import record_in_project, resolve_project_filter_id
 
 
 class ProjectStorageService:
@@ -78,9 +78,7 @@ class ProjectStorageService:
     ) -> ProjectStorageListResult:
         access.ensure_read_enabled("project", settings=self._settings)
         effective_limit = _effective_limit(limit, settings=self._settings)
-        project_candidates = await resolve_project_filter_candidates(
-            project, resolve_project_ref=self._resolve_project_ref
-        )
+        filter_project_id = await resolve_project_filter_id(project, resolve_project_ref=self._resolve_project_ref)
 
         # NB: the server ignores offset/pageSize for /api/v3/project_storages
         # and always returns the full collection -- fetch everything once
@@ -96,7 +94,9 @@ class ProjectStorageService:
                 project_id_to_identifier=self._project_id_to_identifier,
             ):
                 return False
-            return project_candidates is None or summary_matches_project_candidates(record.summary, project_candidates)
+            return filter_project_id is None or record_in_project(
+                record.project_link, filter_project_id, settings=self._settings
+            )
 
         all_results = [self._stamp(record.summary) for record in records if _record_allowed(record)]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=all_results)

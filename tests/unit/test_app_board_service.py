@@ -870,3 +870,15 @@ async def test_list_drops_a_board_whose_project_link_is_no_project_link_even_whe
     result = await service.list()
 
     assert [board.id for board in result.results] == [2]
+
+
+@pytest.mark.asyncio
+async def test_list_project_filter_excludes_a_project_of_the_same_name() -> None:
+    api = _FakeBoardApi(
+        records=[_record(board_id=1, project_id=6, project="Demo"), _record(board_id=2, project_id=7, project="Demo")]
+    )
+    service = _service(api)
+
+    result = await service.list(project="demo")
+
+    assert [item.id for item in result.results] == [1]

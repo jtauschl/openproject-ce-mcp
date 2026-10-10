@@ -36,7 +36,7 @@ from ..policies import scope as scope_policy
 from ..policies.document_policy import document_payload_allowed
 from ..ports.document_api import DocumentApi
 from ..ports.project_ref import ProjectRefResolver
-from .project_scoped_list import resolve_project_filter_candidates, summary_matches_project_candidates
+from .project_scoped_list import record_in_project, resolve_project_filter_id
 
 
 class DocumentService:
@@ -72,9 +72,7 @@ class DocumentService:
             max_page_size=self._settings.max_page_size,
             max_results=self._settings.max_results,
         )
-        project_candidates = await resolve_project_filter_candidates(
-            project, resolve_project_ref=self._resolve_project_ref
-        )
+        filter_project_id = await resolve_project_filter_id(project, resolve_project_ref=self._resolve_project_ref)
         search_key = search.casefold() if search is not None else None
 
         def _record_allowed(record: Any) -> bool:
@@ -84,8 +82,8 @@ class DocumentService:
                 project_id_to_identifier=self._project_id_to_identifier,
             ):
                 return False
-            if project_candidates is not None and not summary_matches_project_candidates(
-                record.summary, project_candidates
+            if filter_project_id is not None and not record_in_project(
+                record.project_link, filter_project_id, settings=self._settings
             ):
                 return False
             if search_key is not None:

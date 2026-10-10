@@ -35,8 +35,9 @@ development baseline.
   against a restrictive `OPENPROJECT_READ_PROJECTS` and
   `OPENPROJECT_WRITE_PROJECTS` by their project. Boards page grids were
   hidden from `list_grids` and `get_grid` and could not be updated or deleted.
-- `list_time_entries` with a `project` filter no longer returns time entries of
-  another project with the same name.
+- `list_time_entries`, `list_documents`, `list_news`, `list_views`,
+  `list_boards` and `list_project_storages` with a `project` filter no longer
+  return items of another project with the same name.
 - `search_work_packages` no longer requests each free-text search term as a
   work package; only numeric ids and display ids like `PROJ-42` are looked up
   directly. A work package id that is neither is rejected as invalid input

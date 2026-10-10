@@ -109,7 +109,7 @@ async def test_list_returns_stamped_summaries() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_filters_by_project_candidate() -> None:
+async def test_list_filters_by_project() -> None:
     api = _FakeViewApi(
         records=[
             _record(view_id=1, project_id=6, project="Demo Project"),
@@ -125,7 +125,7 @@ async def test_list_filters_by_project_candidate() -> None:
 
 @pytest.mark.asyncio
 async def test_list_passes_write_false_to_resolve_project_ref() -> None:
-    """list()'s project filter resolves via resolve_project_filter_candidates
+    """list()'s project filter resolves via resolve_project_filter_id
     (project_scoped_list.py), which forwards straight to resolve_project_ref
     -- must ask for a READ-checked (write=False) resolution. Found missing
     during this domain's own step-6 self-audit; DocumentService.list() has
@@ -324,3 +324,32 @@ async def test_get_checks_read_enabled() -> None:
         await service.get(1)
 
     assert api.get_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_project_filter_excludes_a_project_of_the_same_name() -> None:
+    api = _FakeViewApi(
+        records=[
+            _record(view_id=1, project_id=6, project="Demo Project"),
+            _record(view_id=2, project_id=7, project="Demo Project"),
+        ]
+    )
+    service = _service(api)
+
+    result = await service.list(project="demo")
+
+    assert [item.id for item in result.results] == [1]
+
+
+@pytest.mark.asyncio
+async def test_list_project_filter_excludes_a_view_without_a_project_even_when_wide_open() -> None:
+    api = _FakeViewApi(
+        records=[
+            _record(view_id=1, project_id=6, project="Demo Project"),
+            _record(view_id=2, project_id=None, project=None, project_link={"href": None}),
+        ]
+    )
+
+    result = await _service(api).list(project="demo")
+
+    assert [item.id for item in result.results] == [1]

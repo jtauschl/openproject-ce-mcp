@@ -189,3 +189,18 @@ async def test_get_project_storage_checks_read_enabled() -> None:
         await service.get_project_storage(1)
 
     assert api.get_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_project_filter_excludes_a_project_of_the_same_name() -> None:
+    api = _FakeProjectStorageApi(
+        [
+            _record(project_storage_id=1, project_id=3, project="TST Test"),
+            _record(project_storage_id=2, project_id=9, project="TST Test"),
+        ]
+    )
+    service = _service(api)
+
+    result = await service.list_project_storages(project="tst")
+
+    assert [item.id for item in result.results] == [1]
