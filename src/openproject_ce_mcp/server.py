@@ -160,6 +160,11 @@ def create_app(settings: Settings) -> StrictMCPServer:
     return mcp
 
 
+class _SettingsError(Exception):
+    """The OPENPROJECT_* environment is missing or invalid. Kept apart from
+    other ConfigErrors, which signal a defect and keep their traceback."""
+
+
 def _run_server() -> None:
     # os.environ is already the fully-merged view here — the MCP client launcher
     # injects the config file's env block directly as this subprocess's
@@ -169,7 +174,10 @@ def _run_server() -> None:
     for warning in legacy_env_warnings(os.environ):
         print(f"[WARN] {warning}", file=sys.stderr)
 
-    settings = Settings.from_env()
+    try:
+        settings = Settings.from_env()
+    except ConfigError as exc:
+        raise _SettingsError(str(exc)) from exc
     app = create_app(settings)
     # Fails loudly at startup if a future `mcp` SDK upgrade changes how
     # MCPServer.call_tool is wired into request dispatch, instead of silently
@@ -223,20 +231,21 @@ def _cli_tokens(parser: argparse.ArgumentParser) -> frozenset[str]:
 def main() -> None:
     """Console entry point.
 
-    With no arguments (how MCP clients launch it) this runs the stdio server —
-    unchanged behaviour. ``configure`` hands off to the interactive setup CLI;
-    ``--help``/``--version`` print top-level info via argparse. An unrecognized
-    flag (e.g. a client passing something this version doesn't know about) still
-    falls through to a server launch rather than erroring out. An unrecognized
+    With no arguments (how MCP clients launch it) this runs the stdio server.
+    ``configure`` hands off to the interactive setup CLI; ``--help``/
+    ``--version`` print top-level info via argparse. An unrecognized flag still
+    falls through to a server launch rather than erroring out, so a client that
+    passes a flag this version does not know keeps working. An unrecognized
     bare word (e.g. a typo'd subcommand like "confiugure") is not something any
     MCP client would ever pass, so it's treated as a human mistake and reported
     via argparse's own "invalid choice" error instead of silently starting the
-    server and failing confusingly on missing configuration. An unrecognized
-    flag (e.g. "--configure", a typo for the "configure" subcommand) still
-    starts the server, but if that launch then fails with a ConfigError (e.g.
-    missing OPENPROJECT_BASE_URL), the flag is surfaced as a likely CLI typo
-    pointing at --help/configure, rather than a bare traceback -- a real MCP
-    client launch never passes a stray flag in the first place.
+    server and failing confusingly on missing configuration.
+
+    Missing or invalid OPENPROJECT_* settings end in a short message on
+    stderr and exit status 1, never a traceback: the person reading it is
+    setting up a client, not debugging this package. After an unrecognized
+    flag (e.g. "--configure", a typo for the subcommand) the message also
+    points at --help/configure, since that is the likelier mistake.
     """
     parser = _build_parser()
     arg = sys.argv[1] if len(sys.argv) > 1 else None
@@ -246,17 +255,23 @@ def main() -> None:
             parser.parse_args(sys.argv[1:])  # always exits: "invalid choice" usage error
         try:
             _run_server()
-        except ConfigError as exc:
+        except _SettingsError as exc:
+            print(f"error: {exc}", file=sys.stderr)
             if arg is not None:
-                print(f"error: {exc}", file=sys.stderr)
                 print(
                     f"'{arg}' is not a recognized option. "
                     "Run 'openproject-ce-mcp --help' for usage, or "
                     "'openproject-ce-mcp configure' to set up the server.",
                     file=sys.stderr,
                 )
-                sys.exit(1)
-            raise
+            else:
+                print(
+                    "Set the OPENPROJECT_* variables in your MCP client's configuration for this server, "
+                    "or run 'openproject-ce-mcp configure' to set it up. "
+                    "'openproject-ce-mcp doctor' checks an existing setup.",
+                    file=sys.stderr,
+                )
+            sys.exit(1)
         return
 
     if arg == "configure":

@@ -43,6 +43,9 @@ development baseline.
   before any request.
 - A numeric work package id with leading zeros, such as `007`, now resolves
   on OpenProject 17.4 and later.
+- Starting `openproject-ce-mcp` with missing or invalid configuration, such
+  as no `OPENPROJECT_BASE_URL`, prints a short error naming the problem and
+  how to set it up, and exits with status 1 instead of a Python traceback.
 
 ## [0.4.2] - 2026-10-09
 
