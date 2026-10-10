@@ -323,7 +323,7 @@ async def test_create_time_entry_with_semantic_work_package_ref(
     wp = await client.work_package.get(wp_id)
     display_id = wp.display_id or ""
     # Semantic identifiers (project-prefixed, e.g. "TST-105") only exist on 17.5+
-    # in semantic mode. On 16.x display_id is absent (added in 17.4); on classic
+    # (17.4 behind its feature flag) in semantic mode. On 16.x display_id is absent (added in 17.4); on classic
     # 17.x it's the numeric id as a string. Same detection as
     # test_semantic_identifiers.py::test_reference_resolution_matches_instance_mode.
     is_semantic = "-" in display_id and not display_id.isdigit()

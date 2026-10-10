@@ -5182,7 +5182,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "search_work_packages": {
-        "description_hash": "f1735147db2b0f481a10c0decafdac34cb1ed85403253983baae843a5a035d63",
+        "description_hash": "e0a48c57e8ab28beb29605b6fa58ccd638d08b6e49ef5393af689023eaf20d24",
         "input_schema": {
             "properties": {
                 "search": {"title": "Search", "type": "string"},

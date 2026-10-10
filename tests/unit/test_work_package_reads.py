@@ -186,7 +186,7 @@ async def test_search_work_packages_exact_match_none_for_unresolvable_query() ->
     await client.aclose()
 
 
-@pytest.mark.parametrize("search", ["context token catalog", "a/b?c#d", "2026-10-15", "100%"])
+@pytest.mark.parametrize("search", ["context token catalog", "a/b?c#d", "100%"])
 @pytest.mark.asyncio
 async def test_search_work_packages_looks_up_only_identifier_shaped_terms(search: str) -> None:
     requested: list[str] = []
@@ -200,6 +200,27 @@ async def test_search_work_packages_looks_up_only_identifier_shaped_terms(search
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
     result = await client.work_package.search(search=search)
+
+    assert result.exact_match is None
+    assert requested == ["/api/v3/work_packages"]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_does_not_look_up_a_date_shaped_term() -> None:
+    # 2026-10-15 is a valid display id of a project whose classic identifier is
+    # "2026-10", so only search's own date rule keeps it from being looked up.
+    requested: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.work_package.search(search="2026-10-15")
 
     assert result.exact_match is None
     assert requested == ["/api/v3/work_packages"]
@@ -377,7 +398,7 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
 async def test_list_work_packages_returns_parent_display_id_when_present() -> None:
     # parent_display_id mirrors parent_id: both are derived from the same
     # _links.parent object already present in the list/search payload, not an
-    # extra lookup. displayId is only present on 17.5+ (semantic mode).
+    # extra lookup. displayId is only present in semantic mode (17.5+, 17.4 behind its feature flag).
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages":
             return httpx.Response(
@@ -1115,7 +1136,7 @@ async def test_get_work_package_numeric_reference_hits_canonical_path() -> None:
 
 @pytest.mark.asyncio
 async def test_get_work_package_semantic_reference_passes_through_to_path() -> None:
-    # OpenProject 17.5+ resolves a project-prefixed identifier server-side on the
+    # OpenProject 17.5+ (17.4 behind its feature flag) resolves a project-prefixed identifier on the
     # work_packages/{id} endpoint, so the reference is sent through the path verbatim.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "GET" and request.url.path == "/api/v3/work_packages/PROJ-123":

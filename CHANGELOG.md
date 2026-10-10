@@ -120,8 +120,9 @@ development baseline.
   configured OpenProject instance; wherever a project link is checked, a link
   to another host or to a different resource is denied, also under `*`.
 - `create_grid` accepts only the scopes `/my/page`, `/projects/<identifier>`
-  and `/projects/<identifier>/boards` and rejects any other scope before a
-  request, also under `*`.
+  and `/projects/<identifier>/boards`, after the instance's root path on a
+  subpath install, and rejects any other scope before a request, also under
+  `*`.
 
 ### Changed
 
