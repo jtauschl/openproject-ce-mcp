@@ -316,9 +316,12 @@ def _validate_required_query(value: str, *, field_name: str, max_length: int) ->
     return normalized
 
 
-def _validate_optional_user_ref(value: str | None, field_name: str = "assignee") -> str | None:
+def _validate_optional_user_ref(value: int | str | None, field_name: str = "assignee") -> str | None:
     if value is None:
         return None
+    # bool is an int subclass; reject it so `true` doesn't become user id 1.
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
     if not isinstance(value, str):
         # See _validate_optional_query for why this guard exists.
         raise ValueError(f"{field_name} must be a string.")
