@@ -1,0 +1,61 @@
+name: Dependency graph
+
+# Dependabot alerts are computed from main's dependency graph. GitHub's own
+# graph job for uv.lock is not reliably triggered by pushes, so main's lock is
+# submitted here; a submitted snapshot takes precedence over that job's.
+on:
+  push:
+    branches: [main]
+    paths:
+      - uv.lock
+      - tools/dependency_snapshot.py
+      - .github/workflows/dependency-graph.yml
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Every run shares one snapshot series, so another ref would replace main's.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      snapshot: ${{ steps.snapshot.outputs.snapshot }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build the snapshot
+        id: snapshot
+        shell: bash
+        # Assigned first: inside `echo "...$(...)"` a failing script would not fail the step.
+        run: |
+          snapshot="$(python3 tools/dependency_snapshot.py)"
+          printf 'snapshot=%s\n' "$snapshot" >> "$GITHUB_OUTPUT"
+
+  # The write token is only ever handed to the runner's own gh: no checkout,
+  # no action and no repository code run in this job.
+  submit:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Submit the snapshot
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT: ${{ needs.build.outputs.snapshot }}
+        run: |
+          printf '%s' "$SNAPSHOT" | gh api --method POST \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/dependency-graph/snapshots" --input -
