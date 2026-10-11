@@ -40,6 +40,10 @@ development baseline.
 
 ### Fixed
 
+- `create_work_package`, `update_work_package` and `create_subtask` accept a
+  numeric `parent`, `assignee` and `responsible` (a JSON number such as `7`),
+  not only a string; `bulk_update_work_packages` items accept a numeric
+  `assignee` and `responsible` too.
 - A confirmed `delete_project`, `delete_user` or `delete_group` no longer
   reports the deletion as done: OpenProject only schedules it and deletes in a
   background job, and the message now says so. A confirmed `delete_project`
