@@ -383,34 +383,16 @@ def test_list_work_package_file_links_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_work_package_file_links"]
     assert (
         tool.description
-        == 'List Nextcloud file links attached to a work package (Community Edition).\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.\n\nselect fields: id, title (see server instructions for select\'s general semantics).\n'
+        == "List Nextcloud file links attached to a work package (Community Edition).\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\n\nselect fields: id, title (see server instructions for select's general semantics).\n\nlimit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned\nnext_offset as the next call's offset to page past the cap.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
-            "work_package_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "string",
-                    },
-                ],
-                "title": "Work Package Id",
-            },
+            "work_package_id": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Work Package Id"},
+            "offset": {"default": 1, "title": "Offset", "type": "integer"},
+            "limit": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Limit"},
             "select": {
-                "anyOf": [
-                    {
-                        "items": {
-                            "type": "string",
-                        },
-                        "type": "array",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
+                "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
                 "title": "Select",
             },
@@ -421,7 +403,7 @@ def test_list_work_package_file_links_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "select"]
+    assert list(tool.parameters["properties"]) == ["work_package_id", "offset", "limit", "select"]
 
 
 def test_delete_file_link_schema() -> None:

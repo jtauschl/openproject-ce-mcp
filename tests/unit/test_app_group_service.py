@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.group_api import GroupRecord
 from openproject_ce_mcp.app.services.group_service import GroupService
 from openproject_ce_mcp.models import GroupDetail, GroupSummary
@@ -513,15 +513,58 @@ async def test_delete_denies_target_outside_admin_write_and_never_calls_commit()
 
 
 @pytest.mark.asyncio
-async def test_delete_preview_does_not_call_commit() -> None:
-    api = _FakeGroupApi()
+async def test_delete_preview_shows_the_group_and_does_not_call_commit() -> None:
+    api = _FakeGroupApi([_record(group_id=3, name="Backend")])
     service = _service(api, settings=_admin_write_settings())
 
     result = await service.delete(3, confirm=False)
 
     assert result.state == "preview"
-    assert result.result is None
+    assert result.result is not None
+    assert (result.result.id, result.result.name) == (3, "Backend")
+    assert api.get_group_calls == [3]
     assert api.commit_delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_hides_configured_group_fields() -> None:
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"group": ("name",)})
+    api = _FakeGroupApi([_record(group_id=3)])
+    service = _service(api, settings=settings)
+
+    result = await service.delete(3, confirm=False)
+
+    assert result.result is not None
+    assert result.result.id == 3
+    assert result.result._hidden_keys == frozenset({"name"})
+
+
+class _MissingGroupApi(_FakeGroupApi):
+    async def get_group(self, group_id: int) -> GroupRecord:
+        self.get_group_calls.append(group_id)
+        raise NotFoundError(f"Group {group_id} not found.")
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_of_an_unknown_group_is_not_found() -> None:
+    api = _MissingGroupApi()
+    service = _service(api, settings=_admin_write_settings())
+
+    with pytest.raises(NotFoundError):
+        await service.delete(99, confirm=False)
+
+    assert api.commit_delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_reads_nothing_without_admin_write() -> None:
+    api = _FakeGroupApi([_record(group_id=3)])
+    service = _service(api)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(3, confirm=False)
+
+    assert api.get_group_calls == []
 
 
 @pytest.mark.asyncio
@@ -535,3 +578,4 @@ async def test_delete_commits_when_confirmed_with_no_result() -> None:
     assert result.group_id == 3
     assert result.result is None
     assert api.commit_delete_calls == [3]
+    assert result.message == "Group deletion accepted: OpenProject deletes the group in a background job."

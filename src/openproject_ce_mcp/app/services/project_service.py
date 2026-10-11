@@ -311,12 +311,14 @@ class ProjectService:
             action="delete",
             state="confirmed",
             ready=True,
-            message="Project deleted successfully.",
+            message=(
+                "Project deletion scheduled: OpenProject archived the project and deletes it in a background job."
+            ),
             project_id=project.id,
             project=project.name,
             payload=payload,
             validation_errors={},
-            result=project,
+            result=None,
         )
 
     async def copy(

@@ -592,3 +592,34 @@ def test_restart_hints_deduplicated(capsys):
     captured = capsys.readouterr()
     # Should only appear once
     assert captured.out.count("Test Client") == 1
+
+
+def test_env_config_scope_summary_names_every_write_flag(capsys, monkeypatch):
+    from openproject_ce_mcp.config import TOOL_GROUPS
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    for group in TOOL_GROUPS:
+        monkeypatch.delenv(group.read_env_var, raising=False)
+        if group.write is not None:
+            monkeypatch.delenv(group.write.env_var, raising=False)
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_USER_SCHEDULE_READ", "true")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "true")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_MEETING_WRITE", "false")
+
+    _check_env_config(None, {})
+
+    output = capsys.readouterr().out
+    for line in (
+        "Project writes: True",
+        "Work-package writes: True",
+        "Membership writes: True",
+        "Version writes: True",
+        "Board writes: True",
+        "Meeting writes: False",
+        "Personal-data writes: False",
+        "Admin writes: False",
+        "User-schedule writes: True",
+    ):
+        assert line in output

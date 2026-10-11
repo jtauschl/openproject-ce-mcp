@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # This is the interactive MCP server setup, not a packaging file.
-# Run via the installed console command: openproject-ce-mcp configure
-#   (or the openproject-ce-mcp-setup alias)
+# Run via `openproject-ce-mcp configure` or its console-command alias
+# `openproject-ce-mcp-setup`.
 # From a manual source checkout it also runs via `python3 configure_mcp.py`
 # (a thin shim that imports this module) -- see docs/installation.md's
 # "Development / from source" section.
@@ -33,6 +33,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from datetime import datetime
+from enum import Enum, auto
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -48,7 +49,7 @@ from openproject_ce_mcp.client import (
     PermissionDeniedError,
     TransportError,
 )
-from openproject_ce_mcp.config import ConfigError, Settings, tool_exposure_violations
+from openproject_ce_mcp.config import TOOL_GROUPS, ConfigError, Settings, tool_exposure_violations
 
 # tomllib is stdlib only on Python 3.11+. This installer supports 3.10 (which
 # lacks it) and must stay dependency-free, so import it optionally. When present
@@ -980,16 +981,6 @@ def _bool_from_env(env: dict[str, str], key: str, fallback: bool = False) -> boo
     return fallback
 
 
-_WRITE_SCOPE_FLAG_KEYS = (
-    "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
-    "OPENPROJECT_ENABLE_PROJECT_WRITE",
-    "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
-    "OPENPROJECT_ENABLE_VERSION_WRITE",
-    "OPENPROJECT_ENABLE_BOARD_WRITE",
-    "OPENPROJECT_ENABLE_MEETING_WRITE",
-)
-
-
 def _scope_prefill(existing: dict[str, str], new_key: str, legacy_keys: list[str]) -> tuple[str, bool]:
     """Resolve a project-scope prefill by key presence, not truthiness.
 
@@ -1276,60 +1267,84 @@ def _test_connection(env: dict[str, str], *, transport: httpx.AsyncBaseTransport
 _MAX_CREDENTIAL_ATTEMPTS = 3
 
 
-# One row per configurable tool-exposure group. Shared by env-dict construction
-# and the preview display, both of which already work from dict-shaped state
-# (read_flags/write_flags, and the final env dict respectively) by the time
-# they run. The interactive-prompts block in _collect_credentials is NOT
-# driven by this table -- its per-group conditional write-gating (project/
-# work_package/membership/version/board writes only prompt if write_access;
-# personal/admin writes prompt unconditionally; extended has no write at all)
-# and varying prompt detail resist a safe, behavior-preserving loop without a
-# larger rewrite of that function's named-local state model.
-class _ToolGroup(NamedTuple):
-    key: str  # matches the read_flags/write_flags dict keys' "{key}_read"/"{key}_write"
-    read_env_var: str
-    read_label: str
-    write: tuple[str, str] | None  # (env var, preview label), or None if no write counterpart
+class _WriteGate(Enum):
+    WRITE_ACCESS = auto()
+    # Personal-data writes only make sense with the personal tools visible.
+    OWN_READ = auto()
+    ALWAYS = auto()
 
 
-_TOOL_GROUPS: tuple[_ToolGroup, ...] = (
-    _ToolGroup(
-        "project", "OPENPROJECT_ENABLE_PROJECT_READ", "projects", ("OPENPROJECT_ENABLE_PROJECT_WRITE", "Project")
+class _AdvancedPrompt(NamedTuple):
+    read: str
+    write: tuple[str, _WriteGate] | None
+
+
+_ADVANCED_PROMPTS: dict[str, _AdvancedPrompt] = {
+    "project": _AdvancedPrompt(
+        "Enable project tools?",
+        ("Enable project writes (create/update/delete)?", _WriteGate.WRITE_ACCESS),
     ),
-    _ToolGroup(
-        "work_package",
-        "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
-        "work-packages",
-        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "Work-package"),
+    "work_package": _AdvancedPrompt(
+        "Enable work-package tools?",
+        (
+            "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
+            _WriteGate.WRITE_ACCESS,
+        ),
     ),
-    _ToolGroup(
-        "membership",
-        "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-        "memberships",
-        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "Membership"),
+    "membership": _AdvancedPrompt(
+        "Enable membership tools?",
+        ("Enable membership writes (create/update/delete)?", _WriteGate.WRITE_ACCESS),
     ),
-    _ToolGroup(
-        "version", "OPENPROJECT_ENABLE_VERSION_READ", "versions", ("OPENPROJECT_ENABLE_VERSION_WRITE", "Version")
+    "version": _AdvancedPrompt(
+        "Enable version tools?",
+        ("Enable version writes (create/update/delete)?", _WriteGate.WRITE_ACCESS),
     ),
-    _ToolGroup("board", "OPENPROJECT_ENABLE_BOARD_READ", "boards", ("OPENPROJECT_ENABLE_BOARD_WRITE", "Board")),
-    _ToolGroup(
-        "meeting", "OPENPROJECT_ENABLE_MEETING_READ", "meetings", ("OPENPROJECT_ENABLE_MEETING_WRITE", "Meeting")
+    "board": _AdvancedPrompt(
+        "Enable board tools?",
+        ("Enable board writes (create/update/delete)?", _WriteGate.WRITE_ACCESS),
     ),
-    _ToolGroup(
-        "personal",
-        "OPENPROJECT_ENABLE_PERSONAL_READ",
-        "personal",
-        ("OPENPROJECT_ENABLE_PERSONAL_WRITE", "Personal-data"),
+    "meeting": _AdvancedPrompt(
+        "Enable meeting tools?",
+        ("Enable meeting writes (create/update/delete)?", _WriteGate.WRITE_ACCESS),
     ),
-    _ToolGroup("admin", "OPENPROJECT_ENABLE_ADMIN_READ", "admin", ("OPENPROJECT_ENABLE_ADMIN_WRITE", "Admin")),
-    _ToolGroup(
-        "user_schedule",
-        "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
-        "user-schedule",
-        ("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "User-schedule"),
+    "personal": _AdvancedPrompt(
+        "Enable personal tools (own preferences, notifications)?",
+        ("Enable personal-data writes (preferences, notification read-state)?", _WriteGate.OWN_READ),
     ),
-    _ToolGroup("extended", "OPENPROJECT_ENABLE_EXTENDED_READ", "extended", None),
+    "admin": _AdvancedPrompt(
+        "Enable admin tools (list/view users and groups)?",
+        ("Enable admin writes (users/groups)?", _WriteGate.ALWAYS),
+    ),
+    "user_schedule": _AdvancedPrompt(
+        "Enable user-schedule tools (non-working times, working hours)?",
+        ("Enable user-schedule writes (non-working times, working hours)?", _WriteGate.ALWAYS),
+    ),
+    "extended": _AdvancedPrompt("Enable extended/rarely-used metadata tools?", None),
+}
+
+# (group key, prompt, fresh-setup default). Work packages come first and default
+# to yes because they are the common case; the other project-scoped writes stay
+# opt-in on a first run.
+_QUICK_WRITE_PROMPTS: tuple[tuple[str, str, bool], ...] = (
+    ("work_package", "  Work packages (create/update/delete, comments, relations, attachments, time entries)?", True),
+    ("project", "  Projects (create/update/delete)?", False),
+    ("membership", "  Memberships (create/update/delete)?", False),
+    ("version", "  Versions (create/update/delete)?", False),
+    ("board", "  Boards (create/update/delete)?", False),
+    ("meeting", "  Meetings (create/update/delete)?", False),
 )
+
+_WRITE_ENV_VAR_BY_KEY: dict[str, str] = {
+    group.key: group.write.env_var for group in TOOL_GROUPS if group.write is not None
+}
+
+
+def _write_asked(gate: _WriteGate, *, write_access: bool, own_read: bool) -> bool:
+    if gate is _WriteGate.WRITE_ACCESS:
+        return write_access
+    if gate is _WriteGate.OWN_READ:
+        return own_read
+    return True
 
 
 def _collect_credentials(
@@ -1343,16 +1358,14 @@ def _collect_credentials(
 
     ``mode`` selects which questionnaire runs: "quick" asks client
     target(s)/base URL/token/readable projects, then (if write access is
-    enabled) a Y/N per project-scoped write category — work packages,
-    versions, projects, memberships, boards — and fills everything else
-    from safe defaults; "advanced" asks the full questionnaire (individual
-    read/write controls, field-hiding, page sizes, SSL, logging). The
-    quick-mode per-category prompts only govern those five project-scoped
-    write flags — personal-data writes (``OPENPROJECT_ENABLE_PERSONAL_WRITE``)
-    and admin writes (``OPENPROJECT_ENABLE_ADMIN_WRITE``) are independent axes
-    that keep whatever value they already had (or the default, on a fresh
-    setup); only ``--advanced`` re-prompts them. The caller resolves the
-    mode from the ``--quick``/``--advanced`` CLI flags.
+    enabled) a Y/N per project-scoped write category (``_QUICK_WRITE_PROMPTS``)
+    and fills everything else from safe defaults; "advanced" asks the full
+    questionnaire (every group's read/write controls, field-hiding, page
+    sizes, SSL, logging). Personal-data, admin and user-schedule writes are
+    not project-scoped: quick mode leaves them at whatever value they already
+    had (or the default, on a fresh setup); only ``--advanced`` re-prompts
+    them. The caller resolves the mode from the ``--quick``/``--advanced`` CLI
+    flags.
 
     In interactive mode, validates the candidate settings against a live API
     connection before returning. A `network_error` offers a genuine choice
@@ -1395,91 +1408,37 @@ def _collect_credentials(
         )
         existing_write_projects = write_projects_existing.strip()
         advanced = mode == "advanced"
+        read = {group.key: _bool_from_env(existing, group.read_env_var, group.read_default) for group in TOOL_GROUPS}
+        write = {
+            group.key: _bool_from_env(existing, group.write.env_var, group.write.default)
+            for group in TOOL_GROUPS
+            if group.write is not None
+        }
 
-        if advanced:
-            write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
-            if write_access:
-                write_projects_default = existing_write_projects or read_projects
-                write_projects = _prompt(
-                    "Writable projects (subset of readable)",
-                    write_projects_default,
-                )
-                wp_write, project_write, membership_write, version_write, board_write, meeting_write = (
-                    _bool_from_env(existing, key, True) for key in _WRITE_SCOPE_FLAG_KEYS
-                )
-            else:
-                write_projects = ""
-                print("Write access disabled — project-scoped writes are disabled.")
-                wp_write = False
-                project_write = False
-                membership_write = False
-                version_write = False
-                board_write = False
-                meeting_write = False
-        else:
-            # Quick mode: a Y/N gate plus a Y/N per write category, replacing
-            # the yes/no gate above entirely — no overlapping decisions. Same
-            # five categories advanced mode asks about later, just without
-            # the surrounding read-tools/field-hiding/runtime-settings
-            # questions that make sense there but not here.
+        if not advanced:
             print()
-            write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
-            if write_access:
-                write_projects_default = existing_write_projects or read_projects
-                write_projects = _prompt(
-                    "Writable projects (subset of readable)",
-                    write_projects_default,
-                )
+        write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
+        if write_access:
+            write_projects = _prompt(
+                "Writable projects (subset of readable)",
+                existing_write_projects or read_projects,
+            )
+            if not advanced:
                 print("Which kinds of changes can the agent make? (all writes still need your")
                 print("confirmation each time; OpenProject's own permissions still apply too.)")
-                # Same field order as _WRITE_SCOPE_FLAG_KEYS above (work
-                # packages first — the most common case — rather than the
-                # advanced-mode questionnaire's project-first order below,
-                # which is unrelated to this constant).
-                wp_write = _prompt_bool(
-                    "  Work packages (create/update/delete, comments, relations, attachments, time entries)?",
-                    _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True),
-                )
-                project_write = _prompt_bool(
-                    "  Projects (create/update/delete)?",
-                    _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", False),
-                )
-                membership_write = _prompt_bool(
-                    "  Memberships (create/update/delete)?",
-                    _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", False),
-                )
-                version_write = _prompt_bool(
-                    "  Versions (create/update/delete)?",
-                    _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", False),
-                )
-                board_write = _prompt_bool(
-                    "  Boards (create/update/delete)?",
-                    _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", False),
-                )
-                meeting_write = _prompt_bool(
-                    "  Meetings (create/update/delete)?",
-                    _bool_from_env(existing, "OPENPROJECT_ENABLE_MEETING_WRITE", False),
-                )
-            else:
-                write_projects = ""
-                print("Write access disabled — project-scoped writes are disabled.")
-                wp_write = project_write = membership_write = version_write = board_write = meeting_write = False
+                for key, prompt, fresh_default in _QUICK_WRITE_PROMPTS:
+                    write[key] = _prompt_bool(
+                        prompt, _bool_from_env(existing, _WRITE_ENV_VAR_BY_KEY[key], fresh_default)
+                    )
+        else:
+            write_projects = ""
+            print("Write access disabled — project-scoped writes are disabled.")
+            for group in TOOL_GROUPS:
+                if group.write is not None and group.write.project_scoped:
+                    write[group.key] = False
 
         print()
 
-        enable_project_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_READ", True)
-        enable_work_package_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_READ", True)
-        enable_membership_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", True)
-        enable_version_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_READ", True)
-        enable_board_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_READ", True)
-        enable_meeting_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEETING_READ", True)
-        enable_personal_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_PERSONAL_READ", False)
-        personal_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PERSONAL_WRITE", False)
-        enable_admin_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_READ", False)
-        admin_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
-        enable_user_schedule_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_USER_SCHEDULE_READ", False)
-        user_schedule_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", False)
-        enable_metadata_tools = _bool_from_env(existing, "OPENPROJECT_ENABLE_EXTENDED_READ", False)
         hide_project = existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", "")
         hide_wp = existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "")
         hide_activity = existing.get("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "")
@@ -1507,67 +1466,19 @@ def _collect_credentials(
                 "can write. OpenProject permissions and the writable project scope still apply to "
                 "writes. Defaults are usually right."
             )
-            enable_project_read = _prompt_bool("Enable project tools?", enable_project_read)
-            if write_access:
-                project_write = _prompt_bool(
-                    "Enable project writes (create/update/delete)?",
-                    project_write,
-                )
-            enable_work_package_read = _prompt_bool("Enable work-package tools?", enable_work_package_read)
-            if write_access:
-                wp_write = _prompt_bool(
-                    "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
-                    wp_write,
-                )
-            enable_membership_read = _prompt_bool("Enable membership tools?", enable_membership_read)
-            if write_access:
-                membership_write = _prompt_bool(
-                    "Enable membership writes (create/update/delete)?",
-                    membership_write,
-                )
-            enable_version_read = _prompt_bool("Enable version tools?", enable_version_read)
-            if write_access:
-                version_write = _prompt_bool(
-                    "Enable version writes (create/update/delete)?",
-                    version_write,
-                )
-            enable_board_read = _prompt_bool("Enable board tools?", enable_board_read)
-            if write_access:
-                board_write = _prompt_bool(
-                    "Enable board writes (create/update/delete)?",
-                    board_write,
-                )
-            enable_meeting_read = _prompt_bool("Enable meeting tools?", enable_meeting_read)
-            if write_access:
-                meeting_write = _prompt_bool(
-                    "Enable meeting writes (create/update/delete)?",
-                    meeting_write,
-                )
-            enable_personal_read = _prompt_bool(
-                "Enable personal tools (own preferences, notifications)?", enable_personal_read
-            )
-            if enable_personal_read:
-                personal_write = _prompt_bool(
-                    "Enable personal-data writes (preferences, notification read-state)?",
-                    personal_write,
-                )
-            enable_admin_read = _prompt_bool("Enable admin tools (list/view users and groups)?", enable_admin_read)
-            admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
-            enable_user_schedule_read = _prompt_bool(
-                "Enable user-schedule tools (non-working times, working hours)?", enable_user_schedule_read
-            )
-            user_schedule_write = _prompt_bool(
-                "Enable user-schedule writes (non-working times, working hours)?",
-                user_schedule_write,
-            )
-            enable_metadata_tools = _prompt_bool("Enable extended/rarely-used metadata tools?", enable_metadata_tools)
+            for group in TOOL_GROUPS:
+                prompts = _ADVANCED_PROMPTS[group.key]
+                read[group.key] = _prompt_bool(prompts.read, read[group.key])
+                if prompts.write is not None:
+                    write_prompt, gate = prompts.write
+                    if _write_asked(gate, write_access=write_access, own_read=read[group.key]):
+                        write[group.key] = _prompt_bool(write_prompt, write[group.key])
 
-        if not enable_personal_read:
+        if not read["personal"]:
             # No visible personal surface → personal writes cannot be active either.
-            # Still needed standalone (not just inside the `if advanced` block above):
-            # in quick mode enable_personal_read keeps its pre-advanced value and the
-            # block above never runs, so this is the only place enforcing the rule then.
-            personal_write = False
+            # Needed outside the advanced block too: quick mode never asks about
+            # personal tools, so this is the only place enforcing the rule there.
+            write["personal"] = False
 
         if advanced:
             print()
@@ -1601,53 +1512,19 @@ def _collect_credentials(
             retry_max_delay = _prompt("Retry max delay seconds", retry_max_delay)
             log_level = _prompt("Log level", log_level)
 
-        # Write-flag reconciliation: from the ORIGINAL (unmutated) values, once, using
-        # the now-validated read booleans — never mutate write_flags across retries
-        # above, or a mistaken read toggle could permanently disable an unrelated,
-        # correctly chosen write flag.
-        read_flags = {
-            "project_read": enable_project_read,
-            "work_package_read": enable_work_package_read,
-            "membership_read": enable_membership_read,
-            "version_read": enable_version_read,
-            "board_read": enable_board_read,
-            "meeting_read": enable_meeting_read,
-            "personal_read": enable_personal_read,
-            "admin_read": enable_admin_read,
-            "user_schedule_read": enable_user_schedule_read,
-            "extended_read": enable_metadata_tools,
-        }
-        original_write_flags = {
-            "project_write": project_write,
-            "work_package_write": wp_write,
-            "membership_write": membership_write,
-            "version_write": version_write,
-            "board_write": board_write,
-            "meeting_write": meeting_write,
-            "personal_write": personal_write,
-            "admin_write": admin_write,
-            "user_schedule_write": user_schedule_write,
-        }
-        write_flags = original_write_flags.copy()
+        # Write-flag reconciliation, once, against the final read flags: a write
+        # whose read group is off would make the server refuse to start.
+        read_flags = {f"{key}_read": value for key, value in read.items()}
+        write_flags = {f"{key}_write": value for key, value in write.items()}
         for write_key, _read_key, write_env_var, read_env_var in tool_exposure_violations(read_flags, write_flags):
             print(f"  ! {read_env_var}=false — disabling {write_env_var} (it would otherwise fail at startup).")
             write_flags[write_key] = False
-        project_write = write_flags["project_write"]
-        wp_write = write_flags["work_package_write"]
-        membership_write = write_flags["membership_write"]
-        version_write = write_flags["version_write"]
-        board_write = write_flags["board_write"]
-        meeting_write = write_flags["meeting_write"]
-        personal_write = write_flags["personal_write"]
-        admin_write = write_flags["admin_write"]
-        user_schedule_write = write_flags["user_schedule_write"]
 
         tool_env: dict[str, str] = {}
-        for group in _TOOL_GROUPS:
+        for group in TOOL_GROUPS:
             tool_env[group.read_env_var] = str(read_flags[f"{group.key}_read"]).lower()
             if group.write is not None:
-                write_env_var, _write_label = group.write
-                tool_env[write_env_var] = str(write_flags[f"{group.key}_write"]).lower()
+                tool_env[group.write.env_var] = str(write_flags[f"{group.key}_write"]).lower()
 
         env: dict[str, str] = {
             "OPENPROJECT_BASE_URL": base_url,
@@ -1752,12 +1629,11 @@ def _preview_changes(
         # the file's minimalism must never reduce what the user was told.
         print(f"  Read projects: {env['OPENPROJECT_READ_PROJECTS'] or 'none (fail-closed)'}")
         print(f"  Write projects: {env['OPENPROJECT_WRITE_PROJECTS'] or 'none (fail-closed)'}")
-        read_groups = [group.read_label for group in _TOOL_GROUPS if env[group.read_env_var] == "true"]
+        read_groups = [group.read_label for group in TOOL_GROUPS if env[group.read_env_var] == "true"]
         print(f"  Tool exposure: {', '.join(read_groups) or 'none'}")
-        for group in _TOOL_GROUPS:
+        for group in TOOL_GROUPS:
             if group.write is not None:
-                write_env_var, write_label = group.write
-                print(f"  {write_label} writes: {env[write_env_var]}")
+                print(f"  {group.write.label} writes: {env[group.write.env_var]}")
         if env["OPENPROJECT_VERIFY_SSL"] == "false":
             print("  ! TLS verification disabled (OPENPROJECT_VERIFY_SSL=false)")
         if env["OPENPROJECT_BASE_URL"].startswith("http://"):
@@ -1849,25 +1725,14 @@ _DEFAULT_SETTINGS = Settings.from_env(
 _MINIMAL_ENV_FIELD_MAP: tuple[tuple[str, str], ...] = (
     ("OPENPROJECT_READ_PROJECTS", "read_projects"),
     ("OPENPROJECT_WRITE_PROJECTS", "write_projects"),
-    ("OPENPROJECT_ENABLE_PROJECT_READ", "enable_project_read"),
-    ("OPENPROJECT_ENABLE_PROJECT_WRITE", "enable_project_write"),
-    ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ", "enable_work_package_read"),
-    ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "enable_work_package_write"),
-    ("OPENPROJECT_ENABLE_MEMBERSHIP_READ", "enable_membership_read"),
-    ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "enable_membership_write"),
-    ("OPENPROJECT_ENABLE_VERSION_READ", "enable_version_read"),
-    ("OPENPROJECT_ENABLE_VERSION_WRITE", "enable_version_write"),
-    ("OPENPROJECT_ENABLE_BOARD_READ", "enable_board_read"),
-    ("OPENPROJECT_ENABLE_BOARD_WRITE", "enable_board_write"),
-    ("OPENPROJECT_ENABLE_MEETING_READ", "enable_meeting_read"),
-    ("OPENPROJECT_ENABLE_MEETING_WRITE", "enable_meeting_write"),
-    ("OPENPROJECT_ENABLE_PERSONAL_READ", "enable_personal_read"),
-    ("OPENPROJECT_ENABLE_PERSONAL_WRITE", "enable_personal_write"),
-    ("OPENPROJECT_ENABLE_ADMIN_READ", "enable_admin_read"),
-    ("OPENPROJECT_ENABLE_ADMIN_WRITE", "enable_admin_write"),
-    ("OPENPROJECT_ENABLE_USER_SCHEDULE_READ", "enable_user_schedule_read"),
-    ("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "enable_user_schedule_write"),
-    ("OPENPROJECT_ENABLE_EXTENDED_READ", "enable_metadata_tools"),
+    *(
+        pair
+        for group in TOOL_GROUPS
+        for pair in (
+            ((group.read_env_var, group.read_attr),)
+            + (((group.write.env_var, group.write.attr),) if group.write is not None else ())
+        )
+    ),
     ("OPENPROJECT_HIDE_PROJECT_FIELDS", "hide_project_fields"),
     ("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "hide_work_package_fields"),
     ("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "hide_activity_fields"),
@@ -1914,7 +1779,7 @@ def _minimal_env(env: dict[str, str], candidate: Settings) -> dict[str, str]:
 # ── main ──────────────────────────────────────────────────────────────────────
 
 
-def main(argv: list[str] | None = None, *, interactive: bool | None = None) -> None:
+def main(argv: list[str] | None = None, *, prog: str | None = None, interactive: bool | None = None) -> None:
     """Console entry point: run the interactive setup, exiting cleanly on Ctrl+C.
 
     Ctrl+C during any prompt should read as "cancelled", not a Python traceback,
@@ -1927,17 +1792,21 @@ def main(argv: list[str] | None = None, *, interactive: bool | None = None) -> N
     opt-out used by scripted installs. Tests always pass ``interactive=False``
     explicitly (see tests/test_configure_mcp.py's ``_run_main``) so no network
     access or extra prompt happens under test.
+
+    ``prog`` names the command in ``--help``; None lets argparse use the name
+    the process was started with (``openproject-ce-mcp-setup`` or
+    ``configure_mcp.py``).
     """
     try:
-        _run_configure(argv, interactive=interactive)
+        _run_configure(argv, prog=prog, interactive=interactive)
     except KeyboardInterrupt:
         print("\nCancelled — nothing was written.", file=sys.stderr)
         sys.exit(130)
 
 
-def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = None) -> None:
+def _run_configure(argv: list[str] | None = None, *, prog: str | None = None, interactive: bool | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="openproject-ce-mcp",
+        prog=prog,
         description="Configure or remove the openproject MCP server for your clients.",
     )
     parser.add_argument(
@@ -1964,9 +1833,9 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     mode_group.add_argument(
         "--advanced",
         action="store_true",
-        help="Full questionnaire: individual read/write controls, field-hiding "
-        "(including personal-data and admin writes), page sizes, SSL, logging, in addition "
-        "to the quick-mode questions.",
+        help="Full questionnaire: every tool group's read and write controls (including "
+        "personal-data, admin and user-schedule writes), field-hiding, page sizes, SSL, "
+        "logging, in addition to the quick-mode questions.",
     )
     args = parser.parse_args(argv)
     mode: Literal["quick", "advanced"] = "advanced" if args.advanced else "quick"

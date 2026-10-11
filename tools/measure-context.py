@@ -52,6 +52,7 @@ import asyncio
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -62,7 +63,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
 from openproject_ce_mcp.client import OpenProjectClient  # noqa: E402
-from openproject_ce_mcp.config import Settings  # noqa: E402
+from openproject_ce_mcp.config import TOOL_GROUPS, Settings  # noqa: E402
 from openproject_ce_mcp.models import SortCriterion  # noqa: E402
 from openproject_ce_mcp.presentation import _to_payload  # noqa: E402
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
@@ -85,18 +86,30 @@ def _tokens(raw: str) -> int:
 # elsewhere is implausible -- used by measure_tools_list's duplication check below.
 _CE_INSTRUCTIONS_NEEDLE = "Community Edition (CE)"
 
+# Every write the server has, so the "every write scope" rows really list every
+# tool; the attachment root only has to be an absolute path on this platform for
+# the upload tool to register, it is never touched.
 WRITE_ENV = {
     "OPENPROJECT_READ_PROJECTS": "*",
     "OPENPROJECT_WRITE_PROJECTS": "*",
-    "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
-    "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "true",
-    "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
-    "OPENPROJECT_ENABLE_VERSION_WRITE": "true",
-    "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
-    "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
-    "OPENPROJECT_ENABLE_PERSONAL_WRITE": "true",
-    "OPENPROJECT_ENABLE_ADMIN_READ": "true",
-    "OPENPROJECT_ENABLE_ADMIN_WRITE": "true",
+    "OPENPROJECT_ATTACHMENT_ROOT": str(Path(tempfile.gettempdir()) / "openproject-ce-mcp-measure"),
+    **{
+        env_var: "true"
+        for group in TOOL_GROUPS
+        if group.write is not None
+        for env_var in (group.read_env_var, group.write.env_var)
+    },
+}
+# Project-scoped writes default to on, so a "work-package writes only" row has
+# to switch the others off explicitly.
+WORK_PACKAGE_WRITES_ONLY_ENV = {
+    "OPENPROJECT_READ_PROJECTS": "*",
+    "OPENPROJECT_WRITE_PROJECTS": "*",
+    **{
+        group.write.env_var: str(group.key == "work_package").lower()
+        for group in TOOL_GROUPS
+        if group.write is not None and group.write.project_scoped
+    },
 }
 BASE_ENV = {
     "OPENPROJECT_BASE_URL": "https://op.example.com",
@@ -140,15 +153,7 @@ async def measure_tools_list() -> None:
             "project reads enabled, no writes",
             {**BASE_ENV, "OPENPROJECT_READ_PROJECTS": "*"},
         ),
-        (
-            "work-package writes enabled",
-            {
-                **BASE_ENV,
-                "OPENPROJECT_READ_PROJECTS": "*",
-                "OPENPROJECT_WRITE_PROJECTS": "*",
-                "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
-            },
-        ),
+        ("work-package writes only", {**BASE_ENV, **WORK_PACKAGE_WRITES_ONLY_ENV}),
         ("every write scope enabled, extended tools off (worst case)", {**BASE_ENV, **WRITE_ENV}),
         (
             "every write scope enabled, extended tools on",

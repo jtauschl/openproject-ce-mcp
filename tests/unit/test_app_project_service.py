@@ -718,7 +718,7 @@ async def test_delete_returns_preview_then_commits() -> None:
 
     committed = await service.delete(project_ref="demo", confirm=True)
     assert committed.state == "confirmed"
-    assert committed.result is not None
+    assert committed.result is None
     assert api.delete_calls == [6]
 
 

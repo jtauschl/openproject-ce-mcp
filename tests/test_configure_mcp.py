@@ -1315,11 +1315,11 @@ def _run_main(
         book.assert_consumed()
 
 
-# When ``advanced`` is answered yes, the wizard always asks 18 further optional
-# fields regardless of write access; 6 more (the per-category write toggles) are
+# When ``advanced`` is answered yes, the wizard always asks the optional
+# fields below regardless of write access; the per-category write toggles are
 # asked additionally when write access is also enabled. Tests that drive the
 # advanced flow but don't care about these specific values merge one or both of
-# these in with "" (keep-default) answers, rather than retyping all 18-24 keys
+# these in with "" (keep-default) answers, rather than retyping every key
 # — and rather than relying on iterator-exhaustion padding the way the old
 # positional lists did, which was a silent-absorption failure mode that keying
 # answers by prompt content removes.
@@ -1331,9 +1331,9 @@ _WRITE_CONTROL_DEFAULTS: dict[str, str] = {
     "Enable board writes": "",
     "Enable meeting writes": "",
 }
-# The 10 individual tool-exposure read booleans are unconditionally asked whenever
+# Every tool group's read boolean is unconditionally asked whenever
 # --advanced is used (regardless of write access) — every advanced-mode test must
-# answer all 10, so tests that don't care about a specific one merge this in with
+# answer all of them, so tests that don't care about a specific one merge this in with
 # "" (keep existing/default) answers.
 _TOOL_EXPOSURE_DEFAULTS: dict[str, str] = {
     "Enable project tools?": "",
@@ -1367,7 +1367,7 @@ _ADVANCED_ONLY_DEFAULTS: dict[str, str] = {
     "Log level": "",
 }
 # Quick mode (not --advanced): once "Enable write access?" is answered yes,
-# these 6 per-category Y/N prompts are asked unconditionally. Tests that drive
+# the per-category Y/N prompts below are asked unconditionally. Tests that drive
 # write access on but don't care about the specific per-category split merge
 # this in with "" (keep-default) answers.
 _QUICK_WRITE_SCOPE_DEFAULTS: dict[str, str] = {
@@ -1384,7 +1384,7 @@ def test_main_global_only_writes_no_mcp_json(monkeypatch, tmp_path: Path) -> Non
     gtarget = tmp_path / ".claude.json"
     claude = _json_client(gtarget, project_target=tmp_path / ".mcp.json")
     # global gate y, per-client y; project gate is skipped; then creds default
-    # (write access off, advanced off, so nothing beyond these 6 is ever asked).
+    # (write access off, advanced off, so nothing beyond these is ever asked).
     answers = {
         "Configure globally": "y",
         "Configure Claude Code?": "y",
@@ -1695,7 +1695,7 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
     # A fresh setup's fail-safe quick-mode default ("no write access") deviates
-    # from Settings' own optimistic True default for the 6 project-scoped write
+    # from Settings' own optimistic True default for the project-scoped write
     # flags (that default only makes sense once a project scope is granted), so
     # minimal-diff writing must keep them explicitly false here.
     assert set(env) == {
@@ -2287,7 +2287,7 @@ def test_main_quick_write_scope_dormant_flags_with_empty_write_projects_default_
 
 
 def test_main_quick_write_scope_off_does_not_touch_personal_or_admin_write(monkeypatch, tmp_path: Path) -> None:
-    # "Enable write access?" only governs the five project-scoped write
+    # "Enable write access?" only governs the project-scoped write
     # flags — personal-data and admin writes are independent axes and must
     # keep their existing value even when write access is disabled.
     target = tmp_path / ".mcp.json"
@@ -2352,7 +2352,7 @@ def test_main_quick_skips_tool_exposure_prompts(monkeypatch, tmp_path: Path) -> 
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    # All 8 read-exposure flags equal their default, so minimal-diff writing omits them.
+    # Every read-exposure flag equals its default, so minimal-diff writing omits them.
     assert not any(k.startswith("OPENPROJECT_ENABLE_") and k.endswith("_READ") for k in env)
 
 
@@ -2464,8 +2464,8 @@ def test_main_advanced_deselecting_group_disables_existing_write_flag(monkeypatc
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    # advanced + write access both on → the wizard also asks the 5 write-control
-    # toggles and the 16 always-asked advanced-only fields; none of those are
+    # advanced + write access both on → the wizard also asks the write-control
+    # toggles and the always-asked advanced-only fields; none of those are
     # asserted on here, so they're left at their kept/default answers.
     answers = {
         "Configure globally": "n",
@@ -2598,9 +2598,8 @@ def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(
     structurally inside main() itself; this test is a regression guard, not the
     mechanism that creates the guarantee."""
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    # Only 4 of the 5 write-control toggles are explicitly answered "y" here
-    # (matching the original list, which ran out after 4) — "Enable board
-    # writes" is left at its merged "" (kept-default) answer. Not asserted on
+    # Only some of the write-control toggles are explicitly answered "y" here —
+    # "Enable board writes" is left at its merged "" (kept-default) answer. Not asserted on
     # either way; this test only checks the generated config parses cleanly.
     answers = {
         "Configure globally": "n",
@@ -3237,7 +3236,7 @@ _CANONICAL_SCOPE_KEY_ORDER: tuple[str, ...] = (
     "OPENPROJECT_ENABLE_EXTENDED_READ",
 )
 
-# Deviates every single scope-pair key from its own default (the 6 core reads
+# Deviates every single scope-pair key from its own default (the core reads
 # and their writes forced off; personal/admin/user-schedule/extended forced
 # on; both project allowlists set) so every key in _CANONICAL_SCOPE_KEY_ORDER
 # actually survives minimal-diff writing — letting the assertion below be an
@@ -3530,3 +3529,163 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
     assert entry["env"]["OPENPROJECT_BASE_URL"] == "https://op.example.com"
     assert entry["env"]["OPENPROJECT_API_TOKEN"] == "opapi-desktop-check"
     assert entry["env"]["OPENPROJECT_READ_PROJECTS"] == "DEMO, TEST"
+
+
+# ── Tool-group registry drives the questionnaire ───────────────────────────────
+
+
+def _existing_project_config(target: Path, extra_env: Mapping[str, str]) -> None:
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_READ_PROJECTS": "*",
+                            "OPENPROJECT_WRITE_PROJECTS": "*",
+                            **extra_env,
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+
+_PROJECT_TARGET_ANSWERS = {
+    "Configure globally": "n",
+    "Configure project-scoped": "y",
+    "Configure Claude Code?": "y",
+    "OpenProject base URL": "",
+    "Readable projects": "",
+}
+
+
+def test_advanced_rerun_keeps_each_project_scoped_write_on_its_own_group(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    _existing_project_config(
+        target,
+        {"OPENPROJECT_ENABLE_PROJECT_WRITE": "true", "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false"},
+    )
+    answers = {
+        **_PROJECT_TARGET_ANSWERS,
+        "Enable write access?": "y",
+        "Writable projects": "",
+        **_TOOL_EXPOSURE_DEFAULTS,
+        **_WRITE_CONTROL_DEFAULTS,
+        **_ADVANCED_ONLY_DEFAULTS,
+    }
+    _run_main(
+        monkeypatch,
+        tmp_path,
+        [_json_client(tmp_path / ".claude.json", project_target=target)],
+        answers,
+        secret="",
+        argv=["--advanced"],
+    )
+
+    env = json.loads(target.read_text())["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "false"
+    assert env.get("OPENPROJECT_ENABLE_PROJECT_WRITE", "true") == "true"
+
+
+def test_quick_write_prompts_cover_exactly_the_project_scoped_writes() -> None:
+    project_scoped = {group.key for group in c.TOOL_GROUPS if group.write is not None and group.write.project_scoped}
+
+    assert {key for key, _prompt, _default in c._QUICK_WRITE_PROMPTS} == project_scoped
+    assert len(c._QUICK_WRITE_PROMPTS) == len(project_scoped)
+
+
+@pytest.mark.parametrize(
+    ("chosen_prompt", "chosen_env_var"),
+    [
+        ("Work packages (create", "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"),
+        ("Projects (create", "OPENPROJECT_ENABLE_PROJECT_WRITE"),
+        ("Memberships (create", "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"),
+        ("Versions (create", "OPENPROJECT_ENABLE_VERSION_WRITE"),
+        ("Boards (create", "OPENPROJECT_ENABLE_BOARD_WRITE"),
+        ("Meetings (create", "OPENPROJECT_ENABLE_MEETING_WRITE"),
+    ],
+)
+def test_quick_write_prompt_flips_only_its_own_group(
+    monkeypatch, tmp_path: Path, chosen_prompt: str, chosen_env_var: str
+) -> None:
+    target = tmp_path / ".mcp.json"
+    answers = {
+        **_PROJECT_TARGET_ANSWERS,
+        "Enable write access?": "y",
+        "Writable projects": "",
+        **{prompt: ("y" if prompt == chosen_prompt else "n") for prompt in _QUICK_WRITE_SCOPE_DEFAULTS},
+    }
+    _run_main(monkeypatch, tmp_path, [_json_client(tmp_path / ".claude.json", project_target=target)], answers)
+
+    env = json.loads(target.read_text())["mcpServers"]["openproject"]["env"]
+    project_scoped_env_vars = [
+        "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
+        "OPENPROJECT_ENABLE_PROJECT_WRITE",
+        "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
+        "OPENPROJECT_ENABLE_VERSION_WRITE",
+        "OPENPROJECT_ENABLE_BOARD_WRITE",
+        "OPENPROJECT_ENABLE_MEETING_WRITE",
+    ]
+    for env_var in project_scoped_env_vars:
+        expected = "true" if env_var == chosen_env_var else "false"
+        assert env.get(env_var, "true") == expected, env_var
+
+
+def test_advanced_mode_asks_every_group_read_and_write(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    answers = {
+        **_PROJECT_TARGET_ANSWERS,
+        "Enable write access?": "y",
+        "Writable projects": "",
+        **dict.fromkeys(_TOOL_EXPOSURE_DEFAULTS, "y"),
+        **dict.fromkeys(_WRITE_CONTROL_DEFAULTS, "y"),
+        "Enable personal-data writes": "y",
+        **_ADVANCED_ONLY_DEFAULTS,
+        "Enable admin writes": "y",
+        "Enable user-schedule writes": "y",
+    }
+    _run_main(
+        monkeypatch,
+        tmp_path,
+        [_json_client(tmp_path / ".claude.json", project_target=target)],
+        answers,
+        argv=["--advanced"],
+    )
+
+    env = json.loads(target.read_text())["mcpServers"]["openproject"]["env"]
+    for group in c.TOOL_GROUPS:
+        assert env.get(group.read_env_var, str(group.read_default).lower()) == "true", group.read_env_var
+        if group.write is not None:
+            assert env.get(group.write.env_var, str(group.write.default).lower()) == "true", group.write.env_var
+
+
+def test_advanced_prompt_table_gates_writes_like_the_registry() -> None:
+    assert set(c._ADVANCED_PROMPTS) == {group.key for group in c.TOOL_GROUPS}
+    for group in c.TOOL_GROUPS:
+        prompts = c._ADVANCED_PROMPTS[group.key]
+        assert (prompts.write is None) == (group.write is None), group.key
+        if group.write is not None and prompts.write is not None:
+            _prompt, gate = prompts.write
+            assert (gate is c._WriteGate.WRITE_ACCESS) == group.write.project_scoped, group.key
+
+
+@pytest.mark.parametrize(
+    ("prog", "argv0", "expected"),
+    [
+        ("openproject-ce-mcp configure", "/usr/bin/openproject-ce-mcp", "usage: openproject-ce-mcp configure "),
+        (None, "/usr/bin/openproject-ce-mcp-setup", "usage: openproject-ce-mcp-setup "),
+        (None, "configure_mcp.py", "usage: configure_mcp.py "),
+    ],
+)
+def test_help_names_the_command_that_was_run(monkeypatch, capsys, prog, argv0, expected) -> None:
+    monkeypatch.setattr(c.sys, "argv", [argv0, "--help"])
+
+    with pytest.raises(SystemExit):
+        c.main(["--help"], prog=prog)
+
+    assert capsys.readouterr().out.startswith(expected)

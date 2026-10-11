@@ -56,9 +56,10 @@ async def list_sprints(
 ) -> SprintListResult:
     """List Backlogs sprints, optionally filtered by name search.
 
-    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display
-    name. Omit it to list every sprint visible to the current token across all
-    projects; pass it to list only sprints for that project.
+    project: identifier (e.g., "my-project"), numeric id (e.g., 7), or name; a unique
+    part of a name or identifier also matches. Omit it to list every sprint visible
+    to the current token across all projects; pass it to list only sprints for that
+    project.
 
     Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
 

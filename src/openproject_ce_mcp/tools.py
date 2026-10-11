@@ -8,7 +8,7 @@ from . import (
     tools_query_schema,  # noqa: F401 -- @register_tool side effect
     tools_user_schedule,  # noqa: F401 -- @register_tool side effect
 )
-from .config import Settings
+from .config import TOOL_GROUPS, Settings
 from .tools_admin import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports create_user/update_user/delete_user/set_user_locked/create_group/update_group/delete_group from here
     create_group,
     create_storage,
@@ -455,7 +455,7 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
 # "admin" (instance-wide, not gated by either allowlist) and not "personal"
 # (its own bespoke AND-gate below, independent of project scope).
 _PROJECT_SCOPED_WRITE_SCOPES: frozenset[str] = frozenset(
-    {"project", "work_package", "membership", "version", "board", "meeting"}
+    group.key for group in TOOL_GROUPS if group.write is not None and group.write.project_scoped
 )
 
 # Read-side counterpart, but at TOOL granularity rather than scope granularity:

@@ -330,8 +330,12 @@ def _update_user_handler(request: httpx.Request) -> httpx.Response:
 
 
 def _delete_user_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/users/9" and request.method == "GET":
+        return httpx.Response(
+            200, json={"_type": "User", "id": 9, "login": "ada", "name": "Ada", "_links": {}}, request=request
+        )
     if request.url.path == "/api/v3/users/9" and request.method == "DELETE":
-        return httpx.Response(204, request=request)
+        return httpx.Response(202, request=request)
     return _unexpected(request)
 
 
@@ -359,8 +363,10 @@ def _update_group_handler(request: httpx.Request) -> httpx.Response:
 
 
 def _delete_group_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/groups/3" and request.method == "GET":
+        return httpx.Response(200, json={"_type": "Group", "id": 3, "name": "Backend", "_links": {}}, request=request)
     if request.url.path == "/api/v3/groups/3" and request.method == "DELETE":
-        return httpx.Response(204, request=request)
+        return httpx.Response(202, request=request)
     return _unexpected(request)
 
 

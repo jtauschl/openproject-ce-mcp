@@ -12,6 +12,178 @@ class ConfigError(ValueError):
     """Raised when environment configuration is missing or invalid."""
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class GroupWrite:
+    attr: str
+    env_var: str
+    label: str
+    default: bool
+    # Bounded by OPENPROJECT_WRITE_PROJECTS, as opposed to instance-wide or own-account writes.
+    project_scoped: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ToolGroup:
+    key: str
+    read_scopes: tuple[str, ...]
+    read_attr: str
+    read_env_var: str
+    read_label: str
+    read_default: bool
+    write: GroupWrite | None
+
+
+# The one source for every tool group's env vars, Settings attributes,
+# defaults and the labels setup and doctor print. Every other group table
+# below is derived from it, so a new group cannot be wired up in one place
+# and missed in another.
+TOOL_GROUPS: tuple[ToolGroup, ...] = (
+    ToolGroup(
+        key="project",
+        read_scopes=("project",),
+        read_attr="enable_project_read",
+        read_env_var="OPENPROJECT_ENABLE_PROJECT_READ",
+        read_label="projects",
+        read_default=True,
+        write=GroupWrite(
+            attr="enable_project_write",
+            env_var="OPENPROJECT_ENABLE_PROJECT_WRITE",
+            label="Project",
+            default=True,
+            project_scoped=True,
+        ),
+    ),
+    ToolGroup(
+        key="work_package",
+        read_scopes=("work_package",),
+        read_attr="enable_work_package_read",
+        read_env_var="OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
+        read_label="work-packages",
+        read_default=True,
+        write=GroupWrite(
+            attr="enable_work_package_write",
+            env_var="OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
+            label="Work-package",
+            default=True,
+            project_scoped=True,
+        ),
+    ),
+    ToolGroup(
+        key="membership",
+        read_scopes=("membership", "role", "principal"),
+        read_attr="enable_membership_read",
+        read_env_var="OPENPROJECT_ENABLE_MEMBERSHIP_READ",
+        read_label="memberships",
+        read_default=True,
+        write=GroupWrite(
+            attr="enable_membership_write",
+            env_var="OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
+            label="Membership",
+            default=True,
+            project_scoped=True,
+        ),
+    ),
+    ToolGroup(
+        key="version",
+        read_scopes=("version",),
+        read_attr="enable_version_read",
+        read_env_var="OPENPROJECT_ENABLE_VERSION_READ",
+        read_label="versions",
+        read_default=True,
+        write=GroupWrite(
+            attr="enable_version_write",
+            env_var="OPENPROJECT_ENABLE_VERSION_WRITE",
+            label="Version",
+            default=True,
+            project_scoped=True,
+        ),
+    ),
+    ToolGroup(
+        key="board",
+        read_scopes=("board",),
+        read_attr="enable_board_read",
+        read_env_var="OPENPROJECT_ENABLE_BOARD_READ",
+        read_label="boards",
+        read_default=True,
+        write=GroupWrite(
+            attr="enable_board_write",
+            env_var="OPENPROJECT_ENABLE_BOARD_WRITE",
+            label="Board",
+            default=True,
+            project_scoped=True,
+        ),
+    ),
+    ToolGroup(
+        key="meeting",
+        read_scopes=("meeting",),
+        read_attr="enable_meeting_read",
+        read_env_var="OPENPROJECT_ENABLE_MEETING_READ",
+        read_label="meetings",
+        read_default=True,
+        write=GroupWrite(
+            attr="enable_meeting_write",
+            env_var="OPENPROJECT_ENABLE_MEETING_WRITE",
+            label="Meeting",
+            default=True,
+            project_scoped=True,
+        ),
+    ),
+    ToolGroup(
+        key="personal",
+        read_scopes=("personal",),
+        read_attr="enable_personal_read",
+        read_env_var="OPENPROJECT_ENABLE_PERSONAL_READ",
+        read_label="personal",
+        read_default=False,
+        write=GroupWrite(
+            attr="enable_personal_write",
+            env_var="OPENPROJECT_ENABLE_PERSONAL_WRITE",
+            label="Personal-data",
+            default=False,
+            project_scoped=False,
+        ),
+    ),
+    ToolGroup(
+        key="admin",
+        read_scopes=("admin",),
+        read_attr="enable_admin_read",
+        read_env_var="OPENPROJECT_ENABLE_ADMIN_READ",
+        read_label="admin",
+        read_default=False,
+        write=GroupWrite(
+            attr="enable_admin_write",
+            env_var="OPENPROJECT_ENABLE_ADMIN_WRITE",
+            label="Admin",
+            default=False,
+            project_scoped=False,
+        ),
+    ),
+    ToolGroup(
+        key="user_schedule",
+        read_scopes=("user_schedule",),
+        read_attr="enable_user_schedule_read",
+        read_env_var="OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
+        read_label="user-schedule",
+        read_default=False,
+        write=GroupWrite(
+            attr="enable_user_schedule_write",
+            env_var="OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE",
+            label="User-schedule",
+            default=False,
+            project_scoped=False,
+        ),
+    ),
+    ToolGroup(
+        key="extended",
+        read_scopes=("extended",),
+        read_attr="enable_metadata_tools",
+        read_env_var="OPENPROJECT_ENABLE_EXTENDED_READ",
+        read_label="extended",
+        read_default=False,
+        write=None,
+    ),
+)
+
 # Scope strings are internal literals written by this codebase, never user
 # input — an unrecognized one is always a programming error (typo, or a new
 # client.py call site whose scope was never wired up here) and must fail
@@ -19,79 +191,17 @@ class ConfigError(ValueError):
 # "admin" is a normal scope like any other here: instance-wide (not gated by
 # OPENPROJECT_READ_PROJECTS/WRITE_PROJECTS), but otherwise following the same
 # independent read/write axes as every other scope.
-_READ_SCOPE_SETTINGS: dict[str, str] = {
-    "project": "enable_project_read",
-    "work_package": "enable_work_package_read",
-    "membership": "enable_membership_read",
-    "role": "enable_membership_read",
-    "principal": "enable_membership_read",
-    "version": "enable_version_read",
-    "board": "enable_board_read",
-    "meeting": "enable_meeting_read",
-    "personal": "enable_personal_read",
-    "admin": "enable_admin_read",
-    "user_schedule": "enable_user_schedule_read",
-    "extended": "enable_metadata_tools",
-}
-_WRITE_SCOPE_SETTINGS: dict[str, str] = {
-    "project": "enable_project_write",
-    "work_package": "enable_work_package_write",
-    "membership": "enable_membership_write",
-    "version": "enable_version_write",
-    "board": "enable_board_write",
-    "meeting": "enable_meeting_write",
-    "personal": "enable_personal_write",
-    "admin": "enable_admin_write",
-    "user_schedule": "enable_user_schedule_write",
-}
-
-# attr name -> the individual boolean env var that controls it. Single source
-# of truth for client.py's error messages (READ_SCOPE_ENV_VAR below) so the
-# env var name is never hardcoded a second time.
-_READ_ATTR_ENV_VAR: dict[str, str] = {
-    "enable_project_read": "OPENPROJECT_ENABLE_PROJECT_READ",
-    "enable_work_package_read": "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
-    "enable_membership_read": "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-    "enable_version_read": "OPENPROJECT_ENABLE_VERSION_READ",
-    "enable_board_read": "OPENPROJECT_ENABLE_BOARD_READ",
-    "enable_meeting_read": "OPENPROJECT_ENABLE_MEETING_READ",
-    "enable_personal_read": "OPENPROJECT_ENABLE_PERSONAL_READ",
-    "enable_admin_read": "OPENPROJECT_ENABLE_ADMIN_READ",
-    "enable_user_schedule_read": "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
-    "enable_metadata_tools": "OPENPROJECT_ENABLE_EXTENDED_READ",
-}
-READ_SCOPE_ENV_VAR: dict[str, str] = {scope: _READ_ATTR_ENV_VAR[attr] for scope, attr in _READ_SCOPE_SETTINGS.items()}
+_READ_SCOPE_SETTINGS: dict[str, str] = {scope: g.read_attr for g in TOOL_GROUPS for scope in g.read_scopes}
+_WRITE_SCOPE_SETTINGS: dict[str, str] = {g.key: g.write.attr for g in TOOL_GROUPS if g.write is not None}
+READ_SCOPE_ENV_VAR: dict[str, str] = {scope: g.read_env_var for g in TOOL_GROUPS for scope in g.read_scopes}
 
 # (write_flag_key, read_flag_key, write_env_var, read_env_var) tuples: a True
 # write flag whose matching read flag is False is a startup-time ConfigError
 # (see tool_exposure_violations below). Shared by Settings.from_env's
 # validation and setup_cli.py's pre-write wizard reconciliation so the rule
 # lives in exactly one place.
-WRITE_GROUP_REQUIREMENTS: tuple[tuple[str, str, str, str], ...] = (
-    ("project_write", "project_read", "OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
-    (
-        "work_package_write",
-        "work_package_read",
-        "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
-        "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
-    ),
-    (
-        "membership_write",
-        "membership_read",
-        "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
-        "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-    ),
-    ("version_write", "version_read", "OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
-    ("board_write", "board_read", "OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
-    ("meeting_write", "meeting_read", "OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
-    ("personal_write", "personal_read", "OPENPROJECT_ENABLE_PERSONAL_WRITE", "OPENPROJECT_ENABLE_PERSONAL_READ"),
-    ("admin_write", "admin_read", "OPENPROJECT_ENABLE_ADMIN_WRITE", "OPENPROJECT_ENABLE_ADMIN_READ"),
-    (
-        "user_schedule_write",
-        "user_schedule_read",
-        "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE",
-        "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
-    ),
+WRITE_GROUP_REQUIREMENTS: tuple[tuple[str, str, str, str], ...] = tuple(
+    (f"{g.key}_write", f"{g.key}_read", g.write.env_var, g.read_env_var) for g in TOOL_GROUPS if g.write is not None
 )
 
 
@@ -296,16 +406,12 @@ class Settings:
         api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
         read_projects = _parse_csv(env.get("OPENPROJECT_READ_PROJECTS"))
         write_projects = _parse_csv(env.get("OPENPROJECT_WRITE_PROJECTS"))
-        enable_project_read = _bool_env(env, "OPENPROJECT_ENABLE_PROJECT_READ", default=True)
-        enable_work_package_read = _bool_env(env, "OPENPROJECT_ENABLE_WORK_PACKAGE_READ", default=True)
-        enable_membership_read = _bool_env(env, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", default=True)
-        enable_version_read = _bool_env(env, "OPENPROJECT_ENABLE_VERSION_READ", default=True)
-        enable_board_read = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_READ", default=True)
-        enable_meeting_read = _bool_env(env, "OPENPROJECT_ENABLE_MEETING_READ", default=True)
-        enable_personal_read = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_READ", default=False)
-        enable_admin_read = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_READ", default=False)
-        enable_user_schedule_read = _bool_env(env, "OPENPROJECT_ENABLE_USER_SCHEDULE_READ", default=False)
-        enable_metadata_tools = _bool_env(env, "OPENPROJECT_ENABLE_EXTENDED_READ", default=False)
+        group_flags = {g.read_attr: _bool_env(env, g.read_env_var, default=g.read_default) for g in TOOL_GROUPS}
+        group_flags |= {
+            g.write.attr: _bool_env(env, g.write.env_var, default=g.write.default)
+            for g in TOOL_GROUPS
+            if g.write is not None
+        }
         hidden_fields = {
             entity: patterns
             for entity, env_name in HIDE_FIELD_ENV_BY_ENTITY.items()
@@ -315,15 +421,6 @@ class Settings:
         hide_work_package_fields = hidden_fields.get("work_package", ())
         hide_activity_fields = hidden_fields.get("activity", ())
         hide_custom_fields = _parse_csv(env.get("OPENPROJECT_HIDE_CUSTOM_FIELDS"))
-        enable_project_write = _bool_env(env, "OPENPROJECT_ENABLE_PROJECT_WRITE", default=True)
-        enable_work_package_write = _bool_env(env, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", default=True)
-        enable_membership_write = _bool_env(env, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", default=True)
-        enable_version_write = _bool_env(env, "OPENPROJECT_ENABLE_VERSION_WRITE", default=True)
-        enable_board_write = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_WRITE", default=True)
-        enable_meeting_write = _bool_env(env, "OPENPROJECT_ENABLE_MEETING_WRITE", default=True)
-        enable_personal_write = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_WRITE", default=False)
-        enable_admin_write = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_WRITE", default=False)
-        enable_user_schedule_write = _bool_env(env, "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", default=False)
         timeout = _float_env(env, "OPENPROJECT_TIMEOUT", default=12.0, minimum=1.0)
         verify_ssl = _bool_env(env, "OPENPROJECT_VERIFY_SSL", default=True)
         default_page_size = _int_env(
@@ -371,28 +468,8 @@ class Settings:
         if max_page_size > max_results:
             raise ConfigError("OPENPROJECT_MAX_PAGE_SIZE must not exceed OPENPROJECT_MAX_RESULTS.")
 
-        read_flags = {
-            "project_read": enable_project_read,
-            "work_package_read": enable_work_package_read,
-            "membership_read": enable_membership_read,
-            "version_read": enable_version_read,
-            "board_read": enable_board_read,
-            "meeting_read": enable_meeting_read,
-            "personal_read": enable_personal_read,
-            "admin_read": enable_admin_read,
-            "user_schedule_read": enable_user_schedule_read,
-        }
-        write_flags = {
-            "project_write": enable_project_write,
-            "work_package_write": enable_work_package_write,
-            "membership_write": enable_membership_write,
-            "version_write": enable_version_write,
-            "board_write": enable_board_write,
-            "meeting_write": enable_meeting_write,
-            "personal_write": enable_personal_write,
-            "admin_write": enable_admin_write,
-            "user_schedule_write": enable_user_schedule_write,
-        }
+        read_flags = {f"{g.key}_read": group_flags[g.read_attr] for g in TOOL_GROUPS}
+        write_flags = {f"{g.key}_write": group_flags[g.write.attr] for g in TOOL_GROUPS if g.write is not None}
         violations = tool_exposure_violations(read_flags, write_flags)
         if violations:
             _, _, write_env_var, read_env_var = violations[0]
@@ -410,35 +487,17 @@ class Settings:
             text_limit=text_limit,
             read_projects=read_projects,
             write_projects=write_projects,
-            enable_project_read=enable_project_read,
-            enable_work_package_read=enable_work_package_read,
-            enable_membership_read=enable_membership_read,
-            enable_version_read=enable_version_read,
-            enable_board_read=enable_board_read,
-            enable_meeting_read=enable_meeting_read,
-            enable_personal_read=enable_personal_read,
-            enable_admin_read=enable_admin_read,
-            enable_user_schedule_read=enable_user_schedule_read,
             hide_project_fields=hide_project_fields,
             hide_work_package_fields=hide_work_package_fields,
             hide_activity_fields=hide_activity_fields,
             hide_custom_fields=hide_custom_fields,
             hidden_fields=hidden_fields,
-            enable_project_write=enable_project_write,
-            enable_work_package_write=enable_work_package_write,
-            enable_membership_write=enable_membership_write,
-            enable_version_write=enable_version_write,
-            enable_board_write=enable_board_write,
-            enable_meeting_write=enable_meeting_write,
-            enable_personal_write=enable_personal_write,
-            enable_admin_write=enable_admin_write,
-            enable_user_schedule_write=enable_user_schedule_write,
-            enable_metadata_tools=enable_metadata_tools,
             attachment_root=attachment_root,
             attachment_content_max_bytes=attachment_content_max_bytes,
             max_retries=max_retries,
             retry_base_delay=retry_base_delay,
             retry_max_delay=retry_max_delay,
+            **group_flags,
         )
 
 

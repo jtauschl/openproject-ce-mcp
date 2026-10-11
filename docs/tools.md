@@ -524,9 +524,10 @@ later still). Meeting Outcomes require 17.6+ throughout.
 | `cancel_recurring_meeting_occurrence` | Validate and then cancel a not-yet-materialized occurrence (addressed by `start_time`); only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
 
 > **Note:** `cancel_recurring_meeting_occurrence` on an occurrence that has NOT
-> yet been materialized creates a new, **permanently cancelled** meeting
-> server-side to record the cancellation — this is a real, permanent
-> data-creation side effect behind what reads like a pure "cancel" call. The
+> yet been materialized creates a cancelled meeting server-side to record the
+> cancellation. This is a data-creation side effect behind what reads like a
+> pure "cancel" call. `init_recurring_meeting_occurrence` restores it, and a later
+> schedule change of the series other than the time of day can delete it. The
 > response does not report that new meeting's id (OpenProject returns 204
 > with no body); use `list_meetings` or `list_recurring_meeting_occurrences`
 > with `filter="cancelled"` to find it afterward if needed. If the occurrence

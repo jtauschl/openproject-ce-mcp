@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.user_api import UserFormResult, UserRecord
 from openproject_ce_mcp.app.services.user_service import UserService
 from openproject_ce_mcp.models import UserDetail, UserSummary
@@ -511,14 +511,58 @@ async def test_delete_denies_target_outside_admin_write_and_never_calls_commit()
 
 
 @pytest.mark.asyncio
-async def test_delete_preview_does_not_call_commit() -> None:
-    api = _FakeUserApi()
+async def test_delete_preview_shows_the_user_and_does_not_call_commit() -> None:
+    api = _FakeUserApi([_record(user_id=5, login="ada", name="Ada Lovelace")])
     service = _service(api, settings=_admin_write_settings())
 
     result = await service.delete(5, confirm=False)
 
     assert result.state == "preview"
+    assert result.result is not None
+    assert (result.result.id, result.result.login, result.result.name) == (5, "ada", "Ada Lovelace")
+    assert api.get_user_calls == ["5"]
     assert api.commit_delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_hides_configured_user_fields() -> None:
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": ("email",)})
+    api = _FakeUserApi([_record(user_id=5)])
+    service = _service(api, settings=settings)
+
+    result = await service.delete(5, confirm=False)
+
+    assert result.result is not None
+    assert result.result.id == 5
+    assert result.result._hidden_keys == frozenset({"email"})
+
+
+class _MissingUserApi(_FakeUserApi):
+    async def get_user(self, user_ref: str) -> UserRecord:
+        self.get_user_calls.append(user_ref)
+        raise NotFoundError(f"User {user_ref} not found.")
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_of_an_unknown_user_is_not_found() -> None:
+    api = _MissingUserApi()
+    service = _service(api, settings=_admin_write_settings())
+
+    with pytest.raises(NotFoundError):
+        await service.delete(99, confirm=False)
+
+    assert api.commit_delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_reads_nothing_without_admin_write() -> None:
+    api = _FakeUserApi([_record(user_id=5)])
+    service = _service(api)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(5, confirm=False)
+
+    assert api.get_user_calls == []
 
 
 @pytest.mark.asyncio
@@ -531,6 +575,9 @@ async def test_delete_commits_when_confirmed() -> None:
     assert result.state == "confirmed"
     assert result.user_id == 5
     assert api.commit_delete_calls == [5]
+    assert result.message == (
+        "User deletion accepted: OpenProject blocks the account at once and deletes the user in a background job."
+    )
 
 
 # --- lock/unlock ---------------------------------------------------------

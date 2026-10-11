@@ -225,6 +225,8 @@ async def delete_attachment(
 async def list_work_package_file_links(
     ctx: Context,
     work_package_id: int | str,
+    offset: int = 1,
+    limit: int | None = None,
     select: list[str] | None = None,
 ) -> FileLinkListResult:
     """List Nextcloud file links attached to a work package (Community Edition).
@@ -232,11 +234,16 @@ async def list_work_package_file_links(
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
     select fields: id, title (see server instructions for select's general semantics).
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=FileLinkSummary)
-    return await _run_tool(client.file_link.list_for_work_package(safe_id))
+    return await _run_tool(client.file_link.list_for_work_package(safe_id, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool

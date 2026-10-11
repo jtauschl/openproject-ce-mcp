@@ -467,8 +467,9 @@ and no dedicated `<domain>_policy.py` — the only access decision left to this
 codebase is its own dedicated `user_schedule` scope
 (`OPENPROJECT_ENABLE_USER_SCHEDULE_READ`/`_WRITE`, both default `false`), a pure
 surface-exposure opt-in independent of OpenProject's own server-side check,
-following the established one-scope-per-domain pattern (Board, Version,
-Membership, Project each have their own pair) rather than overloading `admin`
+following the established one-scope-per-domain pattern (every tool group in
+config.py's `TOOL_GROUPS` has its own read flag, and its own write flag where it
+writes) rather than overloading `admin`
 (which would incorrectly block ordinary self-service) or `personal` (which has
 no `user_id` parameter anywhere in its existing tools).
 
@@ -647,12 +648,15 @@ The model has two independent layers:
 
 **Layer 1 — MCP server gates** (env var flags, checked before any HTTP call):
 
-- the 9 individual `OPENPROJECT_ENABLE_<GROUP>_READ` flags (which read scopes
-  are exposed at all; `OPENPROJECT_ENABLE_EXTENDED_READ` opt-in exposes a
-  rarely-used subset of metadata tools, `OPENPROJECT_ENABLE_ADMIN_READ` opt-in
-  exposes the instance-wide user/group list)
-- scoped write-group flags such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, plus
-  `OPENPROJECT_ENABLE_ADMIN_WRITE`
+- one `OPENPROJECT_ENABLE_<GROUP>_READ` flag per tool group (which read scopes
+  are exposed at all; the opt-in `OPENPROJECT_ENABLE_EXTENDED_READ` exposes a
+  rarely-used subset of metadata tools, `OPENPROJECT_ENABLE_ADMIN_READ` the
+  instance-wide user/group list, `OPENPROJECT_ENABLE_PERSONAL_READ` the
+  caller's own preferences and notifications,
+  `OPENPROJECT_ENABLE_USER_SCHEDULE_READ` per-user vacations and working hours)
+- project-scoped write flags such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`,
+  plus the instance-wide or own-account `OPENPROJECT_ENABLE_PERSONAL_WRITE`,
+  `OPENPROJECT_ENABLE_ADMIN_WRITE` and `OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE`
 - `OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS` (fail-closed: empty
   or unset denies all project-scoped access on that side)
 - `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS` (see

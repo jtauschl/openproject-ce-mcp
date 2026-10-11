@@ -17,7 +17,7 @@ from mcp.server.mcpserver import MCPServer
 
 from openproject_ce_mcp import tools
 from openproject_ce_mcp import tools_runtime as _tools_runtime
-from openproject_ce_mcp.config import ConfigError, Settings
+from openproject_ce_mcp.config import TOOL_GROUPS, ConfigError, Settings
 
 
 def make_settings(**overrides) -> Settings:
@@ -35,34 +35,14 @@ def make_settings(**overrides) -> Settings:
     return Settings(**defaults)
 
 
-ALL_READ_OFF = {
-    "enable_project_read": False,
-    "enable_work_package_read": False,
-    "enable_membership_read": False,
-    "enable_version_read": False,
-    "enable_board_read": False,
-    "enable_personal_read": False,
-}
-ALL_READ_ON = {
-    "enable_project_read": True,
-    "enable_work_package_read": True,
-    "enable_membership_read": True,
-    "enable_version_read": True,
-    "enable_board_read": True,
-    "enable_meeting_read": True,
-    "enable_personal_read": True,
-}
-# The 6 project-scoped write flags now default True on the Settings dataclass
-# itself (direct Settings(**kwargs) construction, unlike Settings.from_env,
-# never validates that combination) — write-delta tests need an explicit
-# all-off baseline to observe a real delta.
+ALL_READ_OFF = {group.read_attr: False for group in TOOL_GROUPS}
+ALL_READ_ON = {group.read_attr: True for group in TOOL_GROUPS}
+# The project-scoped write flags default True on the Settings dataclass itself
+# (direct Settings(**kwargs) construction, unlike Settings.from_env, never
+# validates that combination) — write-delta tests need an explicit all-off
+# baseline to observe a real delta.
 ALL_WRITE_OFF = {
-    "enable_project_write": False,
-    "enable_work_package_write": False,
-    "enable_membership_write": False,
-    "enable_version_write": False,
-    "enable_board_write": False,
-    "enable_meeting_write": False,
+    group.write.attr: False for group in TOOL_GROUPS if group.write is not None and group.write.project_scoped
 }
 
 
@@ -309,12 +289,10 @@ def test_write_delta_uses_all_reads_on_baseline() -> None:
 
 def test_admin_write_toggle_is_independent() -> None:
     # admin_write requires its own admin_read (like every other write flag
-    # requires its matching read) — pass it explicitly on both sides so this
+    # requires its matching read); ALL_READ_ON has it on both sides, so this
     # doesn't codify a combination Settings.from_env would reject at startup.
-    without = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_admin_read=True)))
-    with_admin = set(
-        tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_admin_read=True, enable_admin_write=True))
-    )
+    without = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON)))
+    with_admin = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_admin_write=True)))
     assert with_admin - without == set(tools.ADMIN_WRITE_TOOLS)
 
 
@@ -332,15 +310,11 @@ def test_user_schedule_read_true_exposes_user_schedule_tools() -> None:
 
 def test_user_schedule_write_toggle_is_independent() -> None:
     # user_schedule_write requires its own user_schedule_read (like every
-    # other write flag requires its matching read) -- pass it explicitly on
-    # both sides so this doesn't codify a combination Settings.from_env would
+    # other write flag requires its matching read); ALL_READ_ON has it on both
+    # sides, so this doesn't codify a combination Settings.from_env would
     # reject at startup.
-    without = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_user_schedule_read=True)))
-    with_user_schedule = set(
-        tools.enabled_tool_names(
-            make_settings(**ALL_READ_ON, enable_user_schedule_read=True, enable_user_schedule_write=True)
-        )
-    )
+    without = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON)))
+    with_user_schedule = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_user_schedule_write=True)))
     assert with_user_schedule - without == set(tools.WRITE_TOOLS_BY_SCOPE["user_schedule"])
 
 
@@ -348,7 +322,7 @@ def test_metadata_tools_need_their_additional_read_scopes_too() -> None:
     extended_tools = tools.READ_TOOLS_BY_SCOPE["extended"]
 
     # All reads on: all 12 extended-group tools appear.
-    full = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_metadata_tools=True)))
+    full = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON)))
     assert set(extended_tools) <= full
 
     # Board+work_package read off: the 7 dependent tools disappear, the other
@@ -357,7 +331,6 @@ def test_metadata_tools_need_their_additional_read_scopes_too() -> None:
         tools.enabled_tool_names(
             make_settings(
                 **{**ALL_READ_ON, "enable_board_read": False, "enable_work_package_read": False},
-                enable_metadata_tools=True,
             )
         )
     )
@@ -459,9 +432,8 @@ def test_project_scoped_write_tools_need_both_allowlists_non_empty(scope: str) -
 # is non-empty; unlike the write side this is gated on read_projects alone,
 # never write_projects (reading is independent of write authorization).
 
-# Historically "the five project scopes" -- now six with Meetings added,
-# name kept for continuity with existing test/doc references.
-_FIVE_PROJECT_SCOPE_NAMES = ("project", "work_package", "membership", "version", "board", "meeting")
+# Literal, not derived from TOOL_GROUPS: these are the expected core scopes.
+_CORE_SCOPE_NAMES = ("project", "work_package", "membership", "version", "board", "meeting")
 
 # Independently hardcoded, NOT derived from tools._PROJECT_SCOPED_READ_TOOLS —
 # per this module's own convention (see module docstring), so a project-scoped
@@ -487,23 +459,23 @@ _EXPECTED_GLOBAL_READ_TOOLS = frozenset(
 )
 
 
-def _all_five_scope_tools() -> set[str]:
-    return {name for scope in _FIVE_PROJECT_SCOPE_NAMES for name in tools.READ_TOOLS_BY_SCOPE[scope]}
+def _all_core_scope_tools() -> set[str]:
+    return {name for scope in _CORE_SCOPE_NAMES for name in tools.READ_TOOLS_BY_SCOPE[scope]}
 
 
-def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
-    all_five_scope_tools = _all_five_scope_tools()
-    assert len(all_five_scope_tools) == 85  # list_project_storages/get_project_storage, get_attachment_content added
-    assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
-    assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
+def test_project_scoped_and_global_read_tools_partition_the_core_scopes() -> None:
+    all_core_scope_tools = _all_core_scope_tools()
+    assert len(all_core_scope_tools) == 85  # list_project_storages/get_project_storage, get_attachment_content added
+    assert _EXPECTED_GLOBAL_READ_TOOLS <= all_core_scope_tools
+    assert tools._PROJECT_SCOPED_READ_TOOLS == all_core_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)
     assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 71
 
 
 def test_project_scoped_read_tools_absent_when_read_projects_empty() -> None:
     registered = tools.enabled_tool_names(make_settings(**ALL_READ_ON, read_projects=(), write_projects=()))
-    registered_from_five_scopes = _all_five_scope_tools() & set(registered)
-    assert registered_from_five_scopes == _EXPECTED_GLOBAL_READ_TOOLS
+    registered_from_core_scopes = _all_core_scope_tools() & set(registered)
+    assert registered_from_core_scopes == _EXPECTED_GLOBAL_READ_TOOLS
 
 
 @pytest.mark.parametrize(
@@ -522,25 +494,27 @@ def test_read_registration_ignores_write_projects(
         )
     )
     # Asserted against the full independently-derived project-scoped set, not
-    # a sample, so this actually proves write_projects-independence for all
-    # 46 tools, not just three of them.
-    all_project_scoped = _all_five_scope_tools() - _EXPECTED_GLOBAL_READ_TOOLS
+    # a sample, so this actually proves write_projects-independence for every
+    # one of them, not just three.
+    all_project_scoped = _all_core_scope_tools() - _EXPECTED_GLOBAL_READ_TOOLS
     if project_scoped_tools_expected:
         assert all_project_scoped <= registered
     else:
         assert all_project_scoped.isdisjoint(registered)
 
 
-def test_full_allowlist_registers_all_58_and_other_scopes_unaffected() -> None:
+def test_full_allowlist_registers_all_core_reads_and_other_scopes_unaffected() -> None:
     empty = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, read_projects=(), write_projects=())))
     full = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, read_projects=("*",), write_projects=("*",))))
 
-    assert _all_five_scope_tools() <= full
+    assert _all_core_scope_tools() <= full
 
     other_scope_tools = {
-        name for scope in ("personal", "admin", "extended") for name in tools.READ_TOOLS_BY_SCOPE[scope]
+        name
+        for scope in ("personal", "admin", "user_schedule", "extended")
+        for name in tools.READ_TOOLS_BY_SCOPE[scope]
     }
-    # personal/admin/extended registration depends only on their own enable
+    # personal/admin/user_schedule/extended registration depends only on their own enable
     # flags, not on read_projects — this new gate must not affect them.
     assert (other_scope_tools & empty) == (other_scope_tools & full)
 

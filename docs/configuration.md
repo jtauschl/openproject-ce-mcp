@@ -27,17 +27,18 @@ global-vs-project-scoped question every mode asks first:
 
 - **`configure` / `configure --quick`** (the default) — client target(s), base
   URL, token, readable projects, and (if write access is enabled) a Y/N per
-  project-scoped write category — work packages, projects, memberships,
-  versions, boards — mapped directly to the matching
+  project-scoped write category (work packages, projects, memberships,
+  versions, boards, meetings), mapped directly to the matching
   `OPENPROJECT_ENABLE_*_WRITE` flag. These prompts do not touch personal-data
-  writes (`OPENPROJECT_ENABLE_PERSONAL_WRITE`) or admin writes
-  (`OPENPROJECT_ENABLE_ADMIN_WRITE`) — those are independent and keep whatever
-  value they already had (off, on a fresh setup). Use `--advanced` to change
-  them.
-- **`configure --advanced`** — the full questionnaire: detailed per-chain
-  read/write groups, field filtering, individual write flags (including
-  personal-data and admin writes), and runtime settings, in addition to the
-  quick-mode questions. Reconfiguring an existing setup with `--quick` leaves
+  writes (`OPENPROJECT_ENABLE_PERSONAL_WRITE`), admin writes
+  (`OPENPROJECT_ENABLE_ADMIN_WRITE`) or user-schedule writes
+  (`OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE`); those are independent and keep
+  whatever value they already had (off, on a fresh setup). Use `--advanced` to
+  change them.
+- **`configure --advanced`** runs the full questionnaire: every tool group's read
+  and write controls (including personal-data, admin and user-schedule writes),
+  field filtering, and runtime settings, in addition to the quick-mode
+  questions. Reconfiguring an existing setup with `--quick` leaves
   any advanced-only values you'd previously set untouched.
 - **`configure --uninstall`** — removes the `openproject` entry from client
   configs instead of writing one; see [Installation](installation.md#uninstall).
@@ -77,20 +78,24 @@ packages.
 
 ## Tool Groups
 
-Each of the 9 tool groups below has its own `OPENPROJECT_ENABLE_<GROUP>_READ`
+Each tool group below has its own `OPENPROJECT_ENABLE_<GROUP>_READ`
 boolean controlling whether that group's tools are registered at all — this
 governs tool *visibility* (and context-token budget), not data access; the
 actual security boundary is `OPENPROJECT_READ_PROJECTS` /
 `OPENPROJECT_WRITE_PROJECTS` plus the write flags below.
 
-The 6 core groups default `true` (a fresh setup gets the full read surface for
-them). `personal`, `extended`, and `admin` default `false` — they are opt-in
-because they surface data with a different exposure profile than the core-6:
-`personal` your own preferences/notifications, `extended` rarely-needed metadata
-tools, and `admin` the instance-wide user/group list (names, logins, emails) via
-`list_users`/`get_user`/`list_groups`/`get_group`/`list_principals` — none of
-that is bounded by a project scope the way the core-6 are, so it stays out of
-the tool set until explicitly requested.
+The core groups (projects, work packages, memberships, versions, boards,
+meetings) default `true`, so a fresh setup gets their full read surface.
+`OPENPROJECT_ENABLE_PERSONAL_READ`, `OPENPROJECT_ENABLE_ADMIN_READ`,
+`OPENPROJECT_ENABLE_USER_SCHEDULE_READ` and `OPENPROJECT_ENABLE_EXTENDED_READ`
+default `false`; they are opt-in because they surface data with a different
+exposure profile than the core groups: `personal` your own
+preferences/notifications, `admin` the instance-wide user/group list (names,
+logins, emails) via `list_users`/`get_user`/`list_groups`/`get_group`/
+`list_principals`, `user_schedule` per-user vacations and working hours, and
+`extended` rarely-needed metadata tools. None of that is bounded by a project
+scope the way the core groups are, so it stays out of the tool set until
+explicitly requested.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -107,15 +112,15 @@ the tool set until explicitly requested.
 
 Each write flag below requires its matching read boolean to be `true` — e.g.
 `OPENPROJECT_ENABLE_BOARD_WRITE=true` with `OPENPROJECT_ENABLE_BOARD_READ=false`
-fails at startup with a clear error. The 6 project-scoped write flags default
-`true`, since the real gate for them is the project allowlists above (a write
+fails at startup with a clear error. The project-scoped write flags (the core
+groups' writes) default `true`, since the real gate for them is the project allowlists above (a write
 flag alone does nothing without a project in `OPENPROJECT_WRITE_PROJECTS`, and
 the corresponding write tools aren't even registered unless both
 `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` are non-empty); set
 one to `false` to carve out an exception once you've granted write access.
-`OPENPROJECT_ENABLE_PERSONAL_WRITE` and `OPENPROJECT_ENABLE_ADMIN_WRITE` default
-`false` — neither is bounded by a project allowlist, so there is no equivalent
-safety net for them.
+`OPENPROJECT_ENABLE_PERSONAL_WRITE`, `OPENPROJECT_ENABLE_ADMIN_WRITE` and
+`OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE` default `false`; none is bounded by a
+project allowlist, so there is no equivalent safety net for them.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |

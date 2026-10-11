@@ -721,7 +721,7 @@ def test_list_work_package_meeting_agenda_items_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_work_package_meeting_agenda_items"]
     assert (
         tool.description
-        == "List meeting agenda items linked to a work package.\n\nRequires OpenProject 17.4+.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\n\nThis list is unpaginated server-side — offset/limit are applied\nclient-side by this MCP.\n\nselect fields: id, title, notes (see server instructions for select's\ngeneral semantics).\n\ntext_limit caps each item's notes at that many characters (default: the\nserver's configured OPENPROJECT_TEXT_LIMIT, NOT unlimited). When text is\ncut, notes_truncated is true and notes_length reports the real length.\n"
+        == "List meeting agenda items linked to a work package.\n\nRequires OpenProject 17.7+.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\n\nThis list is unpaginated server-side — offset/limit are applied\nclient-side by this MCP.\n\nselect fields: id, title, notes (see server instructions for select's\ngeneral semantics).\n\ntext_limit caps each item's notes at that many characters (default: the\nserver's configured OPENPROJECT_TEXT_LIMIT, NOT unlimited). When text is\ncut, notes_truncated is true and notes_length reports the real length.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -795,7 +795,7 @@ def test_list_work_package_meeting_agenda_items_schema() -> None:
 
 def test_get_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_meeting_agenda_item"]
-    assert tool.description == "Get a single meeting agenda item by id.\n\nRequires OpenProject 17.4+.\n"
+    assert tool.description == "Get a single meeting agenda item by id.\n\nRequires OpenProject 17.6+.\n"
     assert tool.output_schema == {
         "properties": {
             "id": {
@@ -1005,7 +1005,7 @@ def test_create_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_meeting_agenda_item"]
     assert (
         tool.description
-        == 'Prepare or create a meeting agenda item; only writes when called\nagain with confirm=true.\n\nRequires OpenProject 17.4+.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number; optional.\nmeeting_section_id: an existing section\'s id (from list_meeting_sections); optional.\n'
+        == 'Prepare or create a meeting agenda item; only writes when called\nagain with confirm=true.\n\nRequires OpenProject 17.6+.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number; optional.\nmeeting_section_id: an existing section\'s id (from list_meeting_sections); optional.\n'
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1112,7 +1112,7 @@ def test_update_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_meeting_agenda_item"]
     assert (
         tool.description
-        == "Prepare or update a meeting agenda item; only writes when called\nagain with confirm=true.\n\nRequires OpenProject 17.4+.\n"
+        == "Prepare or update a meeting agenda item; only writes when called\nagain with confirm=true.\n\nRequires OpenProject 17.6+.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1226,7 +1226,7 @@ def test_delete_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["delete_meeting_agenda_item"]
     assert (
         tool.description
-        == "Prepare or delete a meeting agenda item; only deletes when called\nagain with confirm=true.\n\nRequires OpenProject 17.4+.\n"
+        == "Prepare or delete a meeting agenda item; only deletes when called\nagain with confirm=true.\n\nRequires OpenProject 17.6+.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1661,7 +1661,7 @@ def test_list_meeting_sections_schema() -> None:
 
 def test_get_meeting_section_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_meeting_section"]
-    assert tool.description == "Get a single meeting section by id.\n\nRequires OpenProject 17.4+.\n"
+    assert tool.description == "Get a single meeting section by id.\n\nRequires OpenProject 17.6+.\n"
     assert tool.output_schema == {
         "properties": {
             "id": {
@@ -1762,7 +1762,7 @@ def test_create_meeting_section_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_meeting_section"]
     assert (
         tool.description
-        == "Prepare or create a meeting section; only writes when called again\nwith confirm=true.\n\nRequires OpenProject 17.4+.\n\nbacklog cannot be changed after creation via update_meeting_section —\npass it only here, on create.\n"
+        == "Prepare or create a meeting section; only writes when called again\nwith confirm=true.\n\nRequires OpenProject 17.6+.\n\nbacklog cannot be changed after creation via update_meeting_section —\npass it only here, on create.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1821,7 +1821,7 @@ def test_update_meeting_section_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_meeting_section"]
     assert (
         tool.description
-        == "Prepare or update a meeting section's title/position; only writes\nwhen called again with confirm=true.\n\nRequires OpenProject 17.4+.\n\nbacklog cannot be changed after creation — this tool does not accept it.\n"
+        == "Prepare or update a meeting section's title/position; only writes\nwhen called again with confirm=true.\n\nRequires OpenProject 17.6+.\n\nbacklog cannot be changed after creation — this tool does not accept it.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1875,7 +1875,7 @@ def test_delete_meeting_section_schema() -> None:
     tool = _tools(create_app(_make_settings()))["delete_meeting_section"]
     assert (
         tool.description
-        == "Prepare or delete a meeting section; only deletes when called again\nwith confirm=true.\n\nRequires OpenProject 17.4+.\n"
+        == "Prepare or delete a meeting section; only deletes when called again\nwith confirm=true.\n\nRequires OpenProject 17.6+.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -2370,7 +2370,7 @@ def test_update_recurring_meeting_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_recurring_meeting"]
     assert (
         tool.description
-        == "Prepare or update an OpenProject recurring meeting series; only\nwrites when called again with confirm=true.\n\nRequires OpenProject 17.4+.\n\nNote: this does not affect meetings already materialized from this\nseries (via init_recurring_meeting_occurrence) — update those directly\nwith update_meeting.\n"
+        == "Prepare or update an OpenProject recurring meeting series; only\nwrites when called again with confirm=true.\n\nRequires OpenProject 17.4+.\n\nAlready materialized future occurrences move and are renamed with the\nseries. A schedule change other than the time of day can delete cancelled\noccurrences; on 17.4 to 17.8 a time-of-day change also rewrites the slot\ntimes of past occurrences.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -2601,7 +2601,7 @@ def test_cancel_recurring_meeting_occurrence_schema() -> None:
     tool = _tools(create_app(_make_settings()))["cancel_recurring_meeting_occurrence"]
     assert (
         tool.description
-        == "Prepare or cancel a virtual (not-yet-materialized) recurring-meeting\noccurrence; only writes when called again with confirm=true.\n\nRequires OpenProject 17.4+.\n\nstart_time: the occurrence's exact start time (ISO 8601), matching\ninit_recurring_meeting_occurrence's addressing scheme.\n\nIf the occurrence has already been materialized into a real Meeting and\nis not itself cancelled, this fails with an error (delete_meeting the\nmaterialized meeting directly instead). If NOT yet materialized,\nOpenProject creates a new, PERMANENTLY cancelled Meeting server-side to\nrecord the cancellation — this call's result does not report that new\nmeeting's id; list_meetings/list_recurring_meeting_occurrences(filter=\n\"cancelled\") can be used to find it afterward if needed.\n"
+        == "Prepare or cancel a virtual (not-yet-materialized) recurring-meeting\noccurrence; only writes when called again with confirm=true.\n\nRequires OpenProject 17.4+.\n\nstart_time: the occurrence's exact start time (ISO 8601), matching\ninit_recurring_meeting_occurrence's addressing scheme.\n\nIf the occurrence has already been materialized into a real Meeting and\nis not itself cancelled, this fails with an error (delete_meeting the\nmaterialized meeting directly instead). If NOT yet materialized,\nOpenProject records the cancellation as a cancelled Meeting\n(init_recurring_meeting_occurrence restores it, a later schedule change of\nthe series other than the time of day can delete it) — this call's result\ndoes not report that new meeting's id; list_meetings/\nlist_recurring_meeting_occurrences(filter=\"cancelled\") can be used to find\nit afterward if needed.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

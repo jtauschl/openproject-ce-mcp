@@ -1137,18 +1137,18 @@ async def test_file_link_tools_pass_expected_arguments() -> None:
         def file_link(self):
             return self
 
-        async def list_for_work_package(self, work_package_id):
-            return {"work_package_id": work_package_id}
+        async def list_for_work_package(self, work_package_id, **kwargs):
+            return {"work_package_id": work_package_id, **kwargs}
 
         async def delete(self, file_link_id, **kwargs):
             return {"file_link_id": file_link_id, **kwargs}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    listed = await list_work_package_file_links(ctx, "42")
+    listed = await list_work_package_file_links(ctx, "42", offset=3, limit=5)
     deleted = await delete_file_link(ctx, 5, confirm=True)
 
-    assert listed["work_package_id"] == "42"
+    assert listed == {"work_package_id": "42", "offset": 3, "limit": 5}
     assert deleted["confirm"] is True
 
 

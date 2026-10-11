@@ -103,9 +103,10 @@ async def get_project(
     project: str,
     text_limit: int | None = None,
 ) -> ProjectDetail:
-    """Get a project by id or identifier, including its ancestor chain.
+    """Get a project by id, identifier or name, including its ancestor chain.
 
-    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
+    project: identifier (e.g., "my-project"), numeric id (e.g., 7), or name; a unique
+    part of a name or identifier also matches.
 
     description/status_explanation are returned in full by default (single projects
     are not truncated). Pass ``text_limit`` to cap them at that many characters; when
@@ -435,7 +436,8 @@ async def set_project_favorite(
 ) -> FavoriteWriteResult:
     """Prepare or mark/unmark a project as a favorite; only writes when called again with confirm=true.
 
-    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
+    project: identifier (e.g., "my-project"), numeric id (e.g., 7), or name; a unique
+    part of a name or identifier also matches.
     favorite=true marks it as a favorite; favorite=false removes it.
     """
     client = _client_from_context(ctx)

@@ -4,7 +4,7 @@ import pytest
 
 import openproject_ce_mcp.server as server
 from openproject_ce_mcp import __version__
-from openproject_ce_mcp.config import Settings
+from openproject_ce_mcp.config import TOOL_GROUPS, Settings
 from openproject_ce_mcp.server import create_app
 
 
@@ -27,16 +27,12 @@ def _tool_names(mcp) -> set[str]:
     return {t.name for t in mcp._tool_manager.list_tools()}
 
 
-# The 5 project-scoped write flags now default True on the Settings dataclass
-# itself (direct Settings(**kwargs) construction never validates that
-# combination) — tests isolating a single write category must explicitly turn
-# the other 4 off, or they'd all be visible regardless of the flag under test.
+# The project-scoped write flags default True on the Settings dataclass itself
+# (direct Settings(**kwargs) construction never validates that combination) —
+# tests isolating a single write category must explicitly turn the others off,
+# or they'd all be visible regardless of the flag under test.
 ALL_WRITE_OFF = {
-    "enable_project_write": False,
-    "enable_work_package_write": False,
-    "enable_membership_write": False,
-    "enable_version_write": False,
-    "enable_board_write": False,
+    group.write.attr: False for group in TOOL_GROUPS if group.write is not None and group.write.project_scoped
 }
 
 
@@ -482,11 +478,11 @@ def test_main_configure_dispatches_to_setup(monkeypatch) -> None:
     import openproject_ce_mcp.setup_cli as setup_cli
 
     forwarded = []
-    monkeypatch.setattr(setup_cli, "main", lambda argv: forwarded.append(argv))
+    monkeypatch.setattr(setup_cli, "main", lambda argv, **kwargs: forwarded.append((argv, kwargs)))
     monkeypatch.setattr(srv, "_run_server", lambda: forwarded.append("SERVER"))
     monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "configure", "--uninstall"])
     srv.main()
-    assert forwarded == [["--uninstall"]]
+    assert forwarded == [(["--uninstall"], {"prog": "openproject-ce-mcp configure"})]
 
 
 def test_main_unexpected_flag_still_runs_server(monkeypatch) -> None:

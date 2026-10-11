@@ -51,8 +51,9 @@ async def set_work_package_watcher(
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     watching=true adds the watcher; watching=false removes it. The two
     previews are NOT symmetric: watching=true's preview looks up and returns
-    the real watcher's summary (result is populated); watching=false's
-    preview makes no extra lookup and always returns result=null.
+    the user's summary (result is populated; whether the user already watches
+    is not checked); watching=false's preview makes no extra lookup and always
+    returns result=null.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)

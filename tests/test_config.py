@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import dataclasses
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from openproject_ce_mcp.config import ConfigError, Settings, legacy_env_warnings
+from openproject_ce_mcp.config import READ_SCOPE_ENV_VAR, TOOL_GROUPS, ConfigError, Settings, legacy_env_warnings
 
 # A real absolute path in native format for whichever OS runs the tests
 # (e.g. /tmp/uploads on Linux/macOS, C:\Users\...\Temp\uploads on Windows) —
@@ -176,9 +177,10 @@ def test_settings_from_env_project_scoped_write_defaults_to_enabled() -> None:
     assert settings.write_enabled("membership") is True
     assert settings.write_enabled("version") is True
     assert settings.write_enabled("board") is True
+    assert settings.write_enabled("meeting") is True
 
 
-def test_settings_from_env_personal_and_admin_write_default_to_disabled() -> None:
+def test_settings_from_env_personal_admin_and_user_schedule_write_default_to_disabled() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
@@ -188,9 +190,10 @@ def test_settings_from_env_personal_and_admin_write_default_to_disabled() -> Non
 
     assert settings.write_enabled("personal") is False
     assert settings.write_enabled("admin") is False
+    assert settings.write_enabled("user_schedule") is False
 
 
-def test_read_defaults_core_five_true_personal_extended_admin_false() -> None:
+def test_read_defaults_core_true_opt_in_groups_false() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
@@ -203,9 +206,11 @@ def test_read_defaults_core_five_true_personal_extended_admin_false() -> None:
     assert settings.read_enabled("membership") is True
     assert settings.read_enabled("version") is True
     assert settings.read_enabled("board") is True
+    assert settings.read_enabled("meeting") is True
     assert settings.read_enabled("personal") is False
     assert settings.enable_metadata_tools is False
     assert settings.read_enabled("admin") is False
+    assert settings.read_enabled("user_schedule") is False
 
 
 def test_read_flags_all_explicitly_false() -> None:
@@ -596,8 +601,8 @@ def test_legacy_env_warnings_ignores_never_implemented_or_removed_names() -> Non
     assert legacy_env_warnings(env) == []
 
 
-def test_core_five_legacy_names_now_take_effect() -> None:
-    # The 5 individual booleans are current, not legacy.
+def test_core_group_flags_are_current_not_legacy() -> None:
+    # The individual group booleans are current, not legacy.
     env = {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "token-value",
@@ -658,3 +663,25 @@ def test_attachment_content_max_bytes_rejects_zero() -> None:
                 "OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES": "0",
             }
         )
+
+
+def test_tool_groups_registry_matches_settings_fields_both_ways() -> None:
+    group_fields = {f.name: f.default for f in dataclasses.fields(Settings) if f.name.startswith("enable_")}
+    registry = {group.read_attr: group.read_default for group in TOOL_GROUPS}
+    registry |= {group.write.attr: group.write.default for group in TOOL_GROUPS if group.write is not None}
+
+    assert group_fields == registry
+
+
+def test_membership_scope_aliases_share_the_membership_read_flag() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "t",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+        }
+    )
+
+    assert [settings.read_enabled(scope) for scope in ("membership", "role", "principal")] == [False, False, False]
+    assert READ_SCOPE_ENV_VAR["principal"] == "OPENPROJECT_ENABLE_MEMBERSHIP_READ"

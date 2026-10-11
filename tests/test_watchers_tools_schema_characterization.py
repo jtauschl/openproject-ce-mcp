@@ -92,7 +92,7 @@ def test_set_work_package_watcher_schema() -> None:
     tool = _tools(create_app(_make_settings()))["set_work_package_watcher"]
     assert (
         tool.description
-        == "Prepare or add/remove a watcher on a work package.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\nwatching=true adds the watcher; watching=false removes it. The two\npreviews are NOT symmetric: watching=true's preview looks up and returns\nthe real watcher's summary (result is populated); watching=false's\npreview makes no extra lookup and always returns result=null.\n"
+        == "Prepare or add/remove a watcher on a work package.\n\nwork_package_id: internal id (e.g., 952) or display_id (e.g., \"PROJ-51\"), not UI display number.\nwatching=true adds the watcher; watching=false removes it. The two\npreviews are NOT symmetric: watching=true's preview looks up and returns\nthe user's summary (result is populated; whether the user already watches\nis not checked); watching=false's preview makes no extra lookup and always\nreturns result=null.\n"
     )
     assert tool.output_schema == {
         "$defs": {

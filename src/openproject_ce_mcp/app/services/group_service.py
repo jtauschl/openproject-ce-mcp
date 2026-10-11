@@ -27,7 +27,7 @@ builds the full replacement list.
 
 `create()`/`update()`/`delete()` all check `access.ensure_write_enabled(
 "admin", ...)` UNCONDITIONALLY (not gated inside the confirm branch), even
-though `update()` has a prior GET (for the member diff) it could otherwise
+though `update()` and the `delete()` preview have a prior GET (for the member diff) it could otherwise
 gate on the way `NewsService.update()` gates on its own prior GET. This means
 a caller without `OPENPROJECT_ENABLE_ADMIN_WRITE` is rejected immediately on
 `update()`, even for a pure preview, and can never see a member-diff preview
@@ -216,29 +216,28 @@ class GroupService:
         )
 
     async def delete(self, group_id: int, *, confirm: bool = False) -> GroupWriteResult:
-        # Checked unconditionally -- no prior GET to gate an unauthorized
-        # preview request on. No detail fetched on either branch (matches
-        # _finalize_delete's preview_result=None/commit_result=None call
-        # shape).
+        # Checked before the preview's lookup, so a disabled admin write never
+        # reads the group either.
         access.ensure_write_enabled("admin", settings=self._settings)
         payload = {"id": group_id}
         if not confirm:
+            group = self._stamp((await self._api.get_group(group_id)).summary)
             return self._write_result(
                 action="delete",
                 state="preview",
                 ready=True,
-                message="OpenProject is ready to delete the group. Ask for confirmation, then call again with confirm=true.",
+                message="OpenProject found the group. Ask for confirmation, then call again with confirm=true to delete it.",
                 group_id=group_id,
                 payload=payload,
                 validation_errors={},
-                result=None,
+                result=group,
             )
         await self._api.commit_delete(group_id)
         return self._write_result(
             action="delete",
             state="confirmed",
             ready=True,
-            message="Group deleted successfully.",
+            message="Group deletion accepted: OpenProject deletes the group in a background job.",
             group_id=group_id,
             payload=payload,
             validation_errors={},

@@ -34,15 +34,21 @@ Example output:
 ```text
 Running OpenProject MCP diagnostics...
 
-[OK] Binary: /usr/local/bin/openproject-ce-mcp (v0.3.3)
-[OK] Clients: 2 configs found
+[OK] Binary: /usr/local/bin/openproject-ce-mcp (v<version>)
   - Claude Code (global, detected): ~/.claude.json
   - Claude Desktop (global, detected): ~/Library/.../claude_desktop_config.json
-[OK] Config parsing: all openproject entries valid
+[OK] Clients: 2 config(s) found
+[OK] Claude Code: openproject entry valid (.claude.json)
+[OK] Claude Desktop: openproject entry valid (claude_desktop_config.json)
+  Environment from: Claude Code (.claude.json), Claude Desktop (claude_desktop_config.json)
 [OK] Environment: loaded from client configs
+  Read projects: OPM, TST
+  Write projects: TST
+  Project writes: True
+  ...
 [OK] API: connected (Your Name)
-[OK] Tools: 127 registered
-  create_work_package, list_projects, update_work_package, ...
+[OK] Tools: <N> would register (based on settings)
+  list_projects, get_project, ...
 
 Restart needed for:
   - Claude Desktop: quit and reopen (window reload not enough)

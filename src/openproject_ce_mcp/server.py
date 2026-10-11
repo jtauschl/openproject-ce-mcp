@@ -103,13 +103,17 @@ a nullable association rather than change it: work-package `assignee`, `responsi
 field leaves it unchanged; `"none"` explicitly clears it. Required fields (type,
 status, subject, project) cannot be cleared.
 
-## Some metadata tools are opt-in
+## Some tool groups are opt-in
 
 A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,
 `render_text`, `get_custom_option`, `list_help_texts` / `get_help_text`,
 `list_working_days` / `list_non_working_days`) is opt-in to keep them out of
 the default tool set. If one is not registered, it is intentionally disabled
 here, not missing — set `OPENPROJECT_ENABLE_EXTENDED_READ=true` to expose them.
+The personal (own preferences, notifications), admin (users, groups, storages)
+and user-schedule (non-working times, working hours) tools are opt-in the same
+way, through `OPENPROJECT_ENABLE_PERSONAL_READ`, `OPENPROJECT_ENABLE_ADMIN_READ`
+and `OPENPROJECT_ENABLE_USER_SCHEDULE_READ`.
 """
 
 
@@ -277,7 +281,7 @@ def main() -> None:
     if arg == "configure":
         from .setup_cli import main as setup_main
 
-        setup_main(sys.argv[2:])
+        setup_main(sys.argv[2:], prog="openproject-ce-mcp configure")
         return
 
     if arg == "doctor":

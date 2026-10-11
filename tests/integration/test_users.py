@@ -20,7 +20,7 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
+from openproject_ce_mcp.client import InvalidInputError, NotFoundError, OpenProjectClient, PermissionDeniedError
 
 from .conftest import wait_for_not_found
 
@@ -55,6 +55,11 @@ async def test_lock_user_rejects_hidden_locked_field(client: OpenProjectClient) 
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_USER_FIELDS"):
         await hidden_client.user.lock(user_id=me.id, confirm=False)
+
+
+async def test_delete_user_preview_fails_for_an_unknown_id(client: OpenProjectClient) -> None:
+    with pytest.raises(NotFoundError):
+        await client.user.delete(999999999, confirm=False)
 
 
 async def test_create_and_delete_user_denied_when_admin_write_disabled(

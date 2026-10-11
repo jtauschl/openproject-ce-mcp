@@ -1598,8 +1598,11 @@ async def test_delete_project_returns_preview_and_executes_when_confirmed() -> N
 
     confirmed = await client.project.delete(project_ref="old-project", confirm=True)
     assert confirmed.state == "confirmed"
-    assert confirmed.result is not None
-    assert confirmed.result.name == "Old Project"
+    assert confirmed.message == (
+        "Project deletion scheduled: OpenProject archived the project and deletes it in a background job."
+    )
+    assert confirmed.result is None
+    assert (confirmed.project_id, confirmed.project) == (3, "Old Project")
 
     await client.aclose()
 

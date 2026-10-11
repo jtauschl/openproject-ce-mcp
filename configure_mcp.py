@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Thin compatibility shim. The interactive setup now lives in the package at
-# src/openproject_ce_mcp/setup_cli.py so it can ship as the installed console
-# command `openproject-ce-mcp configure` (and the `openproject-ce-mcp-setup`
-# alias). This file stays so a manual source checkout (see docs/installation.md's
+# src/openproject_ce_mcp/setup_cli.py so it ships with the package as
+# `openproject-ce-mcp configure` and its console-command alias
+# `openproject-ce-mcp-setup`. This file stays so a manual source checkout (see docs/installation.md's
 # "Development / from source" section: `python3 configure_mcp.py [args]`) works
 # without the package being installed.
 #

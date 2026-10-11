@@ -533,10 +533,12 @@ def test_delete_group_schema() -> None:
 def test_create_storage_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_storage"]
     assert tool.description == (
-        "Prepare or create an external file storage connection (admin operation).\n\n"
+        "Prepare or create an external file storage connection (admin operation).\n"
+        "\n"
         'provider_type must be one of "Nextcloud", "OneDrive", "Sharepoint". Field\n'
         "requirements differ genuinely by provider, per OpenProject's own\n"
-        "validation (not pre-checked here beyond provider_type itself):\n"
+        "validation (only the values of provider_type and authentication_method are\n"
+        "pre-checked here):\n"
         "- Nextcloud: host required; authentication_method required, one of\n"
         '  "two_way_oauth2" or "oauth2_sso". OpenProject synchronously probes the\n'
         "  host for live Nextcloud reachability/setup-completeness at\n"
@@ -544,7 +546,8 @@ def test_create_storage_schema() -> None:
         "- OneDrive: host must be omitted; tenant_id required (a GUID, or the\n"
         '  literal string "consumers").\n'
         '- Sharepoint: host required, matching "https://<tenant>/sites/<site>";\n'
-        "  tenant_id required (same format as OneDrive).\n\n"
+        "  tenant_id required (same format as OneDrive).\n"
+        "\n"
         "Creating a OneDrive or Sharepoint storage on a Community Edition instance\n"
         "without an Enterprise token is rejected by OpenProject itself at\n"
         "confirm=true with a clear validation error; Nextcloud is unrestricted.\n"
@@ -616,11 +619,12 @@ def test_update_storage_schema() -> None:
 def test_delete_storage_schema() -> None:
     tool = _tools(create_app(_make_settings()))["delete_storage"]
     assert tool.description == (
-        "Prepare or delete an external file storage connection (admin operation).\n\n"
-        "Deleting a storage cascades: every project's link to it (project_storages)\n"
-        "is deleted along with it, and for a storage with automatically-managed\n"
-        "project folders, OpenProject may also issue a remote folder-deletion call\n"
-        "against the external storage itself.\n"
+        "Prepare or delete an external file storage connection (admin operation).\n"
+        "\n"
+        "Deleting a storage cascades: every project's link to it and the work\n"
+        "packages' file links to it are deleted, and for each project link whose\n"
+        "folders are managed automatically, OpenProject also tries to delete that\n"
+        "project folder and its files in the external storage during the request.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

@@ -346,7 +346,8 @@ async def create_storage(
 
     provider_type must be one of "Nextcloud", "OneDrive", "Sharepoint". Field
     requirements differ genuinely by provider, per OpenProject's own
-    validation (not pre-checked here beyond provider_type itself):
+    validation (only the values of provider_type and authentication_method are
+    pre-checked here):
     - Nextcloud: host required; authentication_method required, one of
       "two_way_oauth2" or "oauth2_sso". OpenProject synchronously probes the
       host for live Nextcloud reachability/setup-completeness at
@@ -411,10 +412,10 @@ async def delete_storage(
 ) -> StorageWriteResult:
     """Prepare or delete an external file storage connection (admin operation).
 
-    Deleting a storage cascades: every project's link to it (project_storages)
-    is deleted along with it, and for a storage with automatically-managed
-    project folders, OpenProject may also issue a remote folder-deletion call
-    against the external storage itself.
+    Deleting a storage cascades: every project's link to it and the work
+    packages' file links to it are deleted, and for each project link whose
+    folders are managed automatically, OpenProject also tries to delete that
+    project folder and its files in the external storage during the request.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(storage_id, field_name="storage_id")

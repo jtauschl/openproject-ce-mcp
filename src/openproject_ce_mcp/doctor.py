@@ -18,7 +18,7 @@ import httpx
 
 from . import __version__
 from .client import AuthenticationError, OpenProjectClient, OpenProjectError
-from .config import ConfigError, Settings, legacy_env_warnings
+from .config import TOOL_GROUPS, ConfigError, Settings, legacy_env_warnings
 from .models import CurrentUser
 
 EXIT_SUCCESS = 0
@@ -227,13 +227,9 @@ def _print_project_scope_summary(settings: Settings) -> None:
     write_summary = ", ".join(settings.write_projects) or "none (fail-closed — nothing writable)"
     print(f"  Read projects: {read_summary}")
     print(f"  Write projects: {write_summary}")
-    print(f"  Work-package writes: {settings.enable_work_package_write}")
-    print(f"  Project writes: {settings.enable_project_write}")
-    print(f"  Membership writes: {settings.enable_membership_write}")
-    print(f"  Version writes: {settings.enable_version_write}")
-    print(f"  Board writes: {settings.enable_board_write}")
-    print(f"  Personal-data writes: {settings.enable_personal_write}")
-    print(f"  Admin writes: {settings.enable_admin_write}")
+    for group in TOOL_GROUPS:
+        if group.write is not None:
+            print(f"  {group.write.label} writes: {getattr(settings, group.write.attr)}")
 
 
 async def _check_api_connectivity(

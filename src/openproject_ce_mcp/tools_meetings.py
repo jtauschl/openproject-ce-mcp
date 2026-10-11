@@ -277,7 +277,7 @@ async def list_work_package_meeting_agenda_items(
 ) -> MeetingAgendaItemListResult:
     """List meeting agenda items linked to a work package.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.7+.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
@@ -308,7 +308,7 @@ async def list_work_package_meeting_agenda_items(
 async def get_meeting_agenda_item(ctx: Context, agenda_item_id: int) -> MeetingAgendaItemSummary:
     """Get a single meeting agenda item by id.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
@@ -330,7 +330,7 @@ async def create_meeting_agenda_item(
     """Prepare or create a meeting agenda item; only writes when called
     again with confirm=true.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number; optional.
     meeting_section_id: an existing section's id (from list_meeting_sections); optional.
@@ -374,7 +374,7 @@ async def update_meeting_agenda_item(
     """Prepare or update a meeting agenda item; only writes when called
     again with confirm=true.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
@@ -416,7 +416,7 @@ async def delete_meeting_agenda_item(
     """Prepare or delete a meeting agenda item; only deletes when called
     again with confirm=true.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
@@ -584,7 +584,7 @@ async def list_meeting_sections(
 async def get_meeting_section(ctx: Context, section_id: int) -> MeetingSectionSummary:
     """Get a single meeting section by id.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(section_id, field_name="section_id")
@@ -603,7 +603,7 @@ async def create_meeting_section(
     """Prepare or create a meeting section; only writes when called again
     with confirm=true.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
 
     backlog cannot be changed after creation via update_meeting_section —
     pass it only here, on create.
@@ -629,7 +629,7 @@ async def update_meeting_section(
     """Prepare or update a meeting section's title/position; only writes
     when called again with confirm=true.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
 
     backlog cannot be changed after creation — this tool does not accept it.
     """
@@ -647,7 +647,7 @@ async def delete_meeting_section(ctx: Context, section_id: int, confirm: bool = 
     """Prepare or delete a meeting section; only deletes when called again
     with confirm=true.
 
-    Requires OpenProject 17.4+.
+    Requires OpenProject 17.6+.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(section_id, field_name="section_id")
@@ -761,9 +761,10 @@ async def update_recurring_meeting(
 
     Requires OpenProject 17.4+.
 
-    Note: this does not affect meetings already materialized from this
-    series (via init_recurring_meeting_occurrence) — update those directly
-    with update_meeting.
+    Already materialized future occurrences move and are renamed with the
+    series. A schedule change other than the time of day can delete cancelled
+    occurrences; on 17.4 to 17.8 a time-of-day change also rewrites the slot
+    times of past occurrences.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
@@ -885,10 +886,12 @@ async def cancel_recurring_meeting_occurrence(
     If the occurrence has already been materialized into a real Meeting and
     is not itself cancelled, this fails with an error (delete_meeting the
     materialized meeting directly instead). If NOT yet materialized,
-    OpenProject creates a new, PERMANENTLY cancelled Meeting server-side to
-    record the cancellation — this call's result does not report that new
-    meeting's id; list_meetings/list_recurring_meeting_occurrences(filter=
-    "cancelled") can be used to find it afterward if needed.
+    OpenProject records the cancellation as a cancelled Meeting
+    (init_recurring_meeting_occurrence restores it, a later schedule change of
+    the series other than the time of day can delete it) — this call's result
+    does not report that new meeting's id; list_meetings/
+    list_recurring_meeting_occurrences(filter="cancelled") can be used to find
+    it afterward if needed.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")

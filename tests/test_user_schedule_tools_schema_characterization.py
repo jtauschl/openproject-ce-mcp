@@ -113,12 +113,13 @@ def test_update_user_non_working_time_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_user_non_working_time"]
     assert tool.description == (
         "Prepare or update a user's non-working-time date range; only writes\n"
-        "when called again with confirm=true.\n\n"
+        "when called again with confirm=true.\n"
+        "\n"
         "Requires OpenProject 17.3+. Same authorization as\n"
         "list_user_non_working_times. No single-item GET exists on OpenProject's\n"
         "side for this resource, but the update itself is addressed directly by\n"
         "id (no year or other date filter involved) — a non-existent id fails\n"
-        "with a not-found error.\n"
+        "with a not-found error on confirm; the preview does not look it up.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

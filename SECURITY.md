@@ -39,7 +39,7 @@ available it will be released to PyPI and noted in the
 This server is a guarded bridge to the OpenProject REST API. Its security posture
 depends on configuration; the most relevant controls are:
 
-- **Read tools are exposed per group via 10 individual booleans**:
+- **Read tools are exposed per group, one boolean each**:
   `OPENPROJECT_ENABLE_PROJECT_READ`, `_WORK_PACKAGE_READ`, `_MEMBERSHIP_READ`,
   `_VERSION_READ`, `_BOARD_READ`, `_MEETING_READ` (default `true`), plus the
   opt-in `_PERSONAL_READ`, `_EXTENDED_READ`, `_ADMIN_READ`, and
@@ -48,8 +48,8 @@ depends on configuration; the most relevant controls are:
   boundary). Setting the legacy `OPENPROJECT_ALLOWED_PROJECTS`/`_READ`/`_WRITE`
   names (see [Configuration](docs/configuration.md#legacy-configuration-migration))
   in your config has no effect on the running server beyond a startup/`doctor`
-  warning naming the exact replacement. **6 core write flags default `true`**
-  (the 5 read-default-`true` categories above plus `_MEETING_WRITE`), since the
+  warning naming the exact replacement. **The project-scoped write flags default
+  `true`** (the writes of the read-default-`true` groups above), since the
   real gate is the project allowlists below, not the category flag — a write
   flag alone does nothing without a project in `OPENPROJECT_WRITE_PROJECTS`,
   and the corresponding write tools aren't even registered unless both
@@ -87,7 +87,7 @@ rather than lumping them all into one "security" bucket:
    allowlists, field hiding, and the preview/confirm flow. They stop an
    agent's own mistakes and prompt-injection attempts from turning into
    writes or reads the operator didn't intend.
-2. **`OPENPROJECT_ENABLE_PERSONAL_READ`/`_EXTENDED_READ`/`_ADMIN_READ`** are
+2. **`OPENPROJECT_ENABLE_PERSONAL_READ`/`_EXTENDED_READ`/`_ADMIN_READ`/`_USER_SCHEDULE_READ`** are
    also runtime-enforced, not cosmetic — they genuinely control what data
    reaches the agent's context, `_ADMIN_READ` in particular keeping the
    instance-wide user/group list (PII) out of context by default. They are

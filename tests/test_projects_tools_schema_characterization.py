@@ -109,7 +109,7 @@ def test_get_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_project"]
     assert (
         tool.description
-        == 'Get a project by id or identifier, including its ancestor chain.\n\nproject: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.\n\ndescription/status_explanation are returned in full by default (single projects\nare not truncated). Pass ``text_limit`` to cap them at that many characters; when\ncut, ``description_truncated``/``status_explanation_truncated`` are true and\n``description_length``/``status_explanation_length`` report the real length.\n'
+        == 'Get a project by id, identifier or name, including its ancestor chain.\n\nproject: identifier (e.g., "my-project"), numeric id (e.g., 7), or name; a unique\npart of a name or identifier also matches.\n\ndescription/status_explanation are returned in full by default (single projects\nare not truncated). Pass ``text_limit`` to cap them at that many characters; when\ncut, ``description_truncated``/``status_explanation_truncated`` are true and\n``description_length``/``status_explanation_length`` report the real length.\n'
     )
     assert tool.output_schema == {
         "properties": {
@@ -2574,7 +2574,7 @@ def test_set_project_favorite_schema() -> None:
     tool = _tools(create_app(_make_settings()))["set_project_favorite"]
     assert (
         tool.description
-        == 'Prepare or mark/unmark a project as a favorite; only writes when called again with confirm=true.\n\nproject: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.\nfavorite=true marks it as a favorite; favorite=false removes it.\n'
+        == 'Prepare or mark/unmark a project as a favorite; only writes when called again with confirm=true.\n\nproject: identifier (e.g., "my-project"), numeric id (e.g., 7), or name; a unique\npart of a name or identifier also matches.\nfavorite=true marks it as a favorite; favorite=false removes it.\n'
     )
     assert tool.output_schema == {
         "properties": {
