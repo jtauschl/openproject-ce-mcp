@@ -90,6 +90,7 @@ _MEETING_OUTCOME_KINDS = {"information", "decision", "work_package"}
 _MEETING_ID = "Meeting id, from list_meetings."
 _MEETING_TITLE = "Meeting title, at most 255 characters."
 _LOCATION = "Free-text location or meeting link, at most 255 characters."
+_LOCATION_UPDATE = _LOCATION + ' "" clears it.'
 _START_TIME = "ISO 8601 date-time with offset, e.g. 2026-12-01T09:00:00Z."
 _DURATION = 'ISO 8601 duration in hours and minutes, e.g. "PT1H30M".'
 _MEETING_STATE = 'Meeting state as get_meeting reports it, e.g. "open", "in_progress" or "closed".'
@@ -204,7 +205,7 @@ async def update_meeting(
     ctx: Context,
     meeting_id: Annotated[int, Field(description=_MEETING_ID)],
     title: Annotated[str | None, Field(description=_MEETING_TITLE)] = None,
-    location: Annotated[str | None, Field(description=_LOCATION)] = None,
+    location: Annotated[str | None, Field(description=_LOCATION_UPDATE)] = None,
     start_time: Annotated[str | None, Field(description=_START_TIME)] = None,
     duration: Annotated[str | None, Field(description=_DURATION)] = None,
     state: Annotated[str | None, Field(description=_MEETING_STATE)] = None,
@@ -244,7 +245,7 @@ async def update_meeting(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
-    safe_location = _validate_optional_text(location, field_name="location", max_length=255)
+    safe_location = _validate_optional_update_text(location, field_name="location", max_length=255)
     safe_start = _validate_optional_datetime(start_time, field_name="start_time")
     safe_duration = _validate_optional_duration(duration, field_name="duration")
     safe_participants = _validate_participant_refs(participant_user_refs)

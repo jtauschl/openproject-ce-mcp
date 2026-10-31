@@ -339,7 +339,7 @@ def test_update_membership_schema() -> None:
             "notification_message": {
                 "anyOf": [{"type": "string"}, {"type": "null"}],
                 "default": None,
-                "description": "Markdown text for OpenProject's membership notification.",
+                "description": "Markdown text for OpenProject's membership notification; sent with this change only, so a blank text is the same as none.",
                 "title": "Notification Message",
             },
             "confirm": {
