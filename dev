@@ -5,7 +5,7 @@ cmd="${1:-}"
 shift || true
 
 usage() {
-    echo "Usage: ./dev {bootstrap|lint|shell-lint|test|build|sbom|ci}" >&2
+    echo "Usage: ./dev {bootstrap|lint|licenses|shell-lint|test|build|sbom|ci}" >&2
     exit 1
 }
 
@@ -32,13 +32,25 @@ shell_lint() {
     done
 }
 
+# pip-licenses is pinned because tools/check_licenses.py allow-lists the exact strings it prints.
+licenses() {
+    local report status=0
+    report="$(mktemp)"
+    {
+        uvx pip-licenses@5.5.5 --python .venv/bin/python3 --from=mixed --format=json --output-file "$report" >/dev/null &&
+            uv run --frozen python tools/check_licenses.py "$report"
+    } || status=$?
+    rm -f "$report"
+    return "$status"
+}
+
 lint() {
     uv run ruff check .
     uv run ruff format --check .
     uv run mypy
     uvx bandit -r src/openproject_ce_mcp -ll
     uvx semgrep --config auto --error src/openproject_ce_mcp
-    uvx pip-licenses --python .venv/bin/python3 --fail-on="GPL;LGPL;AGPL"
+    licenses
     shell_lint
     if ! command -v actionlint >/dev/null 2>&1; then
         echo "actionlint not found — install: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12" >&2
@@ -73,6 +85,7 @@ build() {
 case "$cmd" in
 bootstrap) bootstrap ;;
 lint) lint ;;
+licenses) licenses ;;
 shell-lint) shell_lint ;;
 test) test_ "$@" ;;
 build) build ;;
