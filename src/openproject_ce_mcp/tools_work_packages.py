@@ -807,7 +807,7 @@ async def update_work_package(
     """Update a work package.
 
     The tool validates the patch first.
-    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
+    description is Markdown and replaces the whole text; pass "" to clear it. assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     target_versions accepts a list of version names/ids to assign multiple target versions at once
     (OpenProject's multi-version feature); pass [] to clear all. target_versions and version write
     the same underlying data and cannot be used together in one call. If this work package already
@@ -1052,7 +1052,7 @@ async def bulk_update_work_packages(
     {"work_package_id": 952, "status": "Closed"}.
 
     Each item in `items` must contain `work_package_id`. At least one other field must be present per item.
-    Optional fields per item: `subject`, `description`, `type`, `version`, `target_versions`, `observed_in_versions` (each a list
+    Optional fields per item: `subject`, `description` ("" clears it), `type`, `version`, `target_versions`, `observed_in_versions` (each a list
     of version names/ids for OpenProject's multi-version feature; observed_in_versions needs OpenProject 17.9+;
     pass [] to clear all; cannot be
     combined with `version` on the same item; rejected if the item's work package already has more

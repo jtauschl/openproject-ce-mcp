@@ -341,7 +341,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_update_work_packages": {
-        "description_hash": "9c7dd3b5a3b00eb7a88a5e1b180885b41b3cb2c3b69ebfe2a6362df34d966b30",
+        "description_hash": "71822ea143a07335c8f56610f2ae67df66311ca534a02e96d38d45c04e05d30e",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
@@ -7588,7 +7588,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "location": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Free-text location or meeting link, at most 255 characters.",
+                    "description": 'Free-text location or meeting link, at most 255 characters. "" clears it.',
                     "title": "Location",
                 },
                 "start_time": {
@@ -7805,7 +7805,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "notification_message": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Markdown text for OpenProject's membership notification.",
+                    "description": (
+                        "Markdown text for OpenProject's membership notification; sent with this change only, so a blank text is the same as none."
+                    ),
                     "title": "Notification Message",
                 },
                 "confirm": {
@@ -8451,7 +8453,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "1f45dd75eba9f9d64761e4643e5d3f2fd5b98615117f9a71c8290bb40f7beaf1",
+        "description_hash": "549b02c04583ae2f562b8b58e91689fdf60a701fd9e3abdb4bb775ca0cc947c9",
         "input_schema": {
             "properties": {
                 "work_package_id": {

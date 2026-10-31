@@ -120,6 +120,11 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 ### Fixed
 
 - `get_project_phase` now reports the phase definition, which was always empty.
+- `update_meeting` can clear the location: `location=""` empties it instead of being dropped
+  without a message.
+- The descriptions of `update_work_package`, `bulk_update_work_packages` and `update_membership` now
+  say what an empty text does: `description=""` clears a work package description, and a blank
+  `notification_message` is the same as none.
 
 ## [0.4.4] - 2026-10-28
 

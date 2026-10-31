@@ -401,7 +401,7 @@ def test_update_meeting_schema() -> None:
             "location": {
                 "anyOf": [{"type": "string"}, {"type": "null"}],
                 "default": None,
-                "description": "Free-text location or meeting link, at most 255 characters.",
+                "description": 'Free-text location or meeting link, at most 255 characters. "" clears it.',
                 "title": "Location",
             },
             "start_time": {
