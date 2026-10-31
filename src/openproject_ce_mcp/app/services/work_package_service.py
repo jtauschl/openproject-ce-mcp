@@ -149,7 +149,7 @@ from ..ports.status_ref import StatusRefResolver
 from ..ports.type_ref import TypeRefResolver
 from ..ports.user_names import UserNames
 from ..ports.version_ref import VersionIdResolver
-from ..ports.work_package_api import WorkPackageApi, WorkPackageRecord
+from ..ports.work_package_api import WorkPackageApi, WorkPackageFormResult, WorkPackageRecord
 from ..ports.work_package_ref import (
     WorkPackageIdResolver,
     WorkPackageProjectAllowedBulkCheck,
@@ -167,11 +167,13 @@ from ._work_package_references import (
     visible_references,
 )
 from ._work_package_write_helpers import (
+    VERSION_ERROR_KEYS,
     resolve_custom_field_key,
     resolve_custom_field_links,
     resolve_schema_option_href,
     resolve_wp_ref_id,
     with_offered_status_values,
+    with_offered_version_values,
 )
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -1778,6 +1780,28 @@ class WorkPackageService:
             **outcome.identity,
         )
 
+    async def _with_offered_versions(
+        self, parsed: WorkPackageFormResult, *, requested: bool, errors: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """The form errors, with the versions the form offers named on a rejected version. The form lists
+        the project's assignable versions, which can include versions shared from a project the read scope
+        does not cover, so the options pass the same visibility filter as any other schema option."""
+        errors = parsed.validation_errors if errors is None else errors
+        if not requested or not any(key in errors for key in VERSION_ERROR_KEYS):
+            return errors
+        schema = dict(parsed.schema)
+        for key in VERSION_ERROR_KEYS:
+            field = schema.get(key)
+            if isinstance(field, dict):
+                schema[key] = await field_with_visible_options(
+                    field,
+                    links=self._resource_links,
+                    settings=self._settings,
+                    check=self._references_allowed,
+                    keep_unnamed=False,
+                )
+        return with_offered_version_values(errors, schema)
+
     async def create(
         self,
         *,
@@ -1862,7 +1886,9 @@ class WorkPackageService:
         outcome = await _finalize_write(
             confirm=confirm,
             payload=parsed.payload,
-            validation_errors=parsed.validation_errors,
+            validation_errors=await self._with_offered_versions(
+                parsed, requested=version is not None or target_versions is not None
+            ),
             identity={"work_package_id": None, "project": project_payload.get("name")},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
             commit=lambda p: self._api.commit_create(
@@ -1951,7 +1977,9 @@ class WorkPackageService:
         outcome = await _finalize_write(
             confirm=confirm,
             payload=parsed.payload,
-            validation_errors=parsed.validation_errors,
+            validation_errors=await self._with_offered_versions(
+                parsed, requested=version is not None or target_versions is not None
+            ),
             identity={"work_package_id": None, "project": parent_title},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
             commit=lambda p: self._api.commit_create(
@@ -2242,6 +2270,9 @@ class WorkPackageService:
             with_offered_status_values(parsed.validation_errors, parsed.schema)
             if status is not None
             else parsed.validation_errors
+        )
+        validation_errors = await self._with_offered_versions(
+            parsed, requested=version is not None or target_versions is not None, errors=validation_errors
         )
         project_name = _trim_text(current.get("_links", {}).get("project", {}).get("title"))
         outcome = await _finalize_write(

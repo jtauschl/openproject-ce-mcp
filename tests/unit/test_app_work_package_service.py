@@ -28,6 +28,7 @@ from openproject_ce_mcp.app.ports.work_package_api import (
 )
 from openproject_ce_mcp.app.ports.work_package_resolution import WorkPackageAllowedContext
 from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+from openproject_ce_mcp.app.services._work_package_write_helpers import with_offered_version_values
 from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION, WorkPackageService
 from openproject_ce_mcp.models import (
     ActivitySummary,
@@ -4347,3 +4348,206 @@ async def test_a_form_with_a_version_field_keeps_the_version_link() -> None:
     assert committed["version"] == _VERSION_LINK
     assert "targetVersions" not in committed
     assert len(api.validate_create_calls) == 1
+
+
+# ----------------------------------------------------------------------
+# rejected version: offered version values
+# ----------------------------------------------------------------------
+
+_VERSION_REJECTED = "Version is not set to one of the allowed values."
+_VERSIONS_OFFERED = "Versions OpenProject offers for this work package: "
+_VERSIONS_NOTE = " A closed or locked version cannot be assigned."
+_VERSION_REQUESTS = [
+    pytest.param("version", {"version": "Closed one"}, id="version"),
+    pytest.param("targetVersions", {"target_versions": ["Closed one"]}, id="target_versions"),
+]
+
+
+def _versions_schema(field: str, *versions: tuple[int, str]) -> dict:
+    return {
+        field: {
+            "_embedded": {
+                "allowedValues": [
+                    {"name": name, "_links": {"self": {"href": f"/api/v3/versions/{version_id}", "title": name}}}
+                    for version_id, name in versions
+                ]
+            }
+        }
+    }
+
+
+def test_with_offered_version_values_names_the_offered_versions_of_each_rejected_field() -> None:
+    schema = {**_versions_schema("version", (1, "1.0"), (2, "2.0")), **_versions_schema("targetVersions", (3, "3.0"))}
+
+    enriched = with_offered_version_values({"version": "a", "targetVersions": "b", "subject": "c"}, schema)
+
+    assert enriched == {
+        "version": f"a {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}",
+        "targetVersions": f"b {_VERSIONS_OFFERED}3.0.{_VERSIONS_NOTE}",
+        "subject": "c",
+    }
+
+
+def test_with_offered_version_values_caps_the_list() -> None:
+    schema = _versions_schema("version", *((i, f"V{i}") for i in range(1, 24)))
+
+    enriched = with_offered_version_values({"version": "a"}, schema)
+
+    shown = ", ".join(f"V{i}" for i in range(1, 21))
+    assert enriched == {"version": f"a {_VERSIONS_OFFERED}{shown}, … (+3 more).{_VERSIONS_NOTE}"}
+
+
+@pytest.mark.parametrize(
+    ("errors", "schema"),
+    [
+        ({"subject": "x"}, _versions_schema("version", (1, "1.0"))),
+        ({"version": "x"}, {}),
+        ({"version": "x"}, {"version": {"_links": {"allowedValues": [{"href": "/api/v3/versions/1"}]}}}),
+        ({"version": "x"}, _versions_schema("version")),
+    ],
+    ids=["no-version-error", "no-schema-field", "no-embedded-values", "empty-values"],
+)
+def test_with_offered_version_values_leaves_the_errors_alone_without_offered_values(errors, schema) -> None:
+    assert with_offered_version_values(errors, schema) == errors
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("field", "request_args"), _VERSION_REQUESTS)
+async def test_create_rejected_version_names_the_offered_versions(field, request_args) -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = _versions_schema(field, (1, "1.0"), (2, "2.0"))
+    api.validation_errors_queue.append({field: _VERSION_REJECTED})
+    service, _ = _service(api)
+
+    result = await service.create(project="demo", type="Task", subject="New", confirm=False, **request_args)
+
+    assert result.validation_errors == {field: f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("field", "request_args"), _VERSION_REQUESTS)
+async def test_create_subtask_rejected_version_names_the_offered_versions(field, request_args) -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = _versions_schema(field, (1, "1.0"))
+    api.validation_errors_queue.append({field: _VERSION_REJECTED})
+    service, _ = _service(api)
+
+    result = await service.create_subtask(
+        parent_work_package_id=6, type="Task", subject="Child", confirm=False, **request_args
+    )
+
+    assert result.validation_errors == {field: f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("field", "request_args"), _VERSION_REQUESTS)
+async def test_update_rejected_version_names_the_offered_versions(field, request_args) -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = _versions_schema(field, (1, "1.0"), (2, "2.0"))
+    api.validation_errors_queue.append({field: _VERSION_REJECTED})
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, confirm=True, **request_args)
+
+    assert result.ready is False
+    assert result.validation_errors == {field: f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}"}
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_rejected_version_names_the_offered_versions() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = _versions_schema("targetVersions", (1, "1.0"))
+    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    service, _ = _service(api)
+
+    result = await service.bulk_update(items=[{"work_package_id": 6, "target_versions": ["Closed one"]}], confirm=True)
+
+    assert result.failed == 1
+    item = result.items[0]
+    assert item.result is not None
+    assert item.result.validation_errors == {
+        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"
+    }
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_rejected_version_names_the_offered_versions() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = _versions_schema("targetVersions", (1, "1.0"))
+    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    service, _ = _service(api)
+
+    result = await service.bulk_create(
+        items=[{"project": "demo", "type": "Task", "subject": "New", "target_versions": ["Closed one"]}], confirm=True
+    )
+
+    assert result.failed == 1
+    item = result.items[0]
+    assert item.result is not None
+    assert item.result.validation_errors == {
+        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_rejected_version_names_only_versions_the_read_scope_covers() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = _versions_schema("targetVersions", (7, "Secret"), (8, "Own"))
+    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    restricted = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
+    service, _ = _service(api, settings=restricted, references_allowed=_only_visible)
+
+    result = await service.update(work_package_id=6, target_versions=["Own"], confirm=False)
+
+    assert result.validation_errors == {
+        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}Own.{_VERSIONS_NOTE}"
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_version_error_without_a_requested_version_keeps_the_message() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = _versions_schema("targetVersions", (1, "1.0"))
+    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+    assert result.validation_errors == {"targetVersions": _VERSION_REJECTED}
+
+
+@pytest.mark.asyncio
+async def test_update_rejected_version_does_not_name_an_offered_value_that_is_not_a_version_link() -> None:
+    api = _FakeWorkPackageApi()
+    schema = _versions_schema("targetVersions", (8, "Own"))
+    schema["targetVersions"]["_embedded"]["allowedValues"].append(
+        {"name": "Odd", "_links": {"self": {"href": "/api/v3/elsewhere/1", "title": "Odd"}}}
+    )
+    api.next_schema = schema
+    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    restricted = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
+    service, _ = _service(api, settings=restricted, references_allowed=_only_visible)
+
+    result = await service.update(work_package_id=6, target_versions=["Own"], confirm=False)
+
+    assert result.validation_errors == {
+        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}Own.{_VERSIONS_NOTE}"
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_rejected_version_offering_only_non_version_links_keeps_the_message() -> None:
+    api = _FakeWorkPackageApi()
+    schema = _versions_schema("targetVersions")
+    schema["targetVersions"]["_embedded"]["allowedValues"].append(
+        {"name": "Odd", "_links": {"self": {"href": "/api/v3/elsewhere/1", "title": "Odd"}}}
+    )
+    api.next_schema = schema
+    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    restricted = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
+    service, _ = _service(api, settings=restricted, references_allowed=_only_visible)
+
+    result = await service.update(work_package_id=6, target_versions=["Own"], confirm=False)
+
+    assert result.validation_errors == {"targetVersions": _VERSION_REJECTED}

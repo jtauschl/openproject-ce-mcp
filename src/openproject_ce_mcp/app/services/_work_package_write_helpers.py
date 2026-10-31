@@ -100,6 +100,19 @@ def _option_title(item: dict[str, Any]) -> str | None:
     return _trim_text(item.get("name") or item.get("_links", {}).get("self", {}).get("title"))
 
 
+def _offered_titles(field: Any) -> str | None:
+    allowed_values = field.get("_embedded", {}).get("allowedValues") if isinstance(field, dict) else None
+    if not isinstance(allowed_values, list):
+        return None
+    titles = [title for title in map(_option_title, allowed_values) if title]
+    if not titles:
+        return None
+    offered = ", ".join(titles[:_OFFERED_VALUES_LIMIT])
+    if len(titles) > _OFFERED_VALUES_LIMIT:
+        offered += f", … (+{len(titles) - _OFFERED_VALUES_LIMIT} more)"
+    return offered
+
+
 def with_offered_status_values(validation_errors: dict[str, str], schema: dict[str, Any]) -> dict[str, str]:
     """Append the status values the update form offers to its `status` error.
 
@@ -110,20 +123,34 @@ def with_offered_status_values(validation_errors: dict[str, str], schema: dict[s
     message = validation_errors.get("status")
     if message is None:
         return validation_errors
-    field = schema.get("status")
-    allowed_values = field.get("_embedded", {}).get("allowedValues") if isinstance(field, dict) else None
-    if not isinstance(allowed_values, list):
+    offered = _offered_titles(schema.get("status"))
+    if offered is None:
         return validation_errors
-    titles = [title for title in map(_option_title, allowed_values) if title]
-    if not titles:
-        return validation_errors
-    offered = ", ".join(titles[:_OFFERED_VALUES_LIMIT])
-    if len(titles) > _OFFERED_VALUES_LIMIT:
-        offered += f", … (+{len(titles) - _OFFERED_VALUES_LIMIT} more)"
     return {
         **validation_errors,
         "status": f"{message} Statuses OpenProject offers for this work package (including its current one): {offered}.",
     }
+
+
+VERSION_ERROR_KEYS = ("version", "targetVersions")
+
+
+def with_offered_version_values(validation_errors: dict[str, str], schema: dict[str, Any]) -> dict[str, str]:
+    """Append the versions the form offers to a `version` or `targetVersions` error.
+
+    OpenProject's message only says the value is not allowed, in the instance language; it does not say that a
+    closed or locked version can never be assigned. The caller passes a schema whose options the read scope covers."""
+    enriched = validation_errors
+    for key in VERSION_ERROR_KEYS:
+        message = enriched.get(key)
+        offered = _offered_titles(schema.get(key)) if message is not None else None
+        if offered is not None:
+            enriched = {
+                **enriched,
+                key: f"{message} Versions OpenProject offers for this work package: {offered}. "
+                "A closed or locked version cannot be assigned.",
+            }
+    return enriched
 
 
 def _not_allowed(raw_value: Any, key: str) -> InvalidInputError:

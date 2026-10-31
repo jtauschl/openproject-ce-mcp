@@ -71,6 +71,12 @@ to install and discover.
   `bulk_update_work_packages` now lists, in its `status` validation error, the
   status values OpenProject's update form offers for that work package,
   including its current status.
+- A work package write rejected for its `version` or `target_versions` now lists,
+  in the `version` or `targetVersions` validation error, the versions
+  OpenProject's form offers, limited to those the read scope covers, and says
+  that a closed or locked version cannot be assigned. This applies to
+  `create_work_package`, `create_subtask`, `update_work_package` and the bulk
+  tools.
 - A confirmed bulk write no longer returns an item's echoed `payload` when
   `select` names it; the normalized `result` carries the same data.
 - **Breaking:** Python 3.11 or later is required; Python 3.10 is no longer

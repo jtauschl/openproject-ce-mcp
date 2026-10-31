@@ -125,10 +125,16 @@ async def hidden_references_replaced(
 
 
 async def field_with_visible_options(
-    field: dict[str, Any], *, links: ResourceLinks, settings: Settings, check: ScopedReferencesAllowedBulkCheck
+    field: dict[str, Any],
+    *,
+    links: ResourceLinks,
+    settings: Settings,
+    check: ScopedReferencesAllowedBulkCheck,
+    keep_unnamed: bool = True,
 ) -> dict[str, Any]:
     """The schema field without the allowed values that name a version, sprint or bucket the read
-    scope does not cover, so a value can be neither assigned by name nor probed for."""
+    scope does not cover, so a value can be neither assigned by name nor probed for. A value that names
+    none of them is kept unless `keep_unnamed` is false, for a field whose every value must be one."""
     options = field.get("_embedded", {}).get("allowedValues")
     if not isinstance(options, list) or scope_allows_all(settings.read_projects):
         return field
@@ -139,13 +145,14 @@ async def field_with_visible_options(
         and (reference := reference_of_link(option.get("_links", {}).get("self"), links)) is not None
     }
     if not named:
-        return field
+        return field if keep_unnamed else {**field, "_embedded": {**field["_embedded"], "allowedValues": []}}
     outcomes = await check(named)
     visible = []
     for option in options:
         reference = reference_of_link(option.get("_links", {}).get("self"), links) if isinstance(option, dict) else None
         if reference is None:
-            visible.append(option)
+            if keep_unnamed:
+                visible.append(option)
             continue
         outcome = outcomes[reference]
         if isinstance(outcome, Exception):
