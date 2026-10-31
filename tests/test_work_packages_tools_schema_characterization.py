@@ -1029,7 +1029,7 @@ def test_update_work_package_comment_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_work_package_comment"]
     assert (
         tool.description
-        == "Replace the text of an existing work package comment.\n\ncomment replaces the whole text; it is not appended. Whether the comment\nis internal stays as it was: OpenProject does not change that on edit.\nEditing may notify people; PATCH has no notify=false option. Repeating the\ncall marks recipients' notifications for this comment unread again. The\nold text is overwritten, with no comment-version history or recovery\nthrough OpenProject/API. Activities without an existing non-blank comment\nare rejected, including in preview.\nOpenProject lets the comment's author edit it, and otherwise only a role\nallowed to edit other users' comments; the tool reports that before\nwriting, in preview too. The result never includes `details`: an entry\ncan carry change details next to the comment, and `details_omitted` is true.\n"
+        == "Replace the text of an existing work package comment.\n\ncomment replaces the whole text; it is not appended. A blank comment is rejected: OpenProject has no\ndelete for comments, and an empty text would only leave an empty entry in the history, so a comment\ncannot be removed or emptied with this tool. Whether the comment\nis internal stays as it was: OpenProject does not change that on edit.\nEditing may notify people; PATCH has no notify=false option. Repeating the\ncall marks recipients' notifications for this comment unread again. The\nold text is overwritten, with no comment-version history or recovery\nthrough OpenProject/API. Activities without an existing non-blank comment\nare rejected, including in preview.\nOpenProject lets the comment's author edit it, and otherwise only a role\nallowed to edit other users' comments; the tool reports that before\nwriting, in preview too. The result never includes `details`: an entry\ncan carry change details next to the comment, and `details_omitted` is true.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1040,7 +1040,7 @@ def test_update_work_package_comment_schema() -> None:
                 "type": "integer",
             },
             "comment": {
-                "description": "The new comment text in Markdown; replaces the whole text.",
+                "description": "The new comment text in Markdown; replaces the whole text. Must not be blank.",
                 "title": "Comment",
                 "type": "string",
             },

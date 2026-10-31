@@ -1296,12 +1296,17 @@ async def update_work_package_comment(
             )
         ),
     ],
-    comment: Annotated[str, Field(description="The new comment text in Markdown; replaces the whole text.")],
+    comment: Annotated[
+        str,
+        Field(description="The new comment text in Markdown; replaces the whole text. Must not be blank."),
+    ],
     confirm: Confirm = False,
 ) -> ActivityWriteResult:
     """Replace the text of an existing work package comment.
 
-    comment replaces the whole text; it is not appended. Whether the comment
+    comment replaces the whole text; it is not appended. A blank comment is rejected: OpenProject has no
+    delete for comments, and an empty text would only leave an empty entry in the history, so a comment
+    cannot be removed or emptied with this tool. Whether the comment
     is internal stays as it was: OpenProject does not change that on edit.
     Editing may notify people; PATCH has no notify=false option. Repeating the
     call marks recipients' notifications for this comment unread again. The

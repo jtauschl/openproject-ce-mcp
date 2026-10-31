@@ -25,6 +25,7 @@ from openproject_ce_mcp.tools import (
     toggle_activity_emoji_reaction,
     update_relation,
     update_work_package,
+    update_work_package_comment,
 )
 from openproject_ce_mcp.tools_validation import _validate_optional_user_ref, _validate_work_package_ref
 
@@ -1833,3 +1834,20 @@ async def test_work_package_write_tool_schema_allows_a_number(tool_name, fields)
     for field in fields:
         branches = {branch.get("type") for branch in properties[field]["anyOf"]}
         assert "integer" in branches, f"{tool_name}.{field} schema rejects a number: {properties[field]!r}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("comment", ["", "   ", "\n\t"])
+async def test_update_work_package_comment_tool_rejects_blank_text_before_any_request(comment: str) -> None:
+    class StubClient:
+        @property
+        def work_package(self):
+            raise AssertionError("a blank comment must be rejected before the client is used")
+
+    with pytest.raises(ValueError, match="comment is required"):
+        await update_work_package_comment(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            10,
+            comment=comment,
+            confirm=True,
+        )

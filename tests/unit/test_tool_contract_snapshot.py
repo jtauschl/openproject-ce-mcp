@@ -8576,7 +8576,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "update_work_package_comment": {
-        "description_hash": "439b232732d6a40d5e5d9301fe3f73b5408d9f99b875ef5821eb7d3f0af6037e",
+        "description_hash": "3098bc682118e61bed709f6eca48933a327d31b262ab459b583a7898e6df8e0f",
         "input_schema": {
             "properties": {
                 "activity_id": {
@@ -8585,7 +8585,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "type": "integer",
                 },
                 "comment": {
-                    "description": "The new comment text in Markdown; replaces the whole text.",
+                    "description": "The new comment text in Markdown; replaces the whole text. Must not be blank.",
                     "title": "Comment",
                     "type": "string",
                 },
