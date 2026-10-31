@@ -118,6 +118,10 @@ rather than lumping them all into one "security" bucket:
 - **The API token is a secret.** Store it only in a local, git-ignored config
   (e.g. `.mcp.json`, mode `600`) — never commit it. A remote plain-`http://`
   base URL emits a startup warning because the token would be sent unencrypted.
+- **TLS verification stays on by default.** `OPENPROJECT_VERIFY_SSL=false` is
+  accepted for instances whose certificate cannot be validated, logs a startup
+  warning naming the host, and exposes the token to anyone on the network path.
+  For a private CA, set `SSL_CERT_FILE` to its bundle and leave verification on.
 
 See the README's configuration and security sections for the full flag reference.
 

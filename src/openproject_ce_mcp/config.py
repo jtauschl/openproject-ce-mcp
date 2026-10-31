@@ -413,6 +413,12 @@ class Settings:
         hide_custom_fields = _parse_csv(env.get("OPENPROJECT_HIDE_CUSTOM_FIELDS"))
         timeout = _float_env(env, "OPENPROJECT_TIMEOUT", default=12.0, minimum=1.0)
         verify_ssl = _bool_env(env, "OPENPROJECT_VERIFY_SSL", default=True)
+        if not verify_ssl and base_url.startswith("https://"):
+            logging.getLogger(__name__).warning(
+                "OPENPROJECT_VERIFY_SSL=false: the certificate of %s is not verified, so the API token can be "
+                "intercepted. For a private CA, point SSL_CERT_FILE at its bundle and keep verification on.",
+                urlparse(base_url).hostname,
+            )
         default_page_size = _int_env(
             env,
             "OPENPROJECT_DEFAULT_PAGE_SIZE",

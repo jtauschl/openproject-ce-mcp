@@ -63,6 +63,9 @@ to install and discover.
 
 ### Changed
 
+- `OPENPROJECT_VERIFY_SSL=false` on an `https://` base URL now logs a startup warning that
+  names the host and points to `SSL_CERT_FILE` for a private CA. The connection check
+  (`doctor`) names the same variable in its certificate-error hint.
 - **Breaking:** `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` match a
   project's identifier or numeric id only, no longer its name. A pattern that
   cannot match an identifier, such as a name with spaces, stops the server at

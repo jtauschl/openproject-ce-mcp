@@ -61,7 +61,7 @@ async def check() -> dict[str, object]:
             return _failure(
                 "tls_error",
                 "TLS/certificate error; check the server's certificate, "
-                "or OPENPROJECT_VERIFY_SSL for a trusted internal CA",
+                "or set SSL_CERT_FILE to the CA bundle of a trusted internal CA",
             )
         cause = exc.__cause__
         detail = f" ({type(cause).__name__})" if cause is not None else ""

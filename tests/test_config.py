@@ -475,6 +475,36 @@ def test_local_or_https_base_url_does_not_warn(base_url, caplog) -> None:
     assert not any("unencrypted" in record.message for record in caplog.records)
 
 
+_TLS_ENV = {"OPENPROJECT_API_TOKEN": "token-value"}
+
+
+def test_disabled_tls_verification_warns_and_names_the_host_but_not_the_token(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        Settings.from_env(
+            {**_TLS_ENV, "OPENPROJECT_BASE_URL": "https://op.example.com:8443", "OPENPROJECT_VERIFY_SSL": "false"}
+        )
+    messages = [record.getMessage() for record in caplog.records if "VERIFY_SSL" in record.getMessage()]
+    assert len(messages) == 1
+    assert "op.example.com" in messages[0]
+    assert "SSL_CERT_FILE" in messages[0]
+    assert "token-value" not in " ".join(record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"OPENPROJECT_BASE_URL": "https://op.example.com"},
+        {"OPENPROJECT_BASE_URL": "https://op.example.com", "OPENPROJECT_VERIFY_SSL": "true"},
+        {"OPENPROJECT_BASE_URL": "http://localhost:8080", "OPENPROJECT_VERIFY_SSL": "false"},
+    ],
+    ids=["default", "explicitly-on", "plain-http-has-no-certificate"],
+)
+def test_tls_verification_warning_is_absent_when_it_does_not_apply(env, caplog) -> None:
+    with caplog.at_level("WARNING"):
+        Settings.from_env({**_TLS_ENV, **env})
+    assert not any("VERIFY_SSL" in record.getMessage() for record in caplog.records)
+
+
 def test_max_retries_exceeds_limit() -> None:
     with pytest.raises(ConfigError, match="OPENPROJECT_MAX_RETRIES must not exceed 10"):
         Settings.from_env(
