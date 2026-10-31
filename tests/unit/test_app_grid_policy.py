@@ -16,7 +16,7 @@ from openproject_ce_mcp.app.policies.grid_policy import (
 )
 from openproject_ce_mcp.app.policies.scope import PrefixMismatch
 
-DEMO = ResolvedProject(6, "demo", "Demo Project")
+DEMO = ResolvedProject(6, "demo")
 
 
 def _settings(
@@ -194,7 +194,7 @@ def test_an_allowed_project_link_does_not_mask_a_disallowed_scope_project() -> N
         ensure_grid_allowed(
             ProjectScope("secret"),
             project_link={"href": "/api/v3/projects/6", "title": "Demo Project"},
-            resolved=ResolvedProject(9, "secret", "Secret"),
+            resolved=ResolvedProject(9, "secret"),
             write=False,
             settings=_settings(read=("demo", "Demo Project")),
             project_id_to_identifier={6: "demo"},
@@ -229,7 +229,7 @@ def test_a_scope_and_project_link_naming_two_allowed_projects_are_denied() -> No
         ensure_grid_allowed(
             ProjectScope("demo-two"),
             project_link={"href": "/api/v3/projects/6", "title": "Demo Project"},
-            resolved=ResolvedProject(7, "demo-two", "Demo Two"),
+            resolved=ResolvedProject(7, "demo-two"),
             write=False,
             settings=_settings(read=("demo*",)),
             project_id_to_identifier={6: "demo"},

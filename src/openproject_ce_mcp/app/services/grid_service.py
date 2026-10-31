@@ -114,7 +114,7 @@ class GridService:
                     cache[ref] = exc
                     return
             summary = record.summary
-            cache[ref] = ResolvedProject(summary.id, summary.identifier or ref, summary.name)
+            cache[ref] = ResolvedProject(summary.id, summary.identifier or ref)
 
         await gather_in_current_context(*(resolve_one(ref) for ref in dict.fromkeys(refs) if ref not in cache))
 

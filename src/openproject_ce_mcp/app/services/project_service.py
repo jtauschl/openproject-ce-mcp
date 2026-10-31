@@ -611,7 +611,7 @@ class ProjectAdminService:
         def _parent_ref_allowed(ref: ProjectRef) -> bool:
             return payload_allowed(
                 lambda: project_policy_module.ensure_project_read_allowed(
-                    {"id": ref.id, "identifier": ref.identifier, "name": ref.name},
+                    {"id": ref.id, "identifier": ref.identifier},
                     settings=self._settings,
                 )
             )

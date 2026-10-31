@@ -56,7 +56,6 @@ class ProjectScope:
 class ResolvedProject:
     id: int
     identifier: str
-    name: str | None
 
 
 def parse_grid_scope(href: Any, *, settings: Settings) -> MyPageScope | ProjectScope | PrefixMismatch | None:
