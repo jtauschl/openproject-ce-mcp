@@ -16,7 +16,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A job that calls a reusable workflow has no steps of its own, so a malformed
+  # tag is stopped here, before the called workflow starts.
+  verify-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+
+    steps:
+      - name: Verify tag is an exact plain SemVer (no pre-release suffix)
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not an exact plain vMAJOR.MINOR.PATCH tag — refusing to publish" >&2
+            exit 1
+          fi
+
   test:
+    needs: verify-tag
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
@@ -50,14 +66,14 @@ jobs:
       attestations: write   # required to publish a build-provenance attestation
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
       - name: Verify tag is an exact plain SemVer (no pre-release suffix)
         run: |
           if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "::error::Tag '$GITHUB_REF_NAME' is not an exact plain vMAJOR.MINOR.PATCH tag — refusing to publish" >&2
             exit 1
           fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
