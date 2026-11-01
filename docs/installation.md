@@ -195,7 +195,8 @@ for the exact commands (`git clone` + `uv sync --dev`, or a plain `venv` + `pip
 install -e ".[dev]"` alternative). Run the setup wizard from that checkout with
 `.venv/bin/python configure_mcp.py` (or `uv run python configure_mcp.py` if you
 used `uv`) instead of the installed `openproject-ce-mcp configure`. Use the
-checkout's own interpreter: it has the dependencies the setup imports.
+checkout's own interpreter: it has the dependencies the setup imports. The project
+itself need not be installed there; its version is then read from `pyproject.toml`.
 
 ## Uninstall
 
