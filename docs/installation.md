@@ -11,11 +11,8 @@ every environment variable it can set, see [Configuration](configuration.md).
 
 ## Requirements
 
-| | |
-| --- | --- |
-| Python | 3.11 or later |
-| OpenProject | Community Edition 16.0 or later (source-audited through 17.9, runtime-smoke-tested through 17.9), API v3 accessible |
-| OS | macOS 12+, Linux, or Windows 10/11 |
+The minimum Python, OpenProject and OS versions are in the
+[README](../README.md#requirements).
 
 On OpenProject 16.0 specifically: emoji reactions and project phase
 definitions aren't available until 16.1, the `version_status` filter of
