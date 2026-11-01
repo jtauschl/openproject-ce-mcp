@@ -26,7 +26,12 @@ from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
-from ...models import MeetingOutcomeListResult, MeetingOutcomeSummary, MeetingOutcomeWriteResult
+from ...models import (
+    MeetingOutcomeListResult,
+    MeetingOutcomeSummary,
+    MeetingOutcomeWriteResult,
+    ResolvedWorkPackage,
+)
 from ..api_href import api_href as _api_href
 from ..errors import NotFoundError
 from ..pagination import clamp_limit, paginate_client
@@ -34,9 +39,10 @@ from ..policies import access, hidden_fields
 from ..ports.meeting_agenda_item_api import MeetingAgendaItemApi
 from ..ports.meeting_api import MeetingApi
 from ..ports.meeting_outcome_api import MeetingOutcomeApi
-from ..ports.work_package_ref import WorkPackageIdResolver
+from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._work_package_presentation import present_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -49,7 +55,7 @@ class MeetingOutcomeService:
         meeting_api: MeetingApi,
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
         api_prefix: str,
     ) -> None:
         self._api = api
@@ -57,7 +63,7 @@ class MeetingOutcomeService:
         self._meeting_api = meeting_api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
         self._api_prefix = api_prefix
 
     def _stamp(self, summary: MeetingOutcomeSummary) -> MeetingOutcomeSummary:
@@ -177,6 +183,7 @@ class MeetingOutcomeService:
     ) -> MeetingOutcomeWriteResult:
         await self._ensure_via_agenda_item(agenda_item_id, write=True)
         resolved_work_package_id: int | None = None
+        target = None
         if work_package_id is not None:
             # write=True: linking a work package into this outcome is a
             # write TARGET reference (setting the link), not a read -- same
@@ -186,7 +193,9 @@ class MeetingOutcomeService:
             # link an arbitrary work package outside OPENPROJECT_WRITE_
             # PROJECTS -- this resolver call was entirely missing before,
             # not just using the wrong write= value.
-            resolved_work_package_id = await self._resolve_work_package_id(work_package_id, write=True)
+            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved_work_package_id = resolved.id
+            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             agenda_item_id=agenda_item_id, kind=kind, notes=notes, work_package_id=resolved_work_package_id
         )
@@ -210,7 +219,7 @@ class MeetingOutcomeService:
             ),
             success_message="Meeting outcome created successfully.",
         )
-        return self._to_write_result("create", write_outcome)
+        return self._to_write_result("create", write_outcome, target=target)
 
     async def update(
         self,
@@ -225,9 +234,12 @@ class MeetingOutcomeService:
         agenda_item_id = current.summary.meeting_agenda_item_id
         await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
         resolved_work_package_id: int | None = None
+        target = None
         if work_package_id is not None:
             # write=True: same reasoning as create() above.
-            resolved_work_package_id = await self._resolve_work_package_id(work_package_id, write=True)
+            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved_work_package_id = resolved.id
+            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             agenda_item_id=None, kind=kind, notes=notes, work_package_id=resolved_work_package_id
         )
@@ -250,7 +262,7 @@ class MeetingOutcomeService:
             preview_message="Ask for confirmation, then call again with confirm=true to update it.",
             success_message="Meeting outcome updated successfully.",
         )
-        return self._to_write_result("update", write_outcome)
+        return self._to_write_result("update", write_outcome, target=target)
 
     async def delete(self, *, outcome_id: int, confirm: bool = False) -> MeetingOutcomeWriteResult:
         current = await call_version_gated(lambda: self._api.get(outcome_id), feature="Meeting outcomes", floor="17.6")
@@ -280,7 +292,13 @@ class MeetingOutcomeService:
         )
         return self._to_write_result("delete", write_outcome)
 
-    def _to_write_result(self, action: str, outcome: _WriteOutcome[MeetingOutcomeSummary]) -> MeetingOutcomeWriteResult:
+    def _to_write_result(
+        self,
+        action: str,
+        outcome: _WriteOutcome[MeetingOutcomeSummary],
+        *,
+        target: ResolvedWorkPackage | None = None,
+    ) -> MeetingOutcomeWriteResult:
         return MeetingOutcomeWriteResult(
             action=action,
             state=outcome.state,
@@ -289,5 +307,6 @@ class MeetingOutcomeService:
             payload=outcome.payload,
             validation_errors=outcome.validation_errors,
             result=outcome.detail,
+            target=target,
             **outcome.identity,
         )

@@ -2,7 +2,7 @@
 
 Depends on the `ReminderApi` Protocol (never `HttpxReminderApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`
-directly, on `WorkPackageIdResolver`, and on `WorkPackageProjectAllowedCheck`
+directly, on `WorkPackageRecordResolver`, and on `WorkPackageProjectAllowedCheck`
 -- the widest seam surface of any domain, because each of its four methods
 scopes differently:
 
@@ -13,7 +13,7 @@ scopes differently:
   belong in a Policy module (`app/policies/` is documented as pure, no I/O)
   since the check itself does I/O (a conditional work-package fetch).
 - `create()` takes a genuine caller-supplied work-package reference -- uses
-  `WorkPackageIdResolver(ref, write=True)`.
+  `WorkPackageRecordResolver(ref, write=True)`.
 - `update()`/`delete()` both need the reminder's OWN `remindable` link first
   (an id already concrete once the reminder is fetched, not a caller-supplied
   reference) -- uses `WorkPackageLookupApi.get_by_href()` + a direct
@@ -38,7 +38,7 @@ from typing import Any
 
 from ... import policy_observation
 from ...config import Settings
-from ...models import ReminderListResult, ReminderSummary, ReminderWriteResult
+from ...models import ReminderListResult, ReminderSummary, ReminderWriteResult, ResolvedWorkPackage
 from ..errors import InvalidInputError, ProjectScopeDeniedError
 from ..pagination import clamp_limit, fetch_bounded_and_paginate
 from ..policies import access, hidden_fields
@@ -46,11 +46,12 @@ from ..policies import scope as scope_policy
 from ..ports.reminder_api import ReminderApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import (
-    WorkPackageIdResolver,
     WorkPackageProjectAllowedBulkCheck,
+    WorkPackageRecordResolver,
 )
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..version_gate import call_version_gated
+from ._work_package_presentation import present_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -62,14 +63,14 @@ class ReminderService:
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
         work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
     ) -> None:
         self._api = api
         self._work_package_lookup_api = work_package_lookup_api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
         self._work_package_project_allowed_bulk = work_package_project_allowed_bulk
 
     def _stamp(self, summary: ReminderSummary) -> ReminderSummary:
@@ -150,7 +151,9 @@ class ReminderService:
         note: str | None = None,
         confirm: bool = False,
     ) -> ReminderWriteResult:
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved_id = resolved.id
+        target = present_target(resolved.payload, settings=self._settings)
         hidden_fields.ensure_field_writable("reminder", "remind_at", settings=self._settings)
         payload: dict = {"remindAt": remind_at}
         if note is not None:
@@ -178,7 +181,7 @@ class ReminderService:
             preview_message="OpenProject is ready to create this reminder. Ask for confirmation, then call again with confirm=true.",
             success_message="Reminder created successfully.",
         )
-        return self._to_write_result("create", outcome)
+        return self._to_write_result("create", outcome, target=target)
 
     async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> None:
         """Fetch only the reminder's `remindable` link (not the full record --
@@ -266,7 +269,13 @@ class ReminderService:
         )
         return self._to_write_result("delete", outcome)
 
-    def _to_write_result(self, action: str, outcome: _WriteOutcome[ReminderSummary | None]) -> ReminderWriteResult:
+    def _to_write_result(
+        self,
+        action: str,
+        outcome: _WriteOutcome[ReminderSummary | None],
+        *,
+        target: ResolvedWorkPackage | None = None,
+    ) -> ReminderWriteResult:
         return ReminderWriteResult(
             action=action,
             state=outcome.state,
@@ -275,5 +284,6 @@ class ReminderService:
             payload=outcome.payload,
             validation_errors=outcome.validation_errors,
             result=outcome.detail,
+            target=target,
             **outcome.identity,
         )

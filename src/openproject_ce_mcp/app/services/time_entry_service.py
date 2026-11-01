@@ -49,6 +49,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import (
+    ResolvedWorkPackage,
     TimeEntryActivityListResult,
     TimeEntryActivitySummary,
     TimeEntryListResult,
@@ -67,6 +68,7 @@ from ..ports.project_ref import ProjectIdResolver, ProjectRefResolver
 from ..ports.time_entry_api import TimeEntryApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..resolvers.project_query import fetch_project_page
+from ._work_package_presentation import present_target
 from ._write_outcome import _finalize_write
 from .project_scoped_list import SUBJECT_LIMIT
 from .project_scoped_list import trim_text as _trim_text
@@ -486,6 +488,7 @@ class TimeEntryService:
         project_name: str | None = None
         activity_project_id: int | None = None
         work_package_numeric_id: int | None = None
+        target = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=True)
             project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
@@ -498,6 +501,7 @@ class TimeEntryService:
                 project_id_to_identifier=self._project_id_to_identifier,
             )
             work_package_numeric_id = int(work_package_payload["id"])
+            target = present_target(work_package_payload, settings=self._settings)
             work_package_project_link = work_package_payload.get("_links", {}).get("project")
             wp_project_title, wp_project_id = self._api.project_link_title_and_id(work_package_project_link)
             if project_name is None:
@@ -533,7 +537,7 @@ class TimeEntryService:
             preview_message="OpenProject validated the time entry. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Time entry created successfully.",
         )
-        return self._to_write_result("create", outcome)
+        return self._to_write_result("create", outcome, target)
 
     async def update(
         self,
@@ -585,7 +589,9 @@ class TimeEntryService:
         )
         return self._to_write_result("update", outcome)
 
-    def _to_write_result(self, action: str, outcome: Any) -> TimeEntryWriteResult:
+    def _to_write_result(
+        self, action: str, outcome: Any, target: ResolvedWorkPackage | None = None
+    ) -> TimeEntryWriteResult:
         return TimeEntryWriteResult(
             action=action,
             state=outcome.state,
@@ -594,6 +600,7 @@ class TimeEntryService:
             payload=outcome.payload,
             validation_errors=outcome.validation_errors,
             result=self._stamp(outcome.detail.summary()) if outcome.detail else None,
+            target=target,
             **outcome.identity,
         )
 

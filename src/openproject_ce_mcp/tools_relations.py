@@ -67,6 +67,8 @@ async def create_work_package_relation(
     from_id/to_id unswapped. This happens once at creation and does not depend on which work package's
     relations you later query; always read the actual type/from_id/to_id from the response rather than
     assuming they match what you requested.
+    The result names the work packages the two references resolved to in `target` (work_package_id)
+    and `related_target` (related_to_work_package_id).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)

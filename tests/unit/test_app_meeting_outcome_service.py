@@ -4,11 +4,13 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _work_package_target_helpers import resolved_record
 
 from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.meeting_agenda_item_api import MeetingAgendaItemRecord
 from openproject_ce_mcp.app.ports.meeting_api import MeetingRecord
 from openproject_ce_mcp.app.ports.meeting_outcome_api import MeetingOutcomeRecord
+from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.services.meeting_outcome_service import MeetingOutcomeService
 from openproject_ce_mcp.models import MeetingAgendaItemSummary, MeetingOutcomeSummary, MeetingSummary
 
@@ -130,8 +132,8 @@ class _FakeMeetingOutcomeApi:
         self.delete_calls.append(outcome_id)
 
 
-async def _resolve_work_package_id_ok(ref, *, write: bool = False) -> int:
-    return 99
+async def _resolve_work_package_record_ok(ref, *, write: bool = False) -> ResolvedRecord:
+    return resolved_record(99)
 
 
 def _service(
@@ -140,7 +142,7 @@ def _service(
     meeting_agenda_item_api: _FakeMeetingAgendaItemApi | None = None,
     meeting_api: _FakeMeetingApi | None = None,
     settings=None,
-    resolve_work_package_id=None,
+    resolve_work_package_record=None,
 ) -> MeetingOutcomeService:
     return MeetingOutcomeService(
         api=api or _FakeMeetingOutcomeApi(),
@@ -148,7 +150,7 @@ def _service(
         meeting_api=meeting_api or _FakeMeetingApi(),
         settings=settings or make_settings(),
         project_id_to_identifier={6: "demo"},
-        resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok,
+        resolve_work_package_record=resolve_work_package_record or _resolve_work_package_record_ok,
         api_prefix="/api/v3/",
     )
 
@@ -262,16 +264,16 @@ async def test_create_resolves_linked_work_package_id_with_write_scope() -> None
     work_package_id straight into the payload with NO resolver call at all
     -- a writable meeting outcome could be linked to an arbitrary work
     package entirely outside OPENPROJECT_WRITE_PROJECTS, with no scope
-    check whatsoever. Must resolve via resolve_work_package_id(...,
+    check whatsoever. Must resolve via resolve_work_package_record(...,
     write=True), same as MeetingAgendaItemService's own equivalent link."""
     api = _FakeMeetingOutcomeApi()
     resolved: list[tuple] = []
 
     async def resolve(ref, *, write: bool = False):
         resolved.append((ref, write))
-        return 99
+        return resolved_record(99)
 
-    service = _service(api=api, resolve_work_package_id=resolve)
+    service = _service(api=api, resolve_work_package_record=resolve)
 
     await service.create(agenda_item_id=21, kind="work_package", work_package_id="99", confirm=True)
 
@@ -319,9 +321,9 @@ async def test_update_resolves_linked_work_package_id_with_write_scope() -> None
 
     async def resolve(ref, *, write: bool = False):
         resolved.append((ref, write))
-        return 99
+        return resolved_record(99)
 
-    service = _service(api=api, resolve_work_package_id=resolve)
+    service = _service(api=api, resolve_work_package_record=resolve)
 
     await service.update(outcome_id=31, work_package_id="99", confirm=True)
 

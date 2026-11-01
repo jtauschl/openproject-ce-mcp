@@ -512,6 +512,20 @@ class WorkPackageDetail:
 
 
 @dataclass
+class ResolvedWorkPackage:
+    """The work package a caller-typed reference resolved to, as read when the write was previewed.
+
+    Not frozen: hiding a field stamps `_hidden_keys` onto the instance.
+    """
+
+    id: int
+    display_id: str | None = None
+    project: str | None = None
+    subject: str | None = None
+    status: str | None = None
+
+
+@dataclass
 class WorkPackageWriteResult(ConfirmationHeader):
     # A resolved work-package reference, e.g. from _work_package_ref: a numeric
     # id or a project-prefixed display id (e.g. "PROJ-123"), passed through
@@ -521,6 +535,8 @@ class WorkPackageWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: WorkPackageDetail | None
+    # On a create this is the referenced parent, since `result` is the new work package.
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -549,6 +565,7 @@ class ActivityWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: ActivitySummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -558,6 +575,8 @@ class RelationWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: RelationSummary | None
+    target: ResolvedWorkPackage | None = None
+    related_target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1046,6 +1065,7 @@ class AttachmentWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: AttachmentSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1135,6 +1155,7 @@ class TimeEntryWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: TimeEntrySummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1405,6 +1426,7 @@ class WatcherWriteResult(ConfirmationHeader):
     watcher_user_id: int | None
     validation_errors: dict
     result: WatcherSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1748,6 +1770,7 @@ class ReminderWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: ReminderSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1780,6 +1803,7 @@ class WikiPageLinkWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: WikiPageLinkSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1916,6 +1940,7 @@ class MeetingAgendaItemWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: MeetingAgendaItemSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 # --- Meeting Outcomes (OpenProject 17.6+) ---
@@ -1947,6 +1972,7 @@ class MeetingOutcomeWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: MeetingOutcomeSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 # --- Meeting Sections ---

@@ -1,0 +1,67 @@
+"""Integration tests: a write that takes a work package reference names the work package it resolved to."""
+
+from __future__ import annotations
+
+import pytest
+
+from openproject_ce_mcp.client import OpenProjectClient
+
+pytestmark = pytest.mark.integration
+
+
+async def _create(client: OpenProjectClient, project: str, wp_ids: list[int], subject: str):
+    created = await client.work_package.create(project=project, type="Task", subject=subject, confirm=True)
+    assert created.ready
+    wp_ids.append(created.work_package_id)
+    assert created.result is not None
+    return created.result
+
+
+async def test_previews_name_the_work_package_for_a_numeric_and_a_display_reference(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    wp = await _create(client, test_project, wp_ids, "[integration-test] write target")
+    assert wp.display_id is not None
+
+    for reference in (wp.id, wp.display_id):
+        comment = await client.work_package.add_comment(
+            work_package_id=reference, comment="[integration-test] preview only", confirm=False
+        )
+        update = await client.work_package.update(
+            work_package_id=reference, subject="[integration-test] write target renamed", confirm=False
+        )
+        delete = await client.work_package.delete(work_package_id=reference, confirm=False)
+
+        for result in (comment, update, delete):
+            assert result.target is not None
+            assert result.target.id == wp.id
+            assert result.target.display_id == wp.display_id
+            assert result.target.subject == "[integration-test] write target"
+            assert result.target.status == wp.status
+            assert result.target.project == wp.project
+
+
+async def test_a_confirmed_comment_and_a_relation_preview_name_their_work_packages(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    source = await _create(client, test_project, wp_ids, "[integration-test] target source")
+    related = await _create(client, test_project, wp_ids, "[integration-test] target related")
+
+    comment = await client.work_package.add_comment(
+        work_package_id=source.id, comment="[integration-test] confirmed comment", confirm=True
+    )
+    relation = await client.relation.create(
+        work_package_id=source.id,
+        related_to_work_package_id=related.display_id,
+        relation_type="relates",
+        confirm=False,
+    )
+
+    assert comment.state == "confirmed"
+    assert comment.target is not None
+    assert comment.target.display_id == source.display_id
+    assert relation.target is not None
+    assert relation.related_target is not None
+    assert relation.target.display_id == source.display_id
+    assert relation.related_target.display_id == related.display_id
+    assert relation.related_target.subject == "[integration-test] target related"

@@ -4,10 +4,12 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _work_package_target_helpers import resolved_record
 
 from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.meeting_agenda_item_api import MeetingAgendaItemRecord
 from openproject_ce_mcp.app.ports.meeting_api import MeetingRecord
+from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.services.meeting_agenda_item_service import MeetingAgendaItemService
 from openproject_ce_mcp.models import MeetingAgendaItemSummary, MeetingSummary
 
@@ -110,8 +112,8 @@ class _FakeMeetingAgendaItemApi:
         self.delete_calls.append(agenda_item_id)
 
 
-async def _resolve_work_package_id_ok(ref, *, write: bool = False) -> int:
-    return 99
+async def _resolve_work_package_record_ok(ref, *, write: bool = False) -> ResolvedRecord:
+    return resolved_record(99)
 
 
 def _service(
@@ -119,14 +121,14 @@ def _service(
     api: _FakeMeetingAgendaItemApi | None = None,
     meeting_api: _FakeMeetingApi | None = None,
     settings=None,
-    resolve_work_package_id=None,
+    resolve_work_package_record=None,
 ) -> MeetingAgendaItemService:
     return MeetingAgendaItemService(
         api=api or _FakeMeetingAgendaItemApi(),
         meeting_api=meeting_api or _FakeMeetingApi(),
         settings=settings or make_settings(),
         project_id_to_identifier={6: "demo"},
-        resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok,
+        resolve_work_package_record=resolve_work_package_record or _resolve_work_package_record_ok,
         api_prefix="/api/v3/",
     )
 
@@ -203,9 +205,9 @@ async def test_list_for_work_package_resolves_work_package_id() -> None:
 
     async def resolve(ref, *, write: bool = False):
         resolved.append((ref, write))
-        return 99
+        return resolved_record(99)
 
-    service = _service(api=api, resolve_work_package_id=resolve)
+    service = _service(api=api, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("99")
 
@@ -241,7 +243,7 @@ def _restricted_service(records, *, read=("demo",)):
         meeting_api=_FakeMeetingApi(),
         settings=dataclasses.replace(make_settings(), read_projects=read),
         project_id_to_identifier={6: "demo", 7: "secret"},
-        resolve_work_package_id=_resolve_work_package_id_ok,
+        resolve_work_package_record=_resolve_work_package_record_ok,
         api_prefix="/api/v3/",
     )
 
@@ -298,7 +300,7 @@ async def test_list_for_work_package_asks_for_no_meeting_beyond_the_embedded_one
         meeting_api=meeting_api,
         settings=dataclasses.replace(make_settings(), read_projects=("demo",)),
         project_id_to_identifier={6: "demo", 7: "secret"},
-        resolve_work_package_id=_resolve_work_package_id_ok,
+        resolve_work_package_record=_resolve_work_package_record_ok,
         api_prefix="/api/v3/",
     )
 
@@ -391,9 +393,9 @@ async def test_create_resolves_linked_work_package_id_with_write_scope() -> None
 
     async def resolve(ref, *, write: bool = False):
         resolved.append((ref, write))
-        return 99
+        return resolved_record(99)
 
-    service = _service(api=api, resolve_work_package_id=resolve)
+    service = _service(api=api, resolve_work_package_record=resolve)
 
     await service.create(meeting_id=12, title="Discuss roadmap", work_package_id="99", confirm=True)
 
@@ -446,9 +448,9 @@ async def test_update_resolves_linked_work_package_id_with_write_scope() -> None
 
     async def resolve(ref, *, write: bool = False):
         resolved.append((ref, write))
-        return 99
+        return resolved_record(99)
 
-    service = _service(api=api, resolve_work_package_id=resolve)
+    service = _service(api=api, resolve_work_package_record=resolve)
 
     await service.update(agenda_item_id=21, work_package_id="99", confirm=True)
 

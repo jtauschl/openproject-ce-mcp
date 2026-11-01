@@ -26,6 +26,7 @@ from openproject_ce_mcp.app.ports.work_package_api import (
     WorkPackagePage,
     WorkPackageRecord,
 )
+from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.ports.work_package_resolution import WorkPackageAllowedContext
 from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
 from openproject_ce_mcp.app.services._work_package_write_helpers import with_offered_version_values
@@ -439,7 +440,7 @@ def _service(
     status_api: _FakeStatusApi | None = None,
     activity_api: _FakeActivityApi | None = None,
     user_names=None,
-    resolve_work_package_id=None,
+    resolve_work_package_record=None,
 ) -> tuple[WorkPackageService, _FakeWorkPackageApi]:
     fake_api = api or _FakeWorkPackageApi()
 
@@ -471,9 +472,9 @@ def _service(
     async def resolve_sprint_id(sprint_ref, *, project, context=None):
         return "9"
 
-    async def default_resolve_work_package_id(ref, *, write=False):
+    async def default_resolve_work_package_record(ref, *, write=False):
         try:
-            return int(ref)
+            return ResolvedRecord(id=int(ref), payload=_payload(int(ref)))
         except ValueError:
             raise NotFoundError(f"OpenProject work package '{ref}' was not found.") from None
 
@@ -496,7 +497,7 @@ def _service(
         resolve_principal_id=resolve_principal_id,
         resolve_assignee_id=resolve_assignee_id,
         resolve_sprint_id=resolve_sprint_id,
-        resolve_work_package_id=resolve_work_package_id or default_resolve_work_package_id,
+        resolve_work_package_record=resolve_work_package_record or default_resolve_work_package_record,
         status_api=status_api or _FakeStatusApi(),
         activity_api=activity_api or _FakeActivityApi(),
         user_names=user_names or _no_user_names,
@@ -1896,11 +1897,11 @@ async def test_create_resolves_parent_with_write_true() -> None:
     api = _FakeWorkPackageApi()
     seen_write: list[bool] = []
 
-    async def resolve_work_package_id(ref, *, write=False):
+    async def resolve_work_package_record(ref, *, write=False):
         seen_write.append(write)
-        return int(ref)
+        return ResolvedRecord(id=int(ref), payload=_payload(int(ref)))
 
-    service, _ = _service(api, resolve_work_package_id=resolve_work_package_id)
+    service, _ = _service(api, resolve_work_package_record=resolve_work_package_record)
 
     await service.create(project="demo", type="Task", subject="Child", parent_work_package_id=6, confirm=False)
 
@@ -1914,7 +1915,7 @@ async def test_create_denies_write_when_parent_project_not_write_allowed() -> No
     with write access to "demo" must not be able to attach a new child under
     a parent work package in "other", which they can only read. Unlike
     `test_create_resolves_parent_with_write_true` above, this uses the REAL
-    `WorkPackageResolver.resolve_id` (mirroring `ensure_project_write_link_
+    `WorkPackageResolver.resolve_record` (mirroring `ensure_project_write_link_
     allowed`'s actual enforcement) instead of a fake resolver that always
     succeeds, so the denial actually has to propagate out of create()."""
     api = _FakeWorkPackageApi()
@@ -1933,7 +1934,7 @@ async def test_create_denies_write_when_parent_project_not_write_allowed() -> No
     resolver = WorkPackageResolver(
         api=_ParentLookupApi(), settings=settings, project_id_to_identifier=PROJECT_ID_TO_IDENTIFIER
     )
-    service, _ = _service(api, settings=settings, resolve_work_package_id=resolver.resolve_id)
+    service, _ = _service(api, settings=settings, resolve_work_package_record=resolver.resolve_record)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.create(project="demo", type="Task", subject="Child", parent_work_package_id=6, confirm=True)
@@ -2727,11 +2728,11 @@ async def test_update_resolves_parent_with_write_true_and_clear_parent_passes_th
     api = _FakeWorkPackageApi()
     seen_write: list[bool] = []
 
-    async def resolve_work_package_id(ref, *, write=False):
+    async def resolve_work_package_record(ref, *, write=False):
         seen_write.append(write)
-        return int(ref)
+        return ResolvedRecord(id=int(ref), payload=_payload(int(ref)))
 
-    service, _ = _service(api, resolve_work_package_id=resolve_work_package_id)
+    service, _ = _service(api, resolve_work_package_record=resolve_work_package_record)
 
     await service.update(work_package_id=6, parent_work_package_id=7, confirm=False)
     assert seen_write == [True]
@@ -2747,7 +2748,7 @@ async def test_update_resolves_parent_with_write_true_and_clear_parent_passes_th
 @pytest.mark.asyncio
 async def test_update_denies_write_when_new_parent_project_not_write_allowed() -> None:
     """Same reasoning as `test_create_denies_write_when_parent_project_not_write_allowed`,
-    for reparenting via update(). Uses the REAL `WorkPackageResolver.resolve_id`
+    for reparenting via update(). Uses the REAL `WorkPackageResolver.resolve_record`
     instead of a fake resolver that always succeeds."""
     api = _FakeWorkPackageApi()
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
@@ -2765,7 +2766,7 @@ async def test_update_denies_write_when_new_parent_project_not_write_allowed() -
     resolver = WorkPackageResolver(
         api=_NewParentLookupApi(), settings=settings, project_id_to_identifier=PROJECT_ID_TO_IDENTIFIER
     )
-    service, _ = _service(api, settings=settings, resolve_work_package_id=resolver.resolve_id)
+    service, _ = _service(api, settings=settings, resolve_work_package_record=resolver.resolve_record)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(work_package_id=6, parent_work_package_id=7, confirm=True)

@@ -637,6 +637,7 @@ async def create_work_package(
     (OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
+    When a parent is given, the result names the work package it resolved to in `target`.
     If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in
     server completion order, not call order; use bulk_create_work_packages instead when relative
     ID/creation order across a batch matters.
@@ -826,6 +827,7 @@ async def update_work_package(
     omit percentage_done and let OpenProject derive it instead.
     due_date's non-working-day shift and the confirm/preview contract work exactly as documented
     on create_work_package.
+    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -931,6 +933,7 @@ async def bulk_create_work_packages(
     `result.result.due_date` if the exact calendar date matters. This server does not expose a
     way to opt out of that shift (OpenProject's own `ignoreNonWorkingDays` flag is not a write
     parameter here).
+    When an item gives a parent, that item's result names the work package it resolved to in `target`.
 
     A rejected item's validation is not a tool error; inspect each item's `success`,
     `error`, and nested `result` rather than the MCP error envelope.
@@ -1079,6 +1082,7 @@ async def bulk_update_work_packages(
     (`result.result.due_date` here too). As there, select names write-result
     fields (work_package_id, ready, state, ...); fields of the written work
     package are selected as result.<field> (e.g. "result.display_id").
+    Each item's result names the work package its reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     if not items:
@@ -1169,6 +1173,7 @@ async def delete_work_package(
 
     This cannot be undone. Up to 17.6 all its descendants are deleted too; 17.7+ only those you may delete,
     the others lose their parent.
+    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1205,6 +1210,7 @@ async def create_subtask(
     data and cannot be used together in one call.
     observed_in_versions accepts a list of version names/ids recording where a bug was observed
     (OpenProject 17.9+, types with the attribute enabled); pass [] to clear.
+    The result names the parent work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
@@ -1270,6 +1276,7 @@ async def add_work_package_comment(
     write response omits it, a best-effort follow-up lookup fills it in; if
     that also comes back empty, `user` stays null even though the comment was
     saved successfully.
+    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)

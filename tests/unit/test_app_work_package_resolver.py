@@ -121,6 +121,55 @@ async def test_resolve_id_read_allowlist_denies() -> None:
         await resolver.resolve_id(42)
 
 
+# --- resolve_record ---
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_returns_the_id_and_the_payload_it_fetched() -> None:
+    payload = _wp_payload(7)
+    resolver, api = _resolver({"PROJ-123": payload})
+
+    record = await resolver.resolve_record("PROJ-123")
+
+    assert record.id == 7
+    assert record.payload is payload
+    assert api.get_calls == ["PROJ-123"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_id_is_the_id_of_the_record_resolve_record_returns() -> None:
+    resolver, _api = _resolver({"42": _wp_payload(42), "PROJ-1": _wp_payload(9)})
+
+    for ref in ("42", "PROJ-1"):
+        assert await resolver.resolve_id(ref) == (await resolver.resolve_record(ref)).id
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_semantic_ref_not_found_gets_175_hint_message() -> None:
+    resolver, _api = _resolver({}, not_found={"PROJ-999"})
+
+    with pytest.raises(NotFoundError, match=r"Work package 'PROJ-999' was not found.*OpenProject 17\.5\+"):
+        await resolver.resolve_record("PROJ-999")
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_write_true_uses_write_allowlist_and_denies() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    resolver, _api = _resolver({"42": _wp_payload(42)}, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await resolver.resolve_record(42, write=True)
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_read_allowlist_denies() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("other",))
+    resolver, _api = _resolver({"42": _wp_payload(42)}, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await resolver.resolve_record(42)
+
+
 # --- project_link_allowed ---
 
 

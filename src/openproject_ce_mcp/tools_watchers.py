@@ -51,6 +51,7 @@ async def set_work_package_watcher(
     the user's summary (result is populated; whether the user already watches
     is not checked); watching=false's preview makes no extra lookup and always
     returns result=null.
+    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)

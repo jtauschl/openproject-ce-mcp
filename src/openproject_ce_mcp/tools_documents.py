@@ -354,6 +354,7 @@ async def create_work_package_wiki_link(
     while none of a work package's links resolves to a page.
     provider: the wiki provider's universal identifier (e.g. "internal" for
     OpenProject's built-in wiki).
+    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -394,6 +395,7 @@ async def delete_work_package_wiki_link(
     work_package_id must be the work package the link belongs to; OpenProject has no single GET for a link,
     so the delete is authorized against that work package's project.
     link_id: the wiki page link's own id, from list_work_package_wiki_links.
+    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)

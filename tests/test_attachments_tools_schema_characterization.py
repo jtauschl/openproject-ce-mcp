@@ -279,7 +279,7 @@ def test_create_work_package_attachment_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_work_package_attachment"]
     assert (
         tool.description
-        == "Upload a local file as an attachment to a work package.\n\nThe preview checks that the file exists inside OPENPROJECT_ATTACHMENT_ROOT, is not a credential or\nconfiguration file, and fits OpenProject's maximum attachment size. For wiki pages, forum posts, meetings\nor comments use create_container_attachment.\n"
+        == "Upload a local file as an attachment to a work package.\n\nThe preview checks that the file exists inside OPENPROJECT_ATTACHMENT_ROOT, is not a credential or\nconfiguration file, and fits OpenProject's maximum attachment size. For wiki pages, forum posts, meetings\nor comments use create_container_attachment.\nThe result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

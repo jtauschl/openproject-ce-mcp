@@ -4,7 +4,7 @@ Depends on `MeetingAgendaItemApi` (its own domain Port), `MeetingApi` (a
 second, cross-domain Port -- the precedent this project already established
 for WorkPackageService->ActivityApi/FileLinkService->WorkPackageLookupApi:
 an agenda item has no project of its own, only a parent Meeting, so its
-allowlist check walks through the parent), and `WorkPackageIdResolver`
+allowlist check walks through the parent), and `WorkPackageRecordResolver`
 (resolving an optional `work_package_id` write-target reference). Reuses the
 `"meeting"` scope, not a dedicated `"meeting_agenda_item"` scope -- all five
 sub-resources in this batch share one scope pair.
@@ -34,7 +34,12 @@ from collections.abc import Mapping
 from typing import Any
 
 from ...config import Settings
-from ...models import MeetingAgendaItemListResult, MeetingAgendaItemSummary, MeetingAgendaItemWriteResult
+from ...models import (
+    MeetingAgendaItemListResult,
+    MeetingAgendaItemSummary,
+    MeetingAgendaItemWriteResult,
+    ResolvedWorkPackage,
+)
 from ..api_href import api_href as _api_href
 from ..errors import NotFoundError
 from ..pagination import clamp_limit, paginate_client
@@ -42,9 +47,10 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.meeting_agenda_item_api import MeetingAgendaItemApi, MeetingAgendaItemRecord
 from ..ports.meeting_api import MeetingApi
-from ..ports.work_package_ref import WorkPackageIdResolver
+from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._work_package_presentation import present_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -56,14 +62,14 @@ class MeetingAgendaItemService:
         meeting_api: MeetingApi,
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
         api_prefix: str,
     ) -> None:
         self._api = api
         self._meeting_api = meeting_api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
         self._api_prefix = api_prefix
 
     def _stamp(self, summary: MeetingAgendaItemSummary) -> MeetingAgendaItemSummary:
@@ -135,7 +141,7 @@ class MeetingAgendaItemService:
             max_page_size=self._settings.max_page_size,
             max_results=self._settings.max_results,
         )
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
+        resolved_id = (await self._resolve_work_package_record(work_package_id, write=False)).id
         records = await call_version_gated(
             lambda: self._api.list_for_work_package(resolved_id, text_limit=text_limit),
             feature="Work package meeting agenda items",
@@ -227,6 +233,7 @@ class MeetingAgendaItemService:
     ) -> MeetingAgendaItemWriteResult:
         await self._ensure_meeting_allowed(meeting_id, write=True)
         resolved_work_package_id: int | None = None
+        target = None
         if work_package_id is not None:
             # write=True: linking a work package into this agenda item is a
             # write TARGET reference (setting the link), not a read of the
@@ -235,7 +242,9 @@ class MeetingAgendaItemService:
             # the meeting but only READ access to the work package's project
             # must not be able to link that work package into a meeting they
             # can write to.
-            resolved_work_package_id = await self._resolve_work_package_id(work_package_id, write=True)
+            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved_work_package_id = resolved.id
+            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             meeting_id=meeting_id,
             title=title,
@@ -265,7 +274,7 @@ class MeetingAgendaItemService:
             ),
             success_message="Meeting agenda item created successfully.",
         )
-        return self._to_write_result("create", outcome)
+        return self._to_write_result("create", outcome, target=target)
 
     async def update(
         self,
@@ -289,10 +298,12 @@ class MeetingAgendaItemService:
             raise NotFoundError(f"OpenProject meeting agenda item {agenda_item_id} has no parent meeting.")
         await self._ensure_meeting_allowed(meeting_id, write=True)
         resolved_work_package_id: int | None = None
+        target = None
         if work_package_id is not None:
-            # write=True: same reasoning as create() above -- setting this
-            # link is a write TARGET reference, not a read.
-            resolved_work_package_id = await self._resolve_work_package_id(work_package_id, write=True)
+            # write=True: same reasoning as create() above.
+            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved_work_package_id = resolved.id
+            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             meeting_id=None,
             title=title,
@@ -321,7 +332,7 @@ class MeetingAgendaItemService:
             preview_message="Ask for confirmation, then call again with confirm=true to update it.",
             success_message="Meeting agenda item updated successfully.",
         )
-        return self._to_write_result("update", outcome)
+        return self._to_write_result("update", outcome, target=target)
 
     async def delete(self, *, agenda_item_id: int, confirm: bool = False) -> MeetingAgendaItemWriteResult:
         current = await call_version_gated(
@@ -357,7 +368,11 @@ class MeetingAgendaItemService:
         return self._to_write_result("delete", outcome)
 
     def _to_write_result(
-        self, action: str, outcome: _WriteOutcome[MeetingAgendaItemSummary]
+        self,
+        action: str,
+        outcome: _WriteOutcome[MeetingAgendaItemSummary],
+        *,
+        target: ResolvedWorkPackage | None = None,
     ) -> MeetingAgendaItemWriteResult:
         return MeetingAgendaItemWriteResult(
             action=action,
@@ -367,5 +382,6 @@ class MeetingAgendaItemService:
             payload=outcome.payload,
             validation_errors=outcome.validation_errors,
             result=outcome.detail,
+            target=target,
             **outcome.identity,
         )

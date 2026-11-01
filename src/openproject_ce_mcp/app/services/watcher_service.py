@@ -1,17 +1,17 @@
 """Application Service for the Watchers domain.
 
 Depends on the `WatcherApi` Protocol (never `HttpxWatcherApi` concretely --
-enforced by the architecture-boundary test) and on `WorkPackageIdResolver`.
+enforced by the architecture-boundary test) and on `WorkPackageRecordResolver`.
 Unlike File Links (which needs a second Port for `delete()`'s raw-payload
 fetch, because the id there is already a concrete int derived from a
 container link, not a caller-supplied reference), Watchers' `add`/`remove`
 both take a genuine caller-supplied work-package reference that needs
-resolving -- a cleaner fit for `WorkPackageIdResolver(ref, write=True)`:
-`resolve_id` already fetches the work package and enforces the WRITE
+resolving -- a cleaner fit for `WorkPackageRecordResolver(ref, write=True)`:
+`resolve_record` already fetches the work package and enforces the WRITE
 allowlist against its project link in a single seam call.
 
 No `to_detail`, no Policy module: `list()`'s scoping is entirely delegated to
-`WorkPackageIdResolver` (read-scoped); `add()`/`remove()`'s scoping is
+`WorkPackageRecordResolver` (read-scoped); `add()`/`remove()`'s scoping is
 entirely delegated to the same seam (write-scoped). Neither method filters a
 list of records against a per-record project-link predicate.
 
@@ -31,7 +31,8 @@ from ...config import Settings
 from ...models import WatcherListResult, WatcherSummary, WatcherWriteResult
 from ..policies import access, hidden_fields
 from ..ports.watcher_api import WatcherApi
-from ..ports.work_package_ref import WorkPackageIdResolver
+from ..ports.work_package_ref import WorkPackageRecordResolver
+from ._work_package_presentation import present_target
 
 
 class WatcherService:
@@ -40,11 +41,11 @@ class WatcherService:
         *,
         api: WatcherApi,
         settings: Settings,
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
     ) -> None:
         self._api = api
         self._settings = settings
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
 
     def _stamp(self, summary: WatcherSummary) -> WatcherSummary:
         return hidden_fields.apply_hidden_fields("watcher", summary, settings=self._settings)
@@ -54,7 +55,7 @@ class WatcherService:
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its watchers are
         # fetched.
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
+        resolved_id = (await self._resolve_work_package_record(work_package_id, write=False)).id
         summaries = await self._api.list_for_work_package(resolved_id)
         results = [self._stamp(summary) for summary in summaries]
         return WatcherListResult(count=len(results), results=results)
@@ -63,7 +64,9 @@ class WatcherService:
         # write=True enforces OPENPROJECT_WRITE_PROJECTS against the resolved
         # work package's own project, before any preview or mutation -- this
         # check runs unconditionally, even on a confirm=False preview call.
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        record = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved_id = record.id
+        target = present_target(record.payload, settings=self._settings)
         if not confirm:
             watcher = self._stamp(await self._api.get_user(user_id))
             return WatcherWriteResult(
@@ -75,6 +78,7 @@ class WatcherService:
                 watcher_user_id=user_id,
                 validation_errors={},
                 result=watcher,
+                target=target,
             )
         access.ensure_write_enabled("work_package", settings=self._settings)
         watcher = self._stamp(await self._api.add(resolved_id, user_id))
@@ -87,10 +91,13 @@ class WatcherService:
             watcher_user_id=user_id,
             validation_errors={},
             result=watcher,
+            target=target,
         )
 
     async def remove(self, work_package_id: int | str, user_id: int, *, confirm: bool = False) -> WatcherWriteResult:
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        record = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved_id = record.id
+        target = present_target(record.payload, settings=self._settings)
         if not confirm:
             return WatcherWriteResult(
                 action="remove",
@@ -101,6 +108,7 @@ class WatcherService:
                 watcher_user_id=user_id,
                 validation_errors={},
                 result=None,
+                target=target,
             )
         access.ensure_write_enabled("work_package", settings=self._settings)
         await self._api.remove(resolved_id, user_id)
@@ -113,4 +121,5 @@ class WatcherService:
             watcher_user_id=user_id,
             validation_errors={},
             result=None,
+            target=target,
         )

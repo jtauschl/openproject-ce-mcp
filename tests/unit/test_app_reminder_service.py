@@ -4,6 +4,7 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _work_package_target_helpers import resolved_record
 
 from openproject_ce_mcp import policy_observation
 from openproject_ce_mcp.app.errors import (
@@ -13,6 +14,7 @@ from openproject_ce_mcp.app.errors import (
     ProjectScopeDeniedError,
 )
 from openproject_ce_mcp.app.ports.reminder_api import ReminderRecord
+from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.services.reminder_service import ReminderService
 from openproject_ce_mcp.models import ReminderSummary
 
@@ -132,19 +134,19 @@ class _FakeWorkPackageLookupApi:
         return {"_links": {"project": self._project_link}}
 
 
-def _resolve_work_package_id_ok(resolved_id: int = 42):
+def _resolve_work_package_record_ok(resolved_id: int = 42):
     calls: list[tuple[int | str, bool]] = []
 
-    async def resolve(work_package_ref: int | str, *, write: bool = False) -> int:
+    async def resolve(work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
         calls.append((work_package_ref, write))
-        return resolved_id
+        return resolved_record(resolved_id)
 
     resolve.calls = calls  # type: ignore[attr-defined]
     return resolve
 
 
-def _resolve_work_package_id_denied():
-    async def resolve(work_package_ref: int | str, *, write: bool = False) -> int:
+def _resolve_work_package_record_denied():
+    async def resolve(work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
         raise PermissionDeniedError("OpenProject access to this project is disabled.")
 
     return resolve
@@ -182,7 +184,7 @@ def _service(
     api: _FakeReminderApi | None = None,
     work_package_lookup_api: _FakeWorkPackageLookupApi | None = None,
     settings=None,
-    resolve_work_package_id=None,
+    resolve_work_package_record=None,
     work_package_project_allowed_bulk=None,
 ) -> ReminderService:
     return ReminderService(
@@ -190,7 +192,7 @@ def _service(
         work_package_lookup_api=work_package_lookup_api or _FakeWorkPackageLookupApi(),
         settings=settings or make_settings(),
         project_id_to_identifier=PROJECT_ID_TO_IDENTIFIER,
-        resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok(),
+        resolve_work_package_record=resolve_work_package_record or _resolve_work_package_record_ok(),
         work_package_project_allowed_bulk=work_package_project_allowed_bulk
         or _work_package_project_allowed_bulk_from({"/api/v3/work_packages/42"}),
     )
@@ -296,8 +298,8 @@ async def test_list_all_masks_hidden_note() -> None:
 @pytest.mark.asyncio
 async def test_create_preview_without_confirm_does_not_call_api_create() -> None:
     api = _FakeReminderApi()
-    resolver = _resolve_work_package_id_ok(resolved_id=42)
-    service = _service(api=api, resolve_work_package_id=resolver)
+    resolver = _resolve_work_package_record_ok(resolved_id=42)
+    service = _service(api=api, resolve_work_package_record=resolver)
 
     result = await service.create(work_package_id=42, remind_at="2026-12-01T09:00:00Z", confirm=False)
 
@@ -324,7 +326,7 @@ async def test_create_commit_with_confirm_calls_api_create() -> None:
 @pytest.mark.asyncio
 async def test_create_denies_write_outside_write_allowlist() -> None:
     api = _FakeReminderApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.create(work_package_id=42, remind_at="2026-12-01T09:00:00Z", confirm=True)
@@ -335,7 +337,7 @@ async def test_create_denies_write_outside_write_allowlist() -> None:
 @pytest.mark.asyncio
 async def test_create_denies_write_even_without_confirm() -> None:
     api = _FakeReminderApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.create(work_package_id=42, remind_at="2026-12-01T09:00:00Z", confirm=False)
