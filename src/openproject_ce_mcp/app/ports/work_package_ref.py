@@ -2,7 +2,7 @@
 
 Narrow seams onto Work Packages' reference-resolution machinery, analogous
 to how `project_ref.py`'s `ProjectRefResolver` is the seam several Services
-depend on. Bound to `WorkPackageResolver.resolve_id`/`.project_link_allowed`
+depend on. Bound to `WorkPackageResolver.resolve_id`/`.resolve_record`/`.project_link_allowed`
 (see `app/resolvers/work_package_resolver.py`); consumed by
 Attachments/Time Entries/Reminders/Watchers/Emoji Reactions/Relations/
 Notifications/File Links/Activities/Work Packages Services.
@@ -17,8 +17,9 @@ layer-dependency rules in `tests/test_architecture_boundaries.py`).
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Iterable
-from typing import Protocol
+from collections.abc import Awaitable, Iterable, Mapping
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from ...work_package_reference import canonical_work_package_ref
 from ..errors import InvalidInputError
@@ -42,10 +43,24 @@ def work_package_ref(ref: int | str) -> str:
     return canonical
 
 
+@dataclass(frozen=True)
+class ResolvedRecord:
+    """A resolved work-package reference together with the raw payload the resolution fetched."""
+
+    id: int
+    payload: Mapping[str, Any]
+
+
 class WorkPackageIdResolver(Protocol):
     """Narrow seam onto `WorkPackageResolver.resolve_id`."""
 
     def __call__(self, work_package_ref: int | str, *, write: bool = False) -> Awaitable[int]: ...
+
+
+class WorkPackageRecordResolver(Protocol):
+    """Narrow seam onto `WorkPackageResolver.resolve_record`."""
+
+    def __call__(self, work_package_ref: int | str, *, write: bool = False) -> Awaitable[ResolvedRecord]: ...
 
 
 class WorkPackageProjectAllowedCheck(Protocol):

@@ -11,17 +11,18 @@ named `*Service`/`*Resolver`.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, TypeVar
 
 from ...config import Settings
-from ...models import WorkPackageDetail, WorkPackageSummary
+from ...models import ResolvedWorkPackage, WorkPackageDetail, WorkPackageSummary
 from ..policies import hidden_fields
 from ..ports.scoped_reference import ScopedReferencesAllowedBulkCheck, VisibleReferences
 from ..ports.work_package_api import WorkPackageRecord
 from ..ports.work_package_ref import WorkPackageProjectAllowedBulkCheck
 from ._work_package_parents import without_uncovered_parents
 from ._work_package_references import visible_references
+from .project_scoped_list import SUBJECT_LIMIT, trim_text
 
 WorkPackageT = TypeVar("WorkPackageT", WorkPackageSummary, WorkPackageDetail)
 
@@ -124,6 +125,30 @@ def stamp_detail(detail: WorkPackageDetail, *, settings: Settings) -> WorkPackag
     return hidden_fields.apply_hidden_fields_with_aliases(
         "work_package", detail, settings=settings, aliases=_VERSION_ALIASES
     )
+
+
+def present_target(payload: Mapping[str, Any], *, settings: Settings) -> ResolvedWorkPackage:
+    """The work package a write reference resolved to, as a result may show it.
+
+    Every caller has passed the project write gate, which also requires the read scope, so nothing
+    here re-checks scope. The subject is trimmed, not delimited, exactly as `WorkPackageDetail`'s.
+    """
+    links = payload.get("_links", {})
+    return hidden_fields.apply_hidden_fields(
+        "work_package",
+        ResolvedWorkPackage(
+            id=int(payload["id"]),
+            display_id=payload.get("displayId"),
+            project=_link_title(links.get("project")),
+            subject=trim_text(payload.get("subject"), limit=SUBJECT_LIMIT),
+            status=_link_title(links.get("status")),
+        ),
+        settings=settings,
+    )
+
+
+def _link_title(link: Any) -> str | None:
+    return trim_text(link.get("title"), limit=SUBJECT_LIMIT) if isinstance(link, dict) else None
 
 
 async def present_summaries(

@@ -544,7 +544,7 @@ class OpenProjectClient:
             resolve_principal_id=self._resolve_principal_id,
             resolve_assignee_id=self._assignee_resolver.resolve_id,
             resolve_sprint_id=self._sprint_resolver.resolve_id,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
             status_api=self._status_priority_type_api,
             activity_api=self._activity_api,
             current_user=self._current_user_resolver,

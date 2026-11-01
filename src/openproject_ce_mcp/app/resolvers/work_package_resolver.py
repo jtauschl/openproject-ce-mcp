@@ -24,6 +24,7 @@ from ...work_package_reference import is_numeric_ref
 from ..errors import NotFoundError
 from ..policies import scope as scope_policy
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
+from ..ports.work_package_ref import ResolvedRecord
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 
 # Bounds concurrent allowlist-check HTTP requests across relations,
@@ -54,7 +55,11 @@ class WorkPackageResolver:
         self._allowlist_semaphore = asyncio.Semaphore(_ALLOWLIST_BULK_CONCURRENCY)
 
     async def resolve_id(self, work_package_ref: int | str, *, write: bool = False) -> int:
-        """Resolve a work-package reference to its canonical numeric id.
+        """Resolve a work-package reference to its canonical numeric id; see `resolve_record`."""
+        return (await self.resolve_record(work_package_ref, write=write)).id
+
+    async def resolve_record(self, work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
+        """Resolve a work-package reference to its canonical numeric id and the payload fetched for it.
 
         Needed where the numeric id itself is required (e.g. a relation filter or a
         client-side equality check) rather than a request path. A numeric reference
@@ -95,7 +100,7 @@ class WorkPackageResolver:
             scope_policy.ensure_project_link_allowed(
                 project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
             )
-        return int(payload["id"])
+        return ResolvedRecord(id=int(payload["id"]), payload=payload)
 
     async def project_link_allowed(self, href: str, *, context: WorkPackageAllowedContext | None = None) -> bool:
         """True if the work package at ``href`` sits in a project the caller may read.

@@ -10,7 +10,7 @@ Depends on `WorkPackageApi` (never the concrete `HttpxWorkPackageApi` --
 enforced by `tests/test_architecture_boundaries.py`), `ProjectRefResolver`,
 `TypeRefResolver`, `VersionIdResolver`, `StatusRefResolver`,
 `PriorityRefResolver`, `PrincipalRefResolver`, `AssigneeRefResolver`,
-`SprintIdResolver`, `WorkPackageIdResolver`, `StatusPriorityTypeApi`,
+`SprintIdResolver`, `WorkPackageRecordResolver`, `StatusPriorityTypeApi`,
 `ActivityApi`, `CurrentUserLookup`, and `WorkPackageProjectAllowedCheck` (the
 existing project-scope-check seam bound to `self._work_package_resolver.project_link_allowed`
 -- `WorkPackageResolver` itself is unchanged here; this Service is one of
@@ -105,6 +105,7 @@ from ...models import (
     BatchWorkPackageReadResult,
     BulkWorkPackageItemResult,
     BulkWorkPackageWriteResult,
+    ResolvedWorkPackage,
     SortCriterion,
     WorkPackageDetail,
     WorkPackageListResult,
@@ -147,15 +148,15 @@ from ..ports.user_names import UserNames
 from ..ports.version_ref import VersionIdResolver
 from ..ports.work_package_api import WorkPackageApi, WorkPackageRecord
 from ..ports.work_package_ref import (
-    WorkPackageIdResolver,
     WorkPackageProjectAllowedBulkCheck,
+    WorkPackageRecordResolver,
     work_package_ref,
 )
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated
 from ._work_package_parents import parent_href, without_parent_unless
-from ._work_package_presentation import present_detail, present_summaries, stamp_detail
+from ._work_package_presentation import present_detail, present_summaries, present_target, stamp_detail
 from ._work_package_references import (
     field_with_visible_options,
     groups_for_result,
@@ -247,7 +248,7 @@ _DATE_SHAPED = re.compile(r"[0-9]+(?:-[0-9]+)+")
 # Sentinel for update(): distinguishes "clear the parent" (make the work
 # package top-level via _links.parent = {"href": null}) from "leave unchanged"
 # (None). A dedicated object avoids colliding with numeric ids or the
-# resolve_work_package_id path, and cannot be confused with any valid parent
+# work package reference resolution, and cannot be confused with any valid parent
 # reference.
 CLEAR_PARENT = object()
 
@@ -477,7 +478,7 @@ class WorkPackageService:
         resolve_principal_id: PrincipalRefResolver,
         resolve_assignee_id: AssigneeRefResolver,
         resolve_sprint_id: SprintIdResolver,
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
         status_api: StatusPriorityTypeApi,
         activity_api: ActivityApi,
         current_user: CurrentUserLookup,
@@ -498,7 +499,7 @@ class WorkPackageService:
         self._resolve_principal_id = resolve_principal_id
         self._resolve_assignee_id = resolve_assignee_id
         self._resolve_sprint_id = resolve_sprint_id
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
         self._status_api = status_api
         self._activity_api = activity_api
         self._current_user = current_user
@@ -1061,7 +1062,7 @@ class WorkPackageService:
         if not stripped or _DATE_SHAPED.fullmatch(stripped):
             return None
         try:
-            resolved_id = await self._resolve_work_package_id(stripped)
+            resolved_id = (await self._resolve_work_package_record(stripped)).id
         except (NotFoundError, PermissionDeniedError, InvalidInputError):
             return None
         candidate_filters = [{"id": {"operator": "=", "values": [str(resolved_id)]}}, *other_filters]
@@ -1695,7 +1696,12 @@ class WorkPackageService:
             payload["_links"] = links
         return payload
 
-    async def _to_write_result(self, action: str, outcome: _WriteOutcome[Any]) -> WorkPackageWriteResult:
+    def _present_target(self, payload: Mapping[str, Any]) -> ResolvedWorkPackage:
+        return present_target(payload, settings=self._settings)
+
+    async def _to_write_result(
+        self, action: str, outcome: _WriteOutcome[Any], target: ResolvedWorkPackage | None = None
+    ) -> WorkPackageWriteResult:
         detail = None
         if outcome.detail is not None:
             # outcome.detail is a WorkPackageRecord (commit_create's/
@@ -1726,6 +1732,7 @@ class WorkPackageService:
             payload=outcome.payload,
             validation_errors=outcome.validation_errors,
             result=detail,
+            target=target,
             **outcome.identity,
         )
 
@@ -1766,6 +1773,7 @@ class WorkPackageService:
             project, write=True, context=wp_context.project_context if wp_context is not None else None
         )
         project_id = str(project_payload["id"])
+        target = None
         # Default: a fresh context per call. A bulk caller (bulk_create)
         # passes one shared across all its items instead.
         if wp_context is None:
@@ -1782,7 +1790,9 @@ class WorkPackageService:
             # write-authorized, not just readable -- otherwise a caller could
             # attach a writable work package under a parent they can only
             # read.
-            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id, write=True)
+            parent_record = await self._resolve_work_package_record(parent_work_package_id, write=True)
+            parent_work_package_id = parent_record.id
+            target = self._present_target(parent_record.payload)
         payload = await self._build_write_payload(
             project=project_id,
             type=type,
@@ -1823,7 +1833,7 @@ class WorkPackageService:
             preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Work package created successfully.",
         )
-        return await self._to_write_result("create", outcome)
+        return await self._to_write_result("create", outcome, target)
 
     async def create_subtask(
         self,
@@ -1861,6 +1871,7 @@ class WorkPackageService:
         ensure_project_write_link_allowed(
             parent_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
+        target = self._present_target(parent_payload)
         project_id = project_id_from_href(parent_project_link["href"], settings=self._settings)
         if project_id is None:
             # An undisclosed project passes under a wide-open scope but names
@@ -1908,7 +1919,7 @@ class WorkPackageService:
             preview_message="OpenProject validated the subtask. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Subtask created successfully.",
         )
-        return await self._to_write_result("create", outcome)
+        return await self._to_write_result("create", outcome, target)
 
     async def bulk_create(
         self, *, items: builtins.list[dict[str, Any]], confirm: bool = False
@@ -2070,9 +2081,11 @@ class WorkPackageService:
             # itself be write-authorized, not just readable -- otherwise a
             # caller could reparent a writable work package under a parent
             # they can only read.
-            parent_work_package_id = await self._resolve_work_package_id(
-                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
-            )
+            parent_work_package_id = (
+                await self._resolve_work_package_record(
+                    _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
+                )
+            ).id
         current_record = await self._api.get(ref)
         current = current_record.payload
         if version is not None and target_versions is None:
@@ -2092,6 +2105,7 @@ class WorkPackageService:
         ensure_project_write_link_allowed(
             current_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
+        target = self._present_target(current)
         project_id = project_id_from_href(current_project_link["href"], settings=self._settings)
         if project_id is None:
             # An undisclosed project passes under a wide-open scope but names
@@ -2192,7 +2206,7 @@ class WorkPackageService:
             preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Work package updated successfully.",
         )
-        return await self._to_write_result("update", outcome)
+        return await self._to_write_result("update", outcome, target)
 
     async def bulk_update(
         self, *, items: builtins.list[dict[str, Any]], confirm: bool = False
@@ -2282,6 +2296,7 @@ class WorkPackageService:
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
+        target = self._present_target(record.payload)
         detail = stamp_detail(
             await self._filter_hierarchy_allowlist(await self._detail_of(record)), settings=self._settings
         )
@@ -2298,6 +2313,7 @@ class WorkPackageService:
                 payload=payload,
                 validation_errors={},
                 result=detail,
+                target=target,
             )
 
         access.ensure_write_enabled("work_package", settings=self._settings)
@@ -2312,6 +2328,7 @@ class WorkPackageService:
             payload=payload,
             validation_errors={},
             result=None,
+            target=target,
         )
 
     async def add_comment(
@@ -2332,6 +2349,7 @@ class WorkPackageService:
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
+        target = self._present_target(record.payload)
         payload = {"comment": {"raw": comment}, "internal": internal, "notify": notify}
 
         if not confirm:
@@ -2344,6 +2362,7 @@ class WorkPackageService:
                 payload=payload,
                 validation_errors={},
                 result=None,
+                target=target,
             )
 
         access.ensure_write_enabled("work_package", settings=self._settings)
@@ -2378,4 +2397,5 @@ class WorkPackageService:
             payload=payload,
             validation_errors={},
             result=normalized_activity,
+            target=target,
         )

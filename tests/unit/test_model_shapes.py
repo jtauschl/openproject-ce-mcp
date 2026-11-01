@@ -211,6 +211,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
     "AttachmentWriteResult": [
         "action",
@@ -553,6 +554,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
 }
 

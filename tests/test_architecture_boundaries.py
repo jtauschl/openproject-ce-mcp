@@ -1455,7 +1455,7 @@ def test_f3_allowlist_semaphore_is_structurally_separate_from_f6_batch_read_sema
         resolve_principal_id=_unused,  # type: ignore[arg-type]
         resolve_assignee_id=_unused,  # type: ignore[arg-type]
         resolve_sprint_id=_unused,  # type: ignore[arg-type]
-        resolve_work_package_id=_unused,  # type: ignore[arg-type]
+        resolve_work_package_record=_unused,  # type: ignore[arg-type]
         status_api=_StubWorkPackageApi(),  # type: ignore[arg-type]
         activity_api=_StubWorkPackageApi(),  # type: ignore[arg-type]
         current_user=_unused,  # type: ignore[arg-type]
@@ -1842,8 +1842,8 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     from openproject_ce_mcp.app.ports.version_ref import VersionIdResolver
     from openproject_ce_mcp.app.ports.work_package_api import WorkPackageApi
     from openproject_ce_mcp.app.ports.work_package_ref import (
-        WorkPackageIdResolver,
         WorkPackageProjectAllowedBulkCheck,
+        WorkPackageRecordResolver,
     )
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
@@ -1862,11 +1862,11 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
         "WorkPackageService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
     )
 
-    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
-        "WorkPackageService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    assert hints["resolve_work_package_record"] is WorkPackageRecordResolver, (
+        "WorkPackageService.__init__'s resolve_work_package_record param must be typed WorkPackageRecordResolver"
     )
-    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
-        "WorkPackageService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    assert hints["resolve_work_package_record"] is not WorkPackageResolver, (
+        "WorkPackageService.__init__'s resolve_work_package_record param must not be the concrete resolver class"
     )
 
     assert hints["resolve_assignee_id"] is AssigneeRefResolver, (

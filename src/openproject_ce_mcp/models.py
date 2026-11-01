@@ -510,6 +510,20 @@ class WorkPackageDetail:
 
 
 @dataclass
+class ResolvedWorkPackage:
+    """The work package a caller-typed reference resolved to, as read when the write was previewed.
+
+    Not frozen: hiding a field stamps `_hidden_keys` onto the instance.
+    """
+
+    id: int
+    display_id: str | None = None
+    project: str | None = None
+    subject: str | None = None
+    status: str | None = None
+
+
+@dataclass
 class WorkPackageWriteResult(ConfirmationHeader):
     # A resolved work-package reference, e.g. from _work_package_ref: a numeric
     # id or a project-prefixed display id (e.g. "PROJ-123"), passed through
@@ -519,6 +533,8 @@ class WorkPackageWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: WorkPackageDetail | None
+    # On a create this is the referenced parent, since `result` is the new work package.
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -547,6 +563,7 @@ class ActivityWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: ActivitySummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
