@@ -14,8 +14,9 @@ All mutating tools follow the same guarded write pattern by default:
   resolved to in `target` (id, display id, project, subject, status), in the
   preview and in the result. A bare number is the internal id and `PROJ-123`
   the display id, so check `target` before confirming. For the create tools
-  `target` is the referenced parent, and for relations `related_target` names
-  the other end.
+  `target` is the referenced parent, for relations `related_target` names
+  the other end, and `update_work_package` and `bulk_update_work_packages` name
+  the work package a given `parent` resolved to in `parent_target`.
 - On an instance with semantic display ids, `update_work_package`,
   `delete_work_package`, `add_work_package_comment` and each item of
   `bulk_update_work_packages` refuse a write that names the work package by a

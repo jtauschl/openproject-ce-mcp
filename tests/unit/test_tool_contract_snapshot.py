@@ -325,7 +325,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
                 "confirm": {
@@ -347,7 +347,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_update_work_packages": {
-        "description_hash": "ae30f7f58c9c8b5a5a4750d1b8ebb486a00da5fed50eb0b239c88c2e03a856c2",
+        "description_hash": "58deab53fdbe9e7158776b7a62a76e004a46cf5069a07f7c8eb69e979fafed37",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
@@ -446,7 +446,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
                 "confirm": {
@@ -8495,7 +8495,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "da8f7fd1a620718feb46c991f0edd94a6a5dae4b170ae4d7a998af5c82acd332",
+        "description_hash": "7de5926547022afa7d59bf2d0b25fbbb3d09a8df5f990435bd57a922c98017bc",
         "input_schema": {
             "properties": {
                 "work_package_id": {

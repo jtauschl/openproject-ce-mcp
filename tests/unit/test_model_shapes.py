@@ -580,6 +580,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "validation_errors",
         "result",
         "target",
+        "parent_target",
     ],
 }
 

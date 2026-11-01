@@ -535,6 +535,8 @@ class WorkPackageWriteResult(ConfirmationHeader):
     result: WorkPackageDetail | None
     # On a create this is the referenced parent, since `result` is the new work package.
     target: ResolvedWorkPackage | None = None
+    # On an update, the work package its `parent` reference resolved to.
+    parent_target: ResolvedWorkPackage | None = None
 
 
 @dataclass

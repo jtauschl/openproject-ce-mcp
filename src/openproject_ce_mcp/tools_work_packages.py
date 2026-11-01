@@ -832,6 +832,7 @@ async def update_work_package(
     on create_work_package.
     expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
+    When `parent` is given, `parent_target` names the work package it resolved to.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1090,6 +1091,8 @@ async def bulk_update_work_packages(
     fields (work_package_id, ready, state, ...); fields of the written work
     package are selected as result.<field> (e.g. "result.display_id").
     Each item's result names the work package its reference resolved to in `target`.
+    When an item gives a `parent`, its result also carries `parent_target`, the work package the parent
+    reference resolved to.
     """
     client = _client_from_context(ctx)
     if not items:

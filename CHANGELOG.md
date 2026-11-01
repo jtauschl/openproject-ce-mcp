@@ -133,6 +133,9 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
   internal id is visible before `confirm`. This covers comments, updates, deletes, subtasks and parents,
   relations (`target` and `related_target`), reminders, watchers, time entries, wiki links, attachments, and
   meeting agenda items and outcomes. For the create tools `target` is the referenced parent.
+- `update_work_package` and `bulk_update_work_packages` name the work package a given `parent` resolved to in
+  `parent_target`, in the preview and in the result, so a bare number read as an internal id is visible
+  before `confirm`.
 
 - `get_project_phase` now reports the phase definition, which was always empty.
 - `update_meeting` can clear the location: `location=""` empties it instead of being dropped

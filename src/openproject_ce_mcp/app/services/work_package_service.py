@@ -1764,7 +1764,11 @@ class WorkPackageService:
         )
 
     async def _to_write_result(
-        self, action: str, outcome: _WriteOutcome[Any], target: ResolvedWorkPackage | None = None
+        self,
+        action: str,
+        outcome: _WriteOutcome[Any],
+        target: ResolvedWorkPackage | None = None,
+        parent_target: ResolvedWorkPackage | None = None,
     ) -> WorkPackageWriteResult:
         detail = None
         if outcome.detail is not None:
@@ -1797,6 +1801,7 @@ class WorkPackageService:
             validation_errors=outcome.validation_errors,
             result=detail,
             target=target,
+            parent_target=parent_target,
             **outcome.identity,
         )
 
@@ -2175,6 +2180,7 @@ class WorkPackageService:
         # status via self._status_api directly rather than
         # StatusPriorityTypeService, which WOULD gate on read-enablement.
         ref = work_package_ref(work_package_id)
+        parent_target = None
         if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
             # parent goes into a HAL link href, which resolves only by
             # numeric id. CLEAR_PARENT is a sentinel (un-parent) and must
@@ -2182,11 +2188,11 @@ class WorkPackageService:
             # itself be write-authorized, not just readable -- otherwise a
             # caller could reparent a writable work package under a parent
             # they can only read.
-            parent_work_package_id = (
-                await self._resolve_work_package_record(
-                    _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
-                )
-            ).id
+            parent_record = await self._resolve_work_package_record(
+                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
+            )
+            parent_work_package_id = parent_record.id
+            parent_target = self._present_target(parent_record.payload)
         current_record, target = await self._write_target(ref, expect_display_id)
         current = current_record.payload
         if version is not None and target_versions is None:
@@ -2311,7 +2317,7 @@ class WorkPackageService:
             preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Work package updated successfully.",
         )
-        return await self._to_write_result("update", outcome, target)
+        return await self._to_write_result("update", outcome, target, parent_target)
 
     async def bulk_update(
         self, *, items: builtins.list[dict[str, Any]], confirm: bool = False
