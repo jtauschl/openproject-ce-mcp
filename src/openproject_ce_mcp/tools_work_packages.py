@@ -803,6 +803,7 @@ async def update_work_package(
     due_date's non-working-day shift and the confirm/preview contract work exactly as documented
     on create_work_package.
     The result names the work package the reference resolved to in `target`.
+    When `parent` is given, `parent_target` names the work package it resolved to.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1042,6 +1043,8 @@ async def bulk_update_work_packages(
     fields (work_package_id, ready, state, ...), not work package fields:
     `display_id` and the rest come with `result`, the full written work package.
     Each item's result names the work package its reference resolved to in `target`.
+    When an item gives a `parent`, its result also carries `parent_target`, the work package the parent
+    reference resolved to.
     """
     client = _client_from_context(ctx)
     if not items:

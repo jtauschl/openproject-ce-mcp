@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import CLEAR_PARENT, OpenProjectClient
 
 pytestmark = pytest.mark.integration
 
@@ -65,3 +65,33 @@ async def test_a_confirmed_comment_and_a_relation_preview_name_their_work_packag
     assert relation.target.display_id == source.display_id
     assert relation.related_target.display_id == related.display_id
     assert relation.related_target.subject == "[integration-test] target related"
+
+
+async def test_an_update_names_the_parent_its_reference_resolved_to(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    child = await _create(client, test_project, wp_ids, "[integration-test] parent target child")
+    parent = await _create(client, test_project, wp_ids, "[integration-test] parent target parent")
+    assert parent.display_id is not None
+
+    for reference in (parent.id, parent.display_id):
+        preview = await client.work_package.update(
+            work_package_id=child.id, parent_work_package_id=reference, confirm=False
+        )
+        assert preview.target is not None and preview.target.id == child.id
+        assert preview.parent_target is not None
+        assert preview.parent_target.id == parent.id
+        assert preview.parent_target.display_id == parent.display_id
+        assert preview.parent_target.subject == "[integration-test] parent target parent"
+
+    confirmed = await client.work_package.update(
+        work_package_id=child.id, parent_work_package_id=parent.display_id, confirm=True
+    )
+    assert confirmed.ready, confirmed.validation_errors
+    assert confirmed.parent_target is not None and confirmed.parent_target.id == parent.id
+    assert (await client.work_package.get(child.id)).parent_id == parent.id
+
+    cleared = await client.work_package.update(
+        work_package_id=child.id, parent_work_package_id=CLEAR_PARENT, confirm=False
+    )
+    assert cleared.parent_target is None
