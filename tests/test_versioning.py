@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -58,10 +59,11 @@ def test_a_pyproject_of_another_project_is_not_taken_for_the_version() -> None:
 
     with (
         patch("importlib.metadata.version", side_effect=fake_version),
-        patch("pathlib.Path.read_text", return_value=foreign),
+        patch("pathlib.Path.read_text", return_value=foreign) as read_text,
     ):
         with pytest.raises(RuntimeError, match=r"uv sync --dev"):
             importlib.reload(importlib.import_module("openproject_ce_mcp"))
+        read_text.assert_called()
 
     importlib.reload(importlib.import_module("openproject_ce_mcp"))
 
@@ -109,3 +111,27 @@ def test_the_bare_checkout_shim_runs_without_the_project_installed(tmp_path: Pat
 
     assert result.returncode == 0, result.stderr
     assert "openproject-ce-mcp is not installed" not in result.stderr
+
+
+def test_a_copy_outside_a_src_layout_stays_a_broken_install_next_to_a_matching_pyproject(tmp_path: Path) -> None:
+    site_packages = tmp_path / "site-packages"
+    package = site_packages / "openproject_ce_mcp"
+    package.mkdir(parents=True)
+    shutil.copy(_ROOT / "src" / "openproject_ce_mcp" / "__init__.py", package)
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "openproject-ce-mcp"\nversion = "9.9.9"\n')
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "sitecustomize.py").write_text(_HIDE_DIST_INFO)
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import openproject_ce_mcp"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join([str(site_packages), str(shim)])},
+        cwd=tmp_path,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "uv sync --dev" in result.stderr
