@@ -41,6 +41,8 @@ from openproject_ce_mcp.client import (
     PermissionDeniedError,
 )
 
+from ._write_ref import write_ref
+
 pytestmark = pytest.mark.integration
 
 _PROVIDER = "internal"
@@ -127,7 +129,9 @@ async def test_delete_rejects_an_inline_link_from_the_work_package_description(
     finally:
         # Deleting the work package would leave its inline link behind; clearing
         # the description removes it through OpenProject's own sync.
-        update_result = await client.work_package.update(work_package_id=work_package_id, description="", confirm=True)
+        update_result = await client.work_package.update(
+            work_package_id=await write_ref(client, work_package_id), description="", confirm=True
+        )
         assert update_result.ready, update_result.validation_errors
 
 

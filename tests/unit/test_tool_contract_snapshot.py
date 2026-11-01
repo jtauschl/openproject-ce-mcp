@@ -202,7 +202,7 @@ def live_catalog() -> dict[str, Any]:
 # change without confirming the new tool-contract shape is actually intended.
 TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
     "add_work_package_comment": {
-        "description_hash": "faf63ef73c8c9c24422953dae8700e08f1104c0d83604ec52e57f404e1810006",
+        "description_hash": "ceb2ce2d3b07bf81b526c09f96cfc347fa7663e10179e52444608f0593c12995",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -213,6 +213,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "comment": {"title": "Comment", "type": "string"},
                 "internal": {"default": False, "title": "Internal", "type": "boolean"},
                 "notify": {"default": False, "title": "Notify", "type": "boolean"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -341,7 +347,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_update_work_packages": {
-        "description_hash": "c67edb0f429ad672c8ea4c62a605bfab80426f34f9b435d3b149827974a4b6a1",
+        "description_hash": "ae30f7f58c9c8b5a5a4750d1b8ebb486a00da5fed50eb0b239c88c2e03a856c2",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
@@ -423,6 +429,11 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         "percentage_done": {
                             "anyOf": [{"type": "integer"}, {"type": "null"}],
                             "title": "Percentage Done",
+                        },
+                        "expect_display_id": {
+                            "anyOf": [{"type": "string"}, {"type": "null"}],
+                            "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                            "title": "Expect Display Id",
                         },
                     },
                     "required": ["work_package_id"],
@@ -2476,13 +2487,19 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "delete_work_package": {
-        "description_hash": "f83926a81b4d7f7a97597249f790d1389084a0beddec2ce7f74a9768eb34429f",
+        "description_hash": "4a9c6e67ab2810c85205569904502c573d631318d0caf83a68e0d9cf1be046a3",
         "input_schema": {
             "properties": {
                 "work_package_id": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
                     "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                     "title": "Work Package Id",
+                },
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
                 },
                 "confirm": {
                     "default": False,
@@ -8478,7 +8495,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "9c3eede464f0f09273ab13bfe1d4ad04f4fc686bb95eb8d483cb9afe894083d1",
+        "description_hash": "da8f7fd1a620718feb46c991f0edd94a6a5dae4b170ae4d7a998af5c82acd332",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -8581,10 +8598,15 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "title": "Percentage Done",
                 },
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies "
-                    "it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },

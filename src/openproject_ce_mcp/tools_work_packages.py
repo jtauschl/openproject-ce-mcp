@@ -53,6 +53,7 @@ from .tool_params import (
     BulkCreateWorkPackageItem,
     BulkUpdateWorkPackageItem,
     Confirm,
+    ExpectDisplayId,
     Limit,
     Offset,
     OptionalProjectRef,
@@ -69,6 +70,7 @@ from .tools_validation import (
     _clearable_ref,
     _require_at_least_one,
     _validate_custom_field_filters,
+    _validate_expect_display_id,
     _validate_group_by,
     _validate_limit,
     _validate_offset,
@@ -803,6 +805,7 @@ async def update_work_package(
     remaining_time: str | None = None,
     duration: str | None = None,
     percentage_done: int | None = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> WorkPackageWriteResult:
     """Update a work package.
@@ -827,10 +830,12 @@ async def update_work_package(
     omit percentage_done and let OpenProject derive it instead.
     due_date's non-working-day shift and the confirm/preview contract work exactly as documented
     on create_work_package.
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     common = _validate_work_package_update_fields(
         subject=subject,
         description=description,
@@ -882,6 +887,7 @@ async def update_work_package(
             remaining_time=common["remaining_time"],
             duration=common["duration"],
             percentage_done=common["percentage_done"],
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )
@@ -1065,7 +1071,8 @@ async def bulk_update_work_packages(
     `parent`, an alias for the same field, matching `update_work_package`'s naming; do not specify
     both on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,
     `remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear
-    one of these), `percentage_done` (integer 0-100). Pass 'none' to `version`, `sprint`,
+    one of these), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean, see
+    the server instructions; a refused item is reported in its `error`). Pass 'none' to `version`, `sprint`,
     `project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to
     clear that field on the item, same as `update_work_package`. An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
@@ -1104,6 +1111,9 @@ async def bulk_update_work_packages(
         if work_package_id is None:
             raise ValueError(f"items[{i}].work_package_id is required.")
         safe_id = _validate_work_package_ref(work_package_id, field_name=f"items[{i}].work_package_id")
+        safe_expect = _validate_expect_display_id(
+            item.get("expect_display_id"), field_name=f"items[{i}].expect_display_id"
+        )
         parent_value, parent_field_name = _resolve_bulk_parent_field(item, i)
         common = _validate_work_package_update_fields(
             subject=item.get("subject"),
@@ -1158,6 +1168,7 @@ async def bulk_update_work_packages(
                 "remaining_time": common["remaining_time"],
                 "duration": common["duration"],
                 "percentage_done": common["percentage_done"],
+                "expect_display_id": safe_expect,
             }
         )
     return await _run_tool(client.work_package.bulk_update(items=safe_items, confirm=confirm))
@@ -1167,17 +1178,22 @@ async def bulk_update_work_packages(
 async def delete_work_package(
     ctx: Context,
     work_package_id: WorkPackageRef,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> WorkPackageWriteResult:
     """Delete a work package with its time and cost entries, relations, attachments and history.
 
     This cannot be undone. Up to 17.6 all its descendants are deleted too; 17.7+ only those you may delete,
     the others lose their parent.
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.work_package.delete(work_package_id=safe_id, confirm=confirm))
+    safe_expect = _validate_expect_display_id(expect_display_id)
+    return await _run_tool(
+        client.work_package.delete(work_package_id=safe_id, expect_display_id=safe_expect, confirm=confirm)
+    )
 
 
 @register_tool
@@ -1259,6 +1275,7 @@ async def add_work_package_comment(
     comment: str,
     internal: bool = False,
     notify: bool = False,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> ActivityWriteResult:
     """Add a comment to a work package.
@@ -1276,10 +1293,12 @@ async def add_work_package_comment(
     write response omits it, a best-effort follow-up lookup fills it in; if
     that also comes back empty, `user` stays null even though the comment was
     saved successfully.
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_comment = _validate_required_text(comment, field_name="comment", max_length=None)
     return await _run_tool(
         client.work_package.add_comment(
@@ -1287,6 +1306,7 @@ async def add_work_package_comment(
             comment=safe_comment,
             internal=internal,
             notify=notify,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )

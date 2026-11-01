@@ -122,7 +122,14 @@ _PROJECT_STATUS = "a project status code or title such as on_track"
 _NEW_IDENTIFIER = "the identifier being set; OpenProject never allows an all-digit one"
 _QUERY_METADATA_ID = "OpenProject's string id of a query attribute, operator or sort, such as 'status' or '='"
 
+_EXPECTED_DISPLAY_ID = (
+    "a display id such as PROJ-51; a bare number is the internal id and is what the guard compares against"
+)
+
 NAME_ONLY: dict[tuple[str, str], str] = {
+    ("update_work_package", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("delete_work_package", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("add_work_package_comment", "expect_display_id"): _EXPECTED_DISPLAY_ID,
     ("copy_project", "identifier"): _NEW_IDENTIFIER,
     ("copy_project", "status"): _PROJECT_STATUS,
     ("create_project", "identifier"): _NEW_IDENTIFIER,

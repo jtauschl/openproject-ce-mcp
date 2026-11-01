@@ -19,7 +19,7 @@ from .models import SortCriterion
 from .sort_criteria import parse_sort_by
 from .tool_params import allowed_select_fields
 from .work_package_columns import GROUPABLE_FIELDS, SORTABLE_FIELDS
-from .work_package_reference import canonical_work_package_ref, is_numeric_ref
+from .work_package_reference import canonical_display_id, canonical_work_package_ref, is_numeric_ref
 
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 RELATION_TYPE_RE = re.compile(
@@ -638,6 +638,15 @@ def _validate_work_package_ref(value: int | str, *, field_name: str = "work_pack
             f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'PROJ-51', "
             f"project identifier case-sensitive), not UI display number (e.g., 51)."
         )
+    return canonical
+
+
+def _validate_expect_display_id(value: str | None, *, field_name: str = "expect_display_id") -> str | None:
+    if value is None:
+        return None
+    canonical = canonical_display_id(_ref_text(value, field_name=field_name))
+    if canonical is None:
+        raise ValueError(f"{field_name} must be a display id like 'PROJ-51' (project identifier case-sensitive).")
     return canonical
 
 

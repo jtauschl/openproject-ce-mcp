@@ -18,6 +18,8 @@ from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.server import create_app
 from openproject_ce_mcp.strict_mcpserver import StrictMCPServer
 
+from ._write_ref import write_ref
+
 pytestmark = pytest.mark.integration
 
 
@@ -67,7 +69,10 @@ async def test_confirmed_bulk_create_and_update_with_select(
             mcp,
             "bulk_update_work_packages",
             {
-                "items": [{"work_package_id": wp_id, "subject": f"{marker} renamed"} for wp_id in wp_ids],
+                "items": [
+                    {"work_package_id": await write_ref(client, wp_id), "subject": f"{marker} renamed"}
+                    for wp_id in wp_ids
+                ],
                 "select": ["work_package_id", "state"],
                 "confirm": True,
             },
@@ -120,7 +125,12 @@ async def test_bulk_update_with_a_work_package_field_in_select_reports_why_and_w
         result = await mcp.call_tool(
             "bulk_update_work_packages",
             {
-                "items": [{"work_package_id": created.work_package_id, "subject": f"{subject} renamed"}],
+                "items": [
+                    {
+                        "work_package_id": await write_ref(client, created.work_package_id),
+                        "subject": f"{subject} renamed",
+                    }
+                ],
                 "select": ["work_package_id", "status"],
                 "confirm": True,
             },
@@ -157,7 +167,7 @@ async def test_confirmed_bulk_writes_select_written_work_package_fields_by_path(
             mcp,
             "bulk_update_work_packages",
             {
-                "items": [{"work_package_id": wp_id, "subject": f"{marker} renamed"}],
+                "items": [{"work_package_id": await write_ref(client, wp_id), "subject": f"{marker} renamed"}],
                 "select": ["work_package_id", "result.subject"],
                 "confirm": True,
             },

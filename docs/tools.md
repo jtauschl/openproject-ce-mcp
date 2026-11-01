@@ -16,6 +16,20 @@ All mutating tools follow the same guarded write pattern by default:
   the display id, so check `target` before confirming. For the create tools
   `target` is the referenced parent, and for relations `related_target` names
   the other end.
+- On an instance with semantic display ids, `update_work_package`,
+  `delete_work_package`, `add_work_package_comment` and each item of
+  `bulk_update_work_packages` refuse a write that names the work package by a
+  bare number, in preview and in confirm, unless `expect_display_id` names the
+  ticket you mean (for example `"PROJ-51"`, project identifier case-sensitive).
+  The refusal names the ticket the number resolved to; either repeat the call
+  with `expect_display_id` or pass the display id as the reference. A given
+  `expect_display_id` that does not name the resolved work package is refused,
+  and so is one on a work package without a semantic display id. A bulk item
+  that is refused is reported in its `error`; the other items continue. The
+  guard cannot tell whether the caller read the preview: it stops the wrong
+  ticket, not a copied `target.display_id`. A record that has no project
+  identifier (semantic mode before an identifier is allocated) shows its
+  numeric id as display id and is written by that id without a guard.
 
 Every mutation requires explicit `confirm=true` — there is no way to skip the
 preview step.

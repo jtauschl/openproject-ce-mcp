@@ -15,6 +15,7 @@ from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, Perm
 from openproject_ce_mcp.models import SortCriterion
 from openproject_ce_mcp.work_package_columns import COLUMN_FLOORS, GROUPABLE_FIELDS, SORTABLE_FIELDS
 
+from ._write_ref import write_ref
 from .conftest import disposable_project_identifier, skip_if_unsupported
 
 pytestmark = pytest.mark.integration
@@ -103,7 +104,7 @@ async def test_create_get_update_delete_work_package(
 
     # Update
     update_result = await client.work_package.update(
-        work_package_id=wp_id,
+        work_package_id=await write_ref(client, wp_id),
         subject=f"{_SUBJECT} updated",
         confirm=True,
     )
@@ -113,7 +114,7 @@ async def test_create_get_update_delete_work_package(
     assert "updated" in updated.subject
 
     # Delete (cleanup fixture also deletes, but we verify delete works)
-    delete_result = await client.work_package.delete(work_package_id=wp_id, confirm=True)
+    delete_result = await client.work_package.delete(work_package_id=await write_ref(client, wp_id), confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     wp_ids.remove(wp_id)  # already deleted, don't try again in fixture
 
@@ -180,7 +181,7 @@ async def test_create_and_update_work_package_accept_assignee_me(
     wp_ids.append(result.work_package_id)
 
     update_result = await client.work_package.update(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         assignee="me",
         confirm=True,
     )
@@ -229,7 +230,7 @@ async def test_create_and_update_work_package_accept_status_and_priority_by_name
     status_name = statuses.results[0].name
 
     update_result = await client.work_package.update(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         status=status_name,
         priority=other_priority_name,
         confirm=True,
@@ -262,7 +263,9 @@ async def test_update_work_package_rejected_status_names_the_offered_statuses(
     if target is None:
         pytest.skip("this instance's Task workflow offers every status from the initial one")
 
-    result = await client.work_package.update(work_package_id=created.work_package_id, status=target, confirm=False)
+    result = await client.work_package.update(
+        work_package_id=await write_ref(client, created.work_package_id), status=target, confirm=False
+    )
 
     assert result.ready is False
     listed = ", ".join(offered[:20]) + (f", … (+{len(offered) - 20} more)" if len(offered) > 20 else "")
@@ -359,7 +362,7 @@ async def test_create_and_update_work_package_deny_reparent_into_write_restricte
 
     with pytest.raises(PermissionDeniedError):
         await client.work_package.update(
-            work_package_id=existing.work_package_id,
+            work_package_id=await write_ref(client, existing.work_package_id),
             parent_work_package_id=other_parent.work_package_id,
             confirm=True,
         )
@@ -386,11 +389,13 @@ async def test_create_update_delete_work_package_denied_outside_write_allowlist(
 
     with pytest.raises(PermissionDeniedError):
         await denied_client.work_package.update(
-            work_package_id=existing.work_package_id, subject="denied update", confirm=True
+            work_package_id=await write_ref(client, existing.work_package_id), subject="denied update", confirm=True
         )
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.work_package.delete(work_package_id=existing.work_package_id, confirm=True)
+        await denied_client.work_package.delete(
+            work_package_id=await write_ref(client, existing.work_package_id), confirm=True
+        )
 
 
 async def test_create_reparent_and_unparent_work_package(
@@ -424,7 +429,7 @@ async def test_create_reparent_and_unparent_work_package(
 
     # Re-parent to B.
     reparent = await client.work_package.update(
-        work_package_id=child.work_package_id,
+        work_package_id=await write_ref(client, child.work_package_id),
         parent_work_package_id=parent_b.work_package_id,
         confirm=True,
     )
@@ -433,7 +438,7 @@ async def test_create_reparent_and_unparent_work_package(
 
     # Un-parent (make top-level).
     unparent = await client.work_package.update(
-        work_package_id=child.work_package_id,
+        work_package_id=await write_ref(client, child.work_package_id),
         parent_work_package_id=CLEAR_PARENT,
         confirm=True,
     )
@@ -452,7 +457,7 @@ async def test_add_work_package_comment(client: OpenProjectClient, test_project:
     wp_ids.append(result.work_package_id)
 
     comment = await client.work_package.add_comment(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         comment="Integration test comment",
         confirm=True,
     )
@@ -477,7 +482,7 @@ async def test_update_work_package_comment(client: OpenProjectClient, test_proje
     assert result.ready
     wp_ids.append(result.work_package_id)
     added = await client.work_package.add_comment(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         comment="Integration test comment, first version",
         confirm=True,
     )
@@ -540,7 +545,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
     assert unrestricted.details_omitted is False
 
     comment = await client.work_package.add_comment(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         comment="Integration test comment for get_work_package_activities",
         confirm=True,
     )
@@ -810,8 +815,14 @@ async def test_bulk_update_work_packages_partial_failure(
 
     bogus_id = 2**31 - 1
     items = [
-        {"work_package_id": first.work_package_id, "subject": f"{_SUBJECT} bulk-update 1 changed"},
-        {"work_package_id": second.work_package_id, "subject": f"{_SUBJECT} bulk-update 2 changed"},
+        {
+            "work_package_id": await write_ref(client, first.work_package_id),
+            "subject": f"{_SUBJECT} bulk-update 1 changed",
+        },
+        {
+            "work_package_id": await write_ref(client, second.work_package_id),
+            "subject": f"{_SUBJECT} bulk-update 2 changed",
+        },
         {"work_package_id": bogus_id, "subject": "should fail"},
     ]
 
@@ -1075,7 +1086,7 @@ async def test_round_trip_single_value_target_versions_write(
     wp_ids.append(created.work_package_id)
 
     update_result = await client.work_package.update(
-        work_package_id=created.work_package_id,
+        work_package_id=await write_ref(client, created.work_package_id),
         target_versions=["Seed Version 1.0"],
         confirm=True,
     )
@@ -1086,7 +1097,7 @@ async def test_round_trip_single_value_target_versions_write(
     assert wp.version == "Seed Version 1.0"
 
     clear_result = await client.work_package.update(
-        work_package_id=created.work_package_id,
+        work_package_id=await write_ref(client, created.work_package_id),
         target_versions=[],
         confirm=True,
     )
@@ -1130,7 +1141,7 @@ async def test_round_trip_observed_in_versions_write_and_filter(
     assert created.work_package_id in [row.id for row in filtered.results]
 
     cleared = await client.work_package.update(
-        work_package_id=created.work_package_id, observed_in_versions=[], confirm=True
+        work_package_id=await write_ref(client, created.work_package_id), observed_in_versions=[], confirm=True
     )
     assert cleared.ready, cleared.validation_errors
     assert (await client.work_package.get(created.work_package_id)).observed_in_versions == []
@@ -1209,7 +1220,7 @@ async def test_round_trip_multi_value_target_versions_write(
     wp_ids.append(created.work_package_id)
 
     update_result = await client.work_package.update(
-        work_package_id=created.work_package_id,
+        work_package_id=await write_ref(client, created.work_package_id),
         target_versions=["Seed Version 1.0", "Seed Version 2.0"],
         confirm=True,
     )
@@ -1239,7 +1250,7 @@ async def test_legacy_version_update_rejected_against_multi_target_version_work_
 
     with pytest.raises(InvalidInputError, match="multiple target versions"):
         await client.work_package.update(
-            work_package_id=seed_wp_summary.id,
+            work_package_id=await write_ref(client, seed_wp_summary.id),
             version="Seed Version 1.0",
             confirm=False,
         )
@@ -1256,7 +1267,7 @@ async def test_version_and_target_versions_together_rejected_live(
 
     with pytest.raises(InvalidInputError, match="cannot both be"):
         await client.work_package.update(
-            work_package_id=created.work_package_id,
+            work_package_id=await write_ref(client, created.work_package_id),
             version="Seed Version 1.0",
             target_versions=["Seed Version 1.0"],
             confirm=False,
@@ -1277,7 +1288,7 @@ async def test_target_versions_write_not_stripped_by_echo_workaround_live(
     wp_ids.append(created.work_package_id)
 
     update_result = await client.work_package.update(
-        work_package_id=created.work_package_id,
+        work_package_id=await write_ref(client, created.work_package_id),
         target_versions=["Seed Version 1.0"],
         confirm=True,
     )
@@ -1415,12 +1426,14 @@ async def _assert_version_param_round_trips(
     assert (await client.work_package.get(created.work_package_id)).version == name
 
     cleared = await client.work_package.update(
-        work_package_id=created.work_package_id, version=CLEAR_VERSION, confirm=True
+        work_package_id=await write_ref(client, created.work_package_id), version=CLEAR_VERSION, confirm=True
     )
     assert cleared.ready, cleared.validation_errors
     assert (await client.work_package.get(created.work_package_id)).version is None
 
-    assigned = await client.work_package.update(work_package_id=created.work_package_id, version=name, confirm=True)
+    assigned = await client.work_package.update(
+        work_package_id=await write_ref(client, created.work_package_id), version=name, confirm=True
+    )
     assert assigned.ready, assigned.validation_errors
     assert (await client.work_package.get(created.work_package_id)).version == name
 
@@ -1557,7 +1570,9 @@ async def test_an_activity_and_a_posted_comment_name_their_user(
     assert created.ready, created.validation_errors
     wp_ids.append(created.work_package_id)
 
-    posted = await client.work_package.add_comment(work_package_id=created.work_package_id, comment="Hi", confirm=True)
+    posted = await client.work_package.add_comment(
+        work_package_id=await write_ref(client, created.work_package_id), comment="Hi", confirm=True
+    )
     activities = await client.activity.list_for_work_package(created.work_package_id)
 
     assert posted.result is not None and posted.result.user == me.name

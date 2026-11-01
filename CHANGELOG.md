@@ -70,6 +70,12 @@ to install and discover.
   project's identifier or numeric id only, no longer its name. A pattern that
   cannot match an identifier, such as a name with spaces, stops the server at
   start; use the identifier.
+- **Breaking:** on an instance with semantic display ids, `update_work_package`,
+  `delete_work_package`, `add_work_package_comment` and each item of
+  `bulk_update_work_packages` refuse a work package named by a bare number
+  unless the new `expect_display_id` names the ticket (for example `"PROJ-51"`),
+  in preview and in confirm. A bare number is the internal id and `PROJ-51` is
+  another ticket; the refusal names the one the number resolved to.
 - A rejected status change on `update_work_package` and
   `bulk_update_work_packages` now lists, in its `status` validation error, the
   status values OpenProject's update form offers for that work package,

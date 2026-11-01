@@ -111,6 +111,17 @@ a nullable association rather than change it: work-package `assignee`, `responsi
 field leaves it unchanged; `"none"` explicitly clears it. Required fields (type,
 status, subject, project) cannot be cleared.
 
+## Naming the work package in a write
+
+A bare number is the internal id; `PROJ-51` is another ticket. On an instance with
+display ids, `update_work_package`, `bulk_update_work_packages` (per item),
+`delete_work_package` and `add_work_package_comment` refuse a write whose
+`work_package_id` is a bare number unless `expect_display_id` names the ticket you
+mean, in preview and in confirm. Pass the display id as `work_package_id`, or repeat
+the call with `expect_display_id`. A given `expect_display_id` that does not name the
+resolved work package is refused. While the `display_id` field is hidden the guard is
+off and `expect_display_id` is refused.
+
 ## Some tool groups are opt-in
 
 A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,

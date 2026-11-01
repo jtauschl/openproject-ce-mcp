@@ -11,6 +11,8 @@ import pytest
 
 from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
 
+from ._write_ref import write_ref
+
 pytestmark = pytest.mark.integration
 
 _SUBJECT = "[integration-test] container-attachments"
@@ -81,7 +83,7 @@ async def test_comment_attachments(
 ) -> None:
     work_package_id = await _new_work_package(client, test_project, wp_ids, "comment-attachment")
     comment = await client.work_package.add_comment(
-        work_package_id=work_package_id, comment="comment with a file", confirm=True
+        work_package_id=await write_ref(client, work_package_id), comment="comment with a file", confirm=True
     )
     assert comment.result is not None
     await _upload_list_cleanup(client, tmp_path, "activity", comment.result.id, open_client)

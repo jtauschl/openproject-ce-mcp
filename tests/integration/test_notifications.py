@@ -34,6 +34,7 @@ import pytest
 
 from openproject_ce_mcp.client import NotFoundError, OpenProjectClient, PermissionDeniedError
 
+from ._write_ref import write_ref
 from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
@@ -147,7 +148,7 @@ async def _notification_from_second_user(
     # confirmed live (a notify=False comment produced zero Notification rows
     # and zero enqueued Notifications::WorkflowJob work at all).
     comment_result = await second_client.work_package.add_comment(
-        work_package_id=wp_id,
+        work_package_id=await write_ref(client, wp_id),
         comment="Comment from a different user to trigger a real notification",
         notify=True,
         confirm=True,

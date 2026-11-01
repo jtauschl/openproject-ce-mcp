@@ -101,16 +101,21 @@ def _client(server: _Server, settings: Settings | None = None) -> OpenProjectCli
     return OpenProjectClient(settings or _write_enabled_settings(), transport=httpx.MockTransport(server.handler))
 
 
+def _expectation(ref: str) -> str | None:
+    """A bare number on a record with a display id needs the ticket named: here the one the number resolves to."""
+    return EXPECTED_R1["display_id"] if ref == "436" else None
+
+
 async def _comment(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await add_work_package_comment(ctx, ref, "hello", confirm=confirm)
+    return await add_work_package_comment(ctx, ref, "hello", expect_display_id=_expectation(ref), confirm=confirm)
 
 
 async def _update(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await update_work_package(ctx, ref, subject="Renamed", confirm=confirm)
+    return await update_work_package(ctx, ref, subject="Renamed", expect_display_id=_expectation(ref), confirm=confirm)
 
 
 async def _delete(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await delete_work_package(ctx, ref, confirm=confirm)
+    return await delete_work_package(ctx, ref, expect_display_id=_expectation(ref), confirm=confirm)
 
 
 async def _subtask(ctx: Any, ref: str, confirm: bool) -> Any:
@@ -122,7 +127,8 @@ async def _create_under_parent(ctx: Any, ref: str, confirm: bool) -> Any:
 
 
 async def _bulk_update(ctx: Any, ref: str, confirm: bool) -> Any:
-    result = await bulk_update_work_packages(ctx, [{"work_package_id": ref, "subject": "Renamed"}], confirm=confirm)
+    item = {"work_package_id": ref, "subject": "Renamed", "expect_display_id": _expectation(ref)}
+    result = await bulk_update_work_packages(ctx, [item], confirm=confirm)
     assert result.failed == 0, result.items[0].error
     return result.items[0].result
 
@@ -238,7 +244,7 @@ async def test_bulk_update_names_each_item_by_its_own_reference() -> None:
     server = _Server()
     client = _client(server)
     items = [
-        {"work_package_id": "436", "subject": "One"},
+        {"work_package_id": "436", "subject": "One", "expect_display_id": "A-1"},
         {"work_package_id": "PROJ-436", "subject": "Two"},
     ]
 

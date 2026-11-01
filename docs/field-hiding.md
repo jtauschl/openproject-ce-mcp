@@ -72,6 +72,15 @@ removes both fields from every response and rejects writes to either — the
 other field would otherwise trivially leak the "hidden" one back out under a
 different name.
 
+## Work package `display_id`: the bare-number guard
+
+A write that names a work package by a bare number is refused unless
+`expect_display_id` names the ticket (see [Tool reference](tools.md)). While
+`display_id` is hidden by `OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS`, the server
+cannot show or compare the display id, so the guard is off and
+`expect_display_id` is refused with an error naming the hiding setting. The
+refusal messages leave out any other hidden field (`project`, `subject`) as well.
+
 Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `membership`, `role`, `principal`, `user`, `group`, `project_access`,
 `project_admin_context`, `project_configuration`, `action`, `capability`,

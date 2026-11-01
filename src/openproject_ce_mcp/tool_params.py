@@ -42,6 +42,9 @@ _WORK_PACKAGE_REF = 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), 
 WorkPackageRef = Annotated[int | str, Field(description=_WORK_PACKAGE_REF)]
 OptionalWorkPackageRef = Annotated[int | str | None, Field(description=_WORK_PACKAGE_REF)]
 
+_EXPECT_DISPLAY_ID = 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.'
+ExpectDisplayId = Annotated[str | None, Field(description=_EXPECT_DISPLAY_ID)]
+
 # The resolver falls back to the display name and then to a unique search
 # match on name or identifier (app/resolvers/project_resolver.py), for writes
 # as well.
@@ -105,6 +108,7 @@ class BulkUpdateWorkPackageItem(TypedDict, total=False):
     remaining_time: str | None
     duration: str | None
     percentage_done: int | None
+    expect_display_id: ExpectDisplayId
 
 
 Offset = Annotated[int, Field(description="1-based page number; pass the previous result's next_offset.")]

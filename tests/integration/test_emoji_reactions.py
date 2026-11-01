@@ -15,6 +15,7 @@ import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient
 
+from ._write_ref import write_ref
 from .conftest import skip_if_unsupported
 
 pytestmark = pytest.mark.integration
@@ -32,7 +33,9 @@ async def _create_wp_and_comment_activity_id(
     wp_ids.append(wp_id)
 
     comment_result = await client.work_package.add_comment(
-        work_package_id=wp_id, comment="Integration test comment for emoji reactions", confirm=True
+        work_package_id=await write_ref(client, wp_id),
+        comment="Integration test comment for emoji reactions",
+        confirm=True,
     )
     assert comment_result.ready, comment_result.validation_errors
     assert comment_result.result is not None

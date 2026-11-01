@@ -30,3 +30,20 @@ def canonical_work_package_ref(value: int | str) -> str | None:
     if is_numeric_ref(text):
         return text.lstrip("0") or None
     return text if _DISPLAY_ID.fullmatch(text) else None
+
+
+def canonical_display_id(value: str) -> str | None:
+    """Return the value as a display id (`PROJ-42`), or None when it is not one.
+
+    A numeric id is not a display id: in classic identifier mode the number is all the
+    instance reports as `displayId`, and it cannot tell two tickets apart."""
+    canonical = canonical_work_package_ref(value)
+    return None if canonical is None or is_numeric_ref(canonical) else canonical
+
+
+def has_semantic_display_id(display_id: str | None) -> bool:
+    """Whether a `displayId` reported by OpenProject names a ticket by project (`PROJ-42`).
+
+    OpenProject reports the numeric id as a string in classic identifier mode and for a
+    work package without an identifier in semantic mode; before 17.4 the field is absent."""
+    return display_id is not None and display_id != "" and not is_numeric_ref(display_id)

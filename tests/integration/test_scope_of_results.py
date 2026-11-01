@@ -18,6 +18,7 @@ from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.models import SortCriterion
 
+from ._write_ref import write_ref
 from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
@@ -82,7 +83,9 @@ async def test_a_work_package_does_not_name_a_parent_in_a_project_outside_the_re
     assert [(row.parent_id, row.parent_display_id) for row in rows.results] == [(None, None)]
 
     preview = await parent_only.work_package.update(
-        work_package_id=below.work_package_id, subject="[integration-test] renamed", confirm=False
+        work_package_id=await write_ref(everywhere, below.work_package_id),
+        subject="[integration-test] renamed",
+        confirm=False,
     )
     assert secret not in str(preview.payload)
     assert preview.payload["_links"]["parent"] == {"href": f"/api/v3/work_packages/{child_wp.work_package_id}"}
@@ -186,8 +189,12 @@ async def test_work_package_results_leave_out_a_version_defined_outside_the_read
         "grouped": await scoped.work_package.list(
             project=test_project, limit=100, group_by="version", include_sums=True
         ),
-        "update": await scoped.work_package.update(work_package_id=wp_id, subject=subject, confirm=True),
-        "delete_preview": await scoped.work_package.delete(work_package_id=wp_id, confirm=False),
+        "update": await scoped.work_package.update(
+            work_package_id=await write_ref(everywhere, wp_id), subject=subject, confirm=True
+        ),
+        "delete_preview": await scoped.work_package.delete(
+            work_package_id=await write_ref(everywhere, wp_id), confirm=False
+        ),
     }
 
     for path, result in reads.items():
@@ -213,15 +220,21 @@ async def test_an_update_refuses_to_remove_a_version_the_read_scope_hides(
     scoped = await start_scoped_client(read_projects=(test_project,), write_projects=(test_project,))
 
     with pytest.raises(InvalidInputError) as refused:
-        await scoped.work_package.update(work_package_id=wp_id, version=CLEAR_VERSION, confirm=True)
+        await scoped.work_package.update(
+            work_package_id=await write_ref(everywhere, wp_id), version=CLEAR_VERSION, confirm=True
+        )
 
     assert secret not in str(refused.value)
     assert secret in _text(await everywhere.work_package.get(wp_id))
 
-    renamed = await scoped.work_package.update(work_package_id=wp_id, subject=f"{subject} renamed", confirm=True)
+    renamed = await scoped.work_package.update(
+        work_package_id=await write_ref(everywhere, wp_id), subject=f"{subject} renamed", confirm=True
+    )
     assert renamed.ready, renamed.validation_errors
     assert secret in _text(await everywhere.work_package.get(wp_id))
 
-    cleared = await everywhere.work_package.update(work_package_id=wp_id, version=CLEAR_VERSION, confirm=True)
+    cleared = await everywhere.work_package.update(
+        work_package_id=await write_ref(everywhere, wp_id), version=CLEAR_VERSION, confirm=True
+    )
     assert cleared.ready, cleared.validation_errors
     assert secret not in _text(await everywhere.work_package.get(wp_id))

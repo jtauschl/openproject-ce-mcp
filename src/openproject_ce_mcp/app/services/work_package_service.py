@@ -167,6 +167,7 @@ from ._work_package_references import (
     hidden_references_replaced,
     visible_references,
 )
+from ._work_package_target import write_target
 from ._work_package_write_helpers import (
     VERSION_ERROR_KEYS,
     resolve_custom_field_key,
@@ -1750,6 +1751,18 @@ class WorkPackageService:
     def _present_target(self, payload: Mapping[str, Any]) -> ResolvedWorkPackage:
         return present_target(payload, settings=self._settings)
 
+    async def _write_target(
+        self, ref: str, expect_display_id: str | None, *, text_limit: int | None = None
+    ) -> tuple[WorkPackageRecord, ResolvedWorkPackage]:
+        return await write_target(
+            ref,
+            fetch=lambda reference: self._api.get(reference, text_limit=text_limit),
+            resolve_expected=lambda expected: self._resolve_work_package_record(expected, write=True),
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            expect_display_id=expect_display_id,
+        )
+
     async def _to_write_result(
         self, action: str, outcome: _WriteOutcome[Any], target: ResolvedWorkPackage | None = None
     ) -> WorkPackageWriteResult:
@@ -2153,6 +2166,7 @@ class WorkPackageService:
         remaining_time: Any = None,
         duration: Any = None,
         percentage_done: int | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
@@ -2173,7 +2187,7 @@ class WorkPackageService:
                     _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
                 )
             ).id
-        current_record = await self._api.get(ref)
+        current_record, target = await self._write_target(ref, expect_display_id)
         current = current_record.payload
         if version is not None and target_versions is None:
             existing_target_version_links = current.get("_links", {}).get("targetVersions", [])
@@ -2183,16 +2197,7 @@ class WorkPackageService:
                     "'version' parameter (including clearing it) can only be used on a single-valued "
                     "assignment. Use 'target_versions' instead to explicitly set or clear the full list."
                 )
-        current_project_link = current.get("_links", {}).get("project")
-        if not isinstance(current_project_link, dict) or current_project_link.get("href") is None:
-            # A server-data anomaly (an unexpected/malformed OpenProject
-            # response), not a caller mistake -- OpenProjectServerError, not
-            # InvalidInputError.
-            raise OpenProjectServerError("OpenProject work package is missing a project link.")
-        ensure_project_write_link_allowed(
-            current_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
-        )
-        target = self._present_target(current)
+        current_project_link = current["_links"]["project"]
         project_id = project_id_from_href(current_project_link["href"], settings=self._settings)
         if project_id is None:
             # An undisclosed project passes under a wide-open scope but names
@@ -2344,6 +2349,7 @@ class WorkPackageService:
                         remaining_time=item.get("remaining_time"),
                         duration=item.get("duration"),
                         percentage_done=item.get("percentage_done"),
+                        expect_display_id=item.get("expect_display_id"),
                         confirm=confirm,
                         wp_context=wp_context,
                     )
@@ -2387,17 +2393,13 @@ class WorkPackageService:
             items=item_results,
         )
 
-    async def delete(self, *, work_package_id: int | str, confirm: bool = False) -> WorkPackageWriteResult:
+    async def delete(
+        self, *, work_package_id: int | str, expect_display_id: str | None = None, confirm: bool = False
+    ) -> WorkPackageWriteResult:
         # Deliberately NO access.ensure_read_enabled gate -- see create()'s
         # identical comment.
         ref = work_package_ref(work_package_id)
-        record = await self._api.get(ref, text_limit=FORMATTABLE_LIMIT)
-        ensure_project_write_link_allowed(
-            record.payload.get("_links", {}).get("project"),
-            settings=self._settings,
-            project_id_to_identifier=self._project_id_to_identifier,
-        )
-        target = self._present_target(record.payload)
+        record, target = await self._write_target(ref, expect_display_id, text_limit=FORMATTABLE_LIMIT)
         detail = stamp_detail(
             await self._filter_hierarchy_allowlist(await self._detail_of(record)), settings=self._settings
         )
@@ -2438,18 +2440,13 @@ class WorkPackageService:
         comment: str,
         internal: bool = False,
         notify: bool = False,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> ActivityWriteResult:
         if comment is not None:
             hidden_fields.ensure_field_writable("activity", "comment", settings=self._settings)
         ref = work_package_ref(work_package_id)
-        record = await self._api.get(ref)
-        ensure_project_write_link_allowed(
-            record.payload.get("_links", {}).get("project"),
-            settings=self._settings,
-            project_id_to_identifier=self._project_id_to_identifier,
-        )
-        target = self._present_target(record.payload)
+        _, target = await self._write_target(ref, expect_display_id)
         payload = {"comment": {"raw": comment}, "internal": internal, "notify": notify}
 
         if not confirm:

@@ -28,6 +28,8 @@ import pytest
 
 from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
 
+from ._write_ref import write_ref
+
 pytestmark = pytest.mark.integration
 
 _SUBJECT = "[integration-test] temp WP sprint-by-name"
@@ -94,7 +96,7 @@ async def test_update_work_package_accepts_sprint_by_name(
     wp_ids.append(result.work_package_id)
 
     update_result = await client.work_package.update(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         sprint=sprint_name,
         confirm=True,
     )

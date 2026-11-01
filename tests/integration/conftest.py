@@ -47,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import live_target_guard  # noqa: E402
 from _live_cleanup import ClientRegistry, delete_all  # noqa: E402
+from _write_ref import write_ref  # noqa: E402
 
 # Directory containing docker/test/compose.yml -- `docker compose exec` needs
 # to run with this as its cwd (or -f pointed at it) to resolve the service name.
@@ -377,9 +378,11 @@ async def wp_ids(client: OpenProjectClient):
     """Yields a list to append created WP IDs; deletes them all after the test."""
     created: list[int] = []
     yield created
-    await delete_all(
-        "work package", created, lambda wp_id: client.work_package.delete(work_package_id=wp_id, confirm=True)
-    )
+
+    async def delete_work_package(wp_id: int) -> object:
+        return await client.work_package.delete(work_package_id=await write_ref(client, wp_id), confirm=True)
+
+    await delete_all("work package", created, delete_work_package)
 
 
 @pytest.fixture

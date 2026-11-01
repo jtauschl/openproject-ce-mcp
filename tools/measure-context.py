@@ -82,6 +82,7 @@ from openproject_ce_mcp.config import TOOL_GROUPS, Settings  # noqa: E402
 from openproject_ce_mcp.models import SortCriterion  # noqa: E402
 from openproject_ce_mcp.presentation import _to_payload  # noqa: E402
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
+from openproject_ce_mcp.work_package_reference import has_semantic_display_id  # noqa: E402
 
 _encoding: Any = None
 
@@ -445,7 +446,9 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
             raw_update_json = json.dumps(resp.json())
 
             update_result = await client.work_package.update(
-                work_package_id=single_id, percentage_done=60, confirm=True
+                work_package_id=detail.display_id if has_semantic_display_id(detail.display_id) else single_id,
+                percentage_done=60,
+                confirm=True,
             )
             _report(
                 "update_work_package (confirmed write)",
@@ -492,17 +495,20 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
             # --- Bulk update ×5: bulk_update_work_packages vs. 5x PATCH /work_packages/{id} ---
             bulk_target_ids = created_ids[-len(bulk_items) :]
             raw_bulk_update_parts = []
+            bulk_update_refs: list[int | str] = []
             for wp_id in bulk_target_ids:
                 resp = await http.get(f"/api/v3/work_packages/{wp_id}")
                 resp.raise_for_status()
                 wp_lock_version = resp.json()["lockVersion"]
+                display_id = resp.json().get("displayId")
+                bulk_update_refs.append(display_id if has_semantic_display_id(display_id) else wp_id)
                 resp = await http.patch(
                     f"/api/v3/work_packages/{wp_id}", json={"lockVersion": wp_lock_version, "percentageDone": 20}
                 )
                 resp.raise_for_status()
                 raw_bulk_update_parts.append(resp.json())
 
-            bulk_update_items = [{"work_package_id": wp_id, "percentage_done": 30} for wp_id in bulk_target_ids]
+            bulk_update_items = [{"work_package_id": ref, "percentage_done": 30} for ref in bulk_update_refs]
             bulk_update_result = await client.work_package.bulk_update(items=bulk_update_items, confirm=True)
             _report(
                 f"bulk_update_work_packages (x{len(bulk_target_ids)}, vs. {len(bulk_target_ids)} individual raw PATCHes)",
