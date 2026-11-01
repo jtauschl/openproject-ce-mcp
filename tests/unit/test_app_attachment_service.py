@@ -4,9 +4,11 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _work_package_target_helpers import resolved_record
 
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.attachment_api import AttachmentContent, AttachmentRecord
+from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.services.attachment_service import AttachmentService
 from openproject_ce_mcp.models import AttachmentSummary
 from openproject_ce_mcp.presentation import _to_payload
@@ -130,19 +132,19 @@ class _FakeWorkPackageLookupApi:
         raise AssertionError("get_by_href should not be used by AttachmentService")
 
 
-def _resolve_work_package_id_ok(resolved_id: int = 9):
+def _resolve_work_package_record_ok(resolved_id: int = 9):
     calls: list[tuple[int | str, bool]] = []
 
-    async def resolve(work_package_ref: int | str, *, write: bool = False) -> int:
+    async def resolve(work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
         calls.append((work_package_ref, write))
-        return resolved_id
+        return resolved_record(resolved_id)
 
     resolve.calls = calls  # type: ignore[attr-defined]
     return resolve
 
 
-def _resolve_work_package_id_denied():
-    async def resolve(work_package_ref: int | str, *, write: bool = False) -> int:
+def _resolve_work_package_record_denied():
+    async def resolve(work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
         raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
 
     return resolve
@@ -153,14 +155,14 @@ def _service(
     api: _FakeAttachmentApi | None = None,
     work_package_lookup_api: _FakeWorkPackageLookupApi | None = None,
     settings=None,
-    resolve_work_package_id=None,
+    resolve_work_package_record=None,
 ) -> AttachmentService:
     return AttachmentService(
         api=api or _FakeAttachmentApi(),
         work_package_lookup_api=work_package_lookup_api or _FakeWorkPackageLookupApi(),
         settings=settings or make_settings(),
         project_id_to_identifier=PROJECT_ID_TO_IDENTIFIER,
-        resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok(),
+        resolve_work_package_record=resolve_work_package_record or _resolve_work_package_record_ok(),
     )
 
 
@@ -170,8 +172,8 @@ def _service(
 @pytest.mark.asyncio
 async def test_list_for_work_package_returns_stamped_summaries() -> None:
     api = _FakeAttachmentApi()
-    resolver = _resolve_work_package_id_ok(resolved_id=9)
-    service = _service(api=api, resolve_work_package_id=resolver)
+    resolver = _resolve_work_package_record_ok(resolved_id=9)
+    service = _service(api=api, resolve_work_package_record=resolver)
 
     result = await service.list_for_work_package(9)
 
@@ -184,7 +186,7 @@ async def test_list_for_work_package_returns_stamped_summaries() -> None:
 @pytest.mark.asyncio
 async def test_list_for_work_package_denies_anchor_outside_read_allowlist() -> None:
     api = _FakeAttachmentApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.list_for_work_package(9)
@@ -201,7 +203,7 @@ async def test_list_for_work_package_filters_out_records_from_a_different_contai
     api = _FakeAttachmentApi(
         records=[_record(1, container_id=9), _record(2, container_id=999), _record(3, has_container_link=False)]
     )
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_ok(resolved_id=9))
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_ok(resolved_id=9))
 
     result = await service.list_for_work_package(9)
 
@@ -369,9 +371,9 @@ async def test_create_resolves_work_package_with_write_true(tmp_path) -> None:
     resolver call is pinned to write=False."""
     report = tmp_path / "report.pdf"
     report.write_bytes(b"hello")
-    resolver = _resolve_work_package_id_ok(resolved_id=9)
+    resolver = _resolve_work_package_record_ok(resolved_id=9)
     settings = dataclasses.replace(make_settings(), enable_work_package_write=True, attachment_root=str(tmp_path))
-    service = _service(settings=settings, resolve_work_package_id=resolver)
+    service = _service(settings=settings, resolve_work_package_record=resolver)
 
     await service.create(work_package_id=9, file_path=str(report), confirm=False)
 
@@ -385,7 +387,7 @@ async def test_create_denies_write_even_without_confirm() -> None:
     lesson (confirm=True alone can't distinguish 'checked before confirm'
     from 'checked only inside the confirm branch')."""
     api = _FakeAttachmentApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.create(work_package_id=9, file_path="report.pdf", confirm=False)
@@ -396,7 +398,7 @@ async def test_create_denies_write_even_without_confirm() -> None:
 @pytest.mark.asyncio
 async def test_create_denies_write_with_confirm() -> None:
     api = _FakeAttachmentApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.create(work_package_id=9, file_path="report.pdf", confirm=True)

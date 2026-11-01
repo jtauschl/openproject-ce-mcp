@@ -2,16 +2,16 @@
 
 Depends on the `AttachmentApi` Protocol (never `HttpxAttachmentApi`
 concretely -- enforced by the architecture-boundary test), on
-`WorkPackageLookupApi` directly, and on `WorkPackageIdResolver`. Three
+`WorkPackageLookupApi` directly, and on `WorkPackageRecordResolver`. Three
 Protocol dependencies, matching File Links' shape: `list_for_work_package`'s
 anchor-resolution and `create()`'s caller-supplied-reference resolution both
-go through `WorkPackageIdResolver`, while `get()`'s and `delete()`'s
+go through `WorkPackageRecordResolver`, while `get()`'s and `delete()`'s
 container-derived id go through `WorkPackageLookupApi.get()` directly --
 both already hold a concrete href from the fetched attachment's own
 `_links.container`, not a caller-supplied reference to resolve.
 
 No `attachment_policy.py`: `list()`'s scoping is entirely delegated to
-`WorkPackageIdResolver` (read-check on the anchor work package happens
+`WorkPackageRecordResolver` (read-check on the anchor work package happens
 THERE, before the attachments sub-fetch, matching File Links/Emoji
 Reactions); `get()`/`delete()`'s scoping is a direct
 `scope_policy.ensure_project_link_allowed`/`ensure_project_write_link_allowed`
@@ -75,7 +75,8 @@ from ..policies import scope as scope_policy
 from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
-from ..ports.work_package_ref import WorkPackageIdResolver
+from ..ports.work_package_ref import WorkPackageRecordResolver
+from ._work_package_presentation import present_target
 
 # Files that must never be uploaded even from inside the attachment root: the
 # config often lives in the server's working directory, so directory
@@ -173,13 +174,13 @@ class AttachmentService:
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
     ) -> None:
         self._api = api
         self._work_package_lookup_api = work_package_lookup_api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
 
     def _stamp(self, summary: AttachmentSummary) -> AttachmentSummary:
         return hidden_fields.apply_hidden_fields("attachment", summary, settings=self._settings)
@@ -197,7 +198,7 @@ class AttachmentService:
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its attachments
         # are fetched.
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
+        resolved_id = (await self._resolve_work_package_record(work_package_id, write=False)).id
 
         def _record_allowed(record: Any) -> bool:
             return record.summary.container_type == "WorkPackage" and record.summary.container_id == resolved_id
@@ -507,7 +508,9 @@ class AttachmentService:
         confirm: bool = False,
     ) -> AttachmentWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved_id = resolved.id
+        target = present_target(resolved.payload, settings=self._settings)
         hidden_fields.ensure_field_writable("attachment", "file_name", settings=self._settings)
         if description is not None:
             hidden_fields.ensure_field_writable("attachment", "description", settings=self._settings)
@@ -532,6 +535,7 @@ class AttachmentService:
                 },
                 validation_errors={},
                 result=None,
+                target=target,
             )
 
         access.ensure_write_enabled("work_package", settings=self._settings)
@@ -567,6 +571,7 @@ class AttachmentService:
             },
             validation_errors={},
             result=result,
+            target=target,
         )
 
     async def delete(self, attachment_id: int, *, confirm: bool = False) -> AttachmentWriteResult:

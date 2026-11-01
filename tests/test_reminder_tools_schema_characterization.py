@@ -68,6 +68,7 @@ def test_create_work_package_reminder_schema() -> None:
         "`remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one\n"
         "active reminder per work package is allowed; creating a second one fails.\n"
         "Requires OpenProject 16.1+.\n"
+        "The result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

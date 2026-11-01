@@ -223,6 +223,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
     "BoardWriteResult": [
         "action",
@@ -314,6 +315,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
     "MeetingOutcomeWriteResult": [
         "action",
@@ -325,6 +327,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
     "MeetingSectionWriteResult": [
         "action",
@@ -440,6 +443,8 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
+        "related_target",
     ],
     "ReminderWriteResult": [
         "action",
@@ -450,6 +455,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
     "StorageWriteResult": [
         "action",
@@ -471,6 +477,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
     "UserNonWorkingTimeWriteResult": [
         "action",
@@ -532,6 +539,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "watcher_user_id",
         "validation_errors",
         "result",
+        "target",
     ],
     "WikiPageLinkWriteResult": [
         "action",
@@ -543,6 +551,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "target",
     ],
     "WorkPackageWriteResult": [
         "action",

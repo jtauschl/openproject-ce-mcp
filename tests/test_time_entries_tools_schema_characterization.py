@@ -368,7 +368,7 @@ def test_create_time_entry_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_time_entry"]
     assert (
         tool.description
-        == "Create a time entry.\n\nhours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).\nstart_time is an ISO 8601 date-time and requires the instance setting \"allow\ntracking of start and end times\"; ignored otherwise. No end_time parameter --\nOpenProject derives it read-only from start_time + hours. Use\ncreate_time_entry_until to specify an end time instead of hours directly.\n"
+        == "Create a time entry.\n\nhours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).\nstart_time is an ISO 8601 date-time and requires the instance setting \"allow\ntracking of start and end times\"; ignored otherwise. No end_time parameter --\nOpenProject derives it read-only from start_time + hours. Use\ncreate_time_entry_until to specify an end time instead of hours directly.\nWhen a work package is given, the result names the work package it resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -478,7 +478,7 @@ def test_create_time_entry_until_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_time_entry_until"]
     assert (
         tool.description
-        == "Create a time entry by start/end time instead of a duration.\n\nComputes hours = end_time - start_time locally; only hours and start_time\nare sent to OpenProject (end_time itself is never accepted by the server,\nsee create_time_entry's docstring). end_time must be strictly after\nstart_time. There is no ongoing parameter here -- a time entry with a\nknown end time is complete, not still running; use create_time_entry for\nan ongoing entry.\n"
+        == "Create a time entry by start/end time instead of a duration.\n\nComputes hours = end_time - start_time locally; only hours and start_time\nare sent to OpenProject (end_time itself is never accepted by the server,\nsee create_time_entry's docstring). end_time must be strictly after\nstart_time. There is no ongoing parameter here -- a time entry with a\nknown end time is complete, not still running; use create_time_entry for\nan ongoing entry.\nWhen a work package is given, the result names the work package it resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

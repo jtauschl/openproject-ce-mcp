@@ -74,10 +74,69 @@ def test_set_work_package_watcher_schema() -> None:
     tool = _tools(create_app(_make_settings()))["set_work_package_watcher"]
     assert (
         tool.description
-        == "Add/remove a watcher on a work package.\n\nwatching=true adds the watcher; watching=false removes it. The two\npreviews are NOT symmetric: watching=true's preview looks up and returns\nthe user's summary (result is populated; whether the user already watches\nis not checked); watching=false's preview makes no extra lookup and always\nreturns result=null.\n"
+        == "Add/remove a watcher on a work package.\n\nwatching=true adds the watcher; watching=false removes it. The two\npreviews are NOT symmetric: watching=true's preview looks up and returns\nthe user's summary (result is populated; whether the user already watches\nis not checked); watching=false's preview makes no extra lookup and always\nreturns result=null.\nThe result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema == {
         "$defs": {
+            "ResolvedWorkPackage": {
+                "properties": {
+                    "id": {
+                        "title": "Id",
+                        "type": "integer",
+                    },
+                    "display_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                            },
+                            {
+                                "type": "null",
+                            },
+                        ],
+                        "default": None,
+                        "title": "Display Id",
+                    },
+                    "project": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                            },
+                            {
+                                "type": "null",
+                            },
+                        ],
+                        "default": None,
+                        "title": "Project",
+                    },
+                    "subject": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                            },
+                            {
+                                "type": "null",
+                            },
+                        ],
+                        "default": None,
+                        "title": "Subject",
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                            },
+                            {
+                                "type": "null",
+                            },
+                        ],
+                        "default": None,
+                        "title": "Status",
+                    },
+                },
+                "required": ["id"],
+                "title": "ResolvedWorkPackage",
+                "type": "object",
+            },
             "WatcherSummary": {
                 "properties": {
                     "id": {
@@ -159,6 +218,17 @@ def test_set_work_package_watcher_schema() -> None:
                         "type": "null",
                     },
                 ],
+            },
+            "target": {
+                "anyOf": [
+                    {
+                        "$ref": "#/$defs/ResolvedWorkPackage",
+                    },
+                    {
+                        "type": "null",
+                    },
+                ],
+                "default": None,
             },
         },
         "required": [

@@ -18,6 +18,17 @@ import httpx
 import pytest
 from _client_test_helpers import _write_enabled_settings, make_settings
 from _tools_test_helpers import FakeContext
+from _work_package_target_helpers import (
+    EXPECTED_R1,
+    EXPECTED_R2,
+    R1,
+    R2,
+    RECORDS_BY_REFERENCE,
+    REFERENCES,
+    form_response,
+    project_response,
+    work_package_record,
+)
 
 from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.app.services._work_package_presentation import present_target
@@ -36,41 +47,6 @@ from openproject_ce_mcp.tools import (
     update_work_package,
 )
 
-
-def _record(wp_id: int, display_id: str, subject: str, status: str, project_id: int, project: str) -> dict:
-    return {
-        "id": wp_id,
-        "displayId": display_id,
-        "subject": subject,
-        "lockVersion": 3,
-        "_links": {
-            "self": {"href": f"/api/v3/work_packages/{wp_id}"},
-            "project": {"href": f"/api/v3/projects/{project_id}", "title": project},
-            "status": {"href": "/api/v3/statuses/1", "title": status},
-            "type": {"href": "/api/v3/types/8", "title": "Task"},
-        },
-    }
-
-
-R1 = _record(436, "A-1", "Subject of the bare number", "New", 1, "Project A")
-R2 = _record(9001, "PROJ-436", "Subject of the display reference", "In progress", 2, "Project B")
-
-EXPECTED_R1 = {
-    "id": 436,
-    "display_id": "A-1",
-    "project": "Project A",
-    "subject": "Subject of the bare number",
-    "status": "New",
-}
-EXPECTED_R2 = {
-    "id": 9001,
-    "display_id": "PROJ-436",
-    "project": "Project B",
-    "subject": "Subject of the display reference",
-    "status": "In progress",
-}
-REFERENCES = [("436", EXPECTED_R1), ("PROJ-436", EXPECTED_R2)]
-
 _WP_PATH = re.compile(r"^/api/v3/work_packages/([^/]+)(/form|/activities)?$")
 _PROJECT_FORM_PATH = re.compile(r"^/api/v3/projects/(\d+)/work_packages/form$")
 
@@ -81,7 +57,7 @@ class _Server:
     def __init__(self) -> None:
         self.work_package_gets: list[str] = []
         self.requests: list[str] = []
-        self.records = {"436": R1, "PROJ-436": R2}
+        self.records = RECORDS_BY_REFERENCE
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path, method = request.url.path, request.method
@@ -91,15 +67,15 @@ class _Server:
             return self._work_package(request, wp.group(1), wp.group(2))
         if path == "/api/v3/work_packages" and method == "POST":
             body = json.loads(request.content)
-            created = {**_record(777, "A-777", body["subject"], "New", 1, "Project A")}
+            created = {**work_package_record(777, "A-777", body["subject"], "New", 1, "Project A")}
             return httpx.Response(201, json=created, request=request)
         form = _PROJECT_FORM_PATH.match(path)
         if form is not None and method == "POST":
-            return _form(request)
+            return form_response(request)
         if path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
-            return _project(request, 1, "demo", "Project A")
+            return project_response(request, 1, "demo", "Project A")
         if path == "/api/v3/projects/2":
-            return _project(request, 2, "proj", "Project B")
+            return project_response(request, 2, "proj", "Project B")
         if re.match(r"^/api/v3/projects/\d+/types$", path):
             return httpx.Response(200, json={"_embedded": {"elements": [{"id": 8, "name": "Task"}]}}, request=request)
         raise AssertionError(f"Unexpected request: {method} {request.url}")
@@ -107,7 +83,7 @@ class _Server:
     def _work_package(self, request: httpx.Request, ref: str, suffix: str | None) -> httpx.Response:
         method = request.method
         if suffix == "/form" and method == "POST":
-            return _form(request)
+            return form_response(request)
         if suffix == "/activities" and method == "POST":
             activity = {"id": 77, "_type": "Activity", "version": 3, "comment": {"raw": "hello"}, "_links": {}}
             return httpx.Response(201, json=activity, request=request)
@@ -119,18 +95,6 @@ class _Server:
         if suffix is None and method == "DELETE":
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {method} {request.url}")
-
-
-def _form(request: httpx.Request) -> httpx.Response:
-    body = json.loads(request.content)
-    return httpx.Response(
-        200, json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}}, request=request
-    )
-
-
-def _project(request: httpx.Request, project_id: int, identifier: str, name: str) -> httpx.Response:
-    body = {"_type": "Project", "id": project_id, "name": name, "identifier": identifier, "_links": {}}
-    return httpx.Response(200, json=body, request=request)
 
 
 def _client(server: _Server, settings: Settings | None = None) -> OpenProjectClient:

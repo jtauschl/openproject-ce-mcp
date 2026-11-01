@@ -4,9 +4,11 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _work_package_target_helpers import resolved_record
 
 from openproject_ce_mcp.app.errors import InvalidInputError, OpenProjectServerError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.relation_api import RelationRecord
+from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.services.relation_service import RelationService
 from openproject_ce_mcp.models import RelationSummary
 
@@ -141,12 +143,12 @@ class _FakeWorkPackageLookupApi:
         return {"_links": {"project": self._by_href.get(href, self._project_link)}}
 
 
-def _resolve_work_package_id_ok(resolved_id: int = 55):
+def _resolve_work_package_record_ok(resolved_id: int = 55):
     calls: list[tuple[int | str, bool]] = []
 
-    async def resolve(work_package_ref: int | str, *, write: bool = False) -> int:
+    async def resolve(work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
         calls.append((work_package_ref, write))
-        return resolved_id
+        return resolved_record(resolved_id)
 
     resolve.calls = calls  # type: ignore[attr-defined]
     return resolve
@@ -189,7 +191,7 @@ def _service(
     api: _FakeRelationApi | None = None,
     work_package_lookup_api: _FakeWorkPackageLookupApi | None = None,
     settings=None,
-    resolve_work_package_id=None,
+    resolve_work_package_record=None,
     work_package_project_allowed_bulk=None,
 ) -> RelationService:
     return RelationService(
@@ -197,7 +199,7 @@ def _service(
         work_package_lookup_api=work_package_lookup_api or _FakeWorkPackageLookupApi(),
         settings=settings or make_settings(),
         project_id_to_identifier=PROJECT_ID_TO_IDENTIFIER,
-        resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok(),
+        resolve_work_package_record=resolve_work_package_record or _resolve_work_package_record_ok(),
         work_package_project_allowed_bulk=work_package_project_allowed_bulk
         or _work_package_project_allowed_bulk_from({"/api/v3/work_packages/1", "/api/v3/work_packages/2"}),
         api_prefix="/api/v3/",
@@ -244,9 +246,9 @@ async def test_list_all_filters_by_read_allowlist_both_sides() -> None:
 @pytest.mark.asyncio
 async def test_list_for_work_package_resolves_anchor_and_sends_involved_filter() -> None:
     api = _FakeRelationApi()
-    resolve = _resolve_work_package_id_ok(10)
+    resolve = _resolve_work_package_record_ok(10)
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-10")
 
@@ -274,9 +276,9 @@ async def test_list_for_work_package_stamps_perspective_from_the_from_side() -> 
     stored type unchanged."""
     record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
-    resolve = _resolve_work_package_id_ok(10)
+    resolve = _resolve_work_package_record_ok(10)
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-10")
 
@@ -296,9 +298,9 @@ async def test_list_for_work_package_stamps_perspective_from_the_to_side() -> No
     as "blocked")."""
     record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
-    resolve = _resolve_work_package_id_ok(11)
+    resolve = _resolve_work_package_record_ok(11)
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-11")
 
@@ -319,9 +321,9 @@ async def test_list_for_work_package_populates_predecessor_successor_only_for_fo
     for a stored "follows" relation and stay None for every other type."""
     record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
-    resolve = _resolve_work_package_id_ok(10)
+    resolve = _resolve_work_package_record_ok(10)
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-10")
 
@@ -348,9 +350,9 @@ async def test_list_for_work_package_treats_a_stored_precedes_type_as_unmapped()
     verified for that literal stored type."""
     record = _record(1, summary=_summary(1, relation_type="precedes", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
-    resolve = _resolve_work_package_id_ok(10)
+    resolve = _resolve_work_package_record_ok(10)
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-10")
 
@@ -372,13 +374,13 @@ async def test_list_for_work_package_omits_perspective_when_from_id_or_to_id_hid
     nested field."""
     record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
-    resolve = _resolve_work_package_id_ok(10)
+    resolve = _resolve_work_package_record_ok(10)
     settings = dataclasses.replace(
         make_settings(),
         read_projects=("*",),
         hidden_fields={"relation": ("from_id", "to_id")},
     )
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-10")
 
@@ -394,13 +396,13 @@ async def test_list_for_work_package_omits_perspective_when_only_to_id_hidden() 
     queried_perspective were computed regardless."""
     record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
-    resolve = _resolve_work_package_id_ok(10)
+    resolve = _resolve_work_package_record_ok(10)
     settings = dataclasses.replace(
         make_settings(),
         read_projects=("*",),
         hidden_fields={"relation": ("to_id",)},
     )
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-10")
 
@@ -414,9 +416,9 @@ async def test_list_for_work_package_leaves_perspective_none_when_anchor_is_neit
     but stay safe rather than mislabel a direction)."""
     record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
-    resolve = _resolve_work_package_id_ok(99)
+    resolve = _resolve_work_package_record_ok(99)
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    service = _service(api=api, settings=settings, resolve_work_package_record=resolve)
 
     result = await service.list_for_work_package("PROJ-99")
 
@@ -616,8 +618,8 @@ async def test_create_and_update_stamp_hidden_fields_on_their_committed_result()
 async def test_create_previews_without_confirm() -> None:
     api = _FakeRelationApi()
     lookup = _FakeWorkPackageLookupApi()
-    resolve = _resolve_work_package_id_ok(55)
-    service = _service(api=api, work_package_lookup_api=lookup, resolve_work_package_id=resolve)
+    resolve = _resolve_work_package_record_ok(55)
+    service = _service(api=api, work_package_lookup_api=lookup, resolve_work_package_record=resolve)
 
     result = await service.create(
         work_package_id=42, related_to_work_package_id=55, relation_type="blocks", confirm=False
@@ -632,8 +634,8 @@ async def test_create_previews_without_confirm() -> None:
 async def test_create_commits_when_confirmed() -> None:
     api = _FakeRelationApi()
     lookup = _FakeWorkPackageLookupApi()
-    resolve = _resolve_work_package_id_ok(55)
-    service = _service(api=api, work_package_lookup_api=lookup, resolve_work_package_id=resolve)
+    resolve = _resolve_work_package_record_ok(55)
+    service = _service(api=api, work_package_lookup_api=lookup, resolve_work_package_record=resolve)
 
     result = await service.create(
         work_package_id=42,
@@ -672,12 +674,12 @@ async def test_create_validates_source_reference_before_resolving_target() -> No
     target before the error is raised."""
     resolve_calls: list[str] = []
 
-    async def resolve(work_package_ref, *, write: bool = False) -> int:
+    async def resolve(work_package_ref, *, write: bool = False) -> ResolvedRecord:
         resolve_calls.append(str(work_package_ref))
-        return 55
+        return resolved_record(55)
 
     api = _FakeRelationApi()
-    service = _service(api=api, resolve_work_package_id=resolve)
+    service = _service(api=api, resolve_work_package_record=resolve)
 
     with pytest.raises(InvalidInputError):
         await service.create(

@@ -2,17 +2,17 @@
 
 Depends on the `WikiPageLinkApi` Protocol (never `HttpxWikiPageLinkApi`
 concretely -- enforced by the architecture-boundary test) and on
-`WorkPackageIdResolver`. Read/write scope reuses `"work_package"` (not a
+`WorkPackageRecordResolver`. Read/write scope reuses `"work_package"` (not a
 dedicated `"wiki_page_link"` scope) -- the resource is entirely
 work-package-scoped, matching Emoji Reactions'/Attachments' precedent.
 
 Three distinct project-allowlist checks, one per method, mirroring
 Attachments' exact pattern:
 
-- `list_for_work_package()` uses `WorkPackageIdResolver(ref, write=False)` --
+- `list_for_work_package()` uses `WorkPackageRecordResolver(ref, write=False)` --
   resolving the id already confirms the anchor work package is allowed
   against `OPENPROJECT_READ_PROJECTS` before its links are fetched.
-- `create()` uses `WorkPackageIdResolver(ref, write=True)` -- the link is
+- `create()` uses `WorkPackageRecordResolver(ref, write=True)` -- the link is
   created scoped to that work package, so its write-allowlist check IS the
   target work package's write-allowlist check. Also resolves the current
   user's id via the injected `CurrentUserLookup` seam and sends it as
@@ -54,8 +54,9 @@ from ..pagination import clamp_limit, paginate_all, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.current_user import CurrentUserLookup
 from ..ports.wiki_page_link_api import WikiPageLinkApi, WikiPageLinkRecord
-from ..ports.work_package_ref import WorkPackageIdResolver
+from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
+from ._work_package_presentation import present_target
 
 
 class WikiPageLinkService:
@@ -64,12 +65,12 @@ class WikiPageLinkService:
         *,
         api: WikiPageLinkApi,
         settings: Settings,
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
         current_user: CurrentUserLookup,
     ) -> None:
         self._api = api
         self._settings = settings
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
         self._current_user = current_user
 
     def _stamp(self, record: WikiPageLinkRecord) -> WikiPageLinkSummary:
@@ -109,7 +110,7 @@ class WikiPageLinkService:
             max_page_size=self._settings.max_page_size,
             max_results=self._settings.max_results,
         )
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
+        resolved_id = (await self._resolve_work_package_record(work_package_id, write=False)).id
 
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: call_version_gated(
@@ -143,7 +144,9 @@ class WikiPageLinkService:
         confirm: bool = False,
     ) -> WikiPageLinkWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved_id = resolved.id
+        target = present_target(resolved.payload, settings=self._settings)
         hidden_fields.ensure_field_writable("wiki_page_link", "identifier", settings=self._settings)
         hidden_fields.ensure_field_writable("wiki_page_link", "provider", settings=self._settings)
         payload = {"identifier": identifier, "provider": provider}
@@ -161,6 +164,7 @@ class WikiPageLinkService:
                 payload=payload,
                 validation_errors={},
                 result=None,
+                target=target,
             )
 
         access.ensure_write_enabled("work_package", settings=self._settings)
@@ -181,13 +185,16 @@ class WikiPageLinkService:
             payload=payload,
             validation_errors={},
             result=result,
+            target=target,
         )
 
     async def delete(
         self, work_package_id: int | str, link_id: int, *, confirm: bool = False
     ) -> WikiPageLinkWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
-        resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved_id = resolved.id
+        target = present_target(resolved.payload, settings=self._settings)
         record = await self._find_link_of_work_package(resolved_id, link_id)
         # DELETE wiki_page_links/{id} looks the id up as a relation link only,
         # so it answers 404 for an inline link on every version.
@@ -210,6 +217,7 @@ class WikiPageLinkService:
                 payload=payload,
                 validation_errors={},
                 result=None,
+                target=target,
             )
 
         access.ensure_write_enabled("work_package", settings=self._settings)
@@ -224,4 +232,5 @@ class WikiPageLinkService:
             payload=payload,
             validation_errors={},
             result=None,
+            target=target,
         )

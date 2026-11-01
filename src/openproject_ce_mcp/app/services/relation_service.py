@@ -2,7 +2,7 @@
 
 Depends on the `RelationApi` Protocol (never `HttpxRelationApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`
-directly, on `WorkPackageIdResolver`, and on `WorkPackageProjectAllowedBulkCheck`
+directly, on `WorkPackageRecordResolver`, and on `WorkPackageProjectAllowedBulkCheck`
 -- matching Reminders' four-Protocol seam surface, for an analogous reason:
 
 - `list_all()`/`list_for_work_package()` each fan out across TWO *different*
@@ -14,7 +14,7 @@ directly, on `WorkPackageIdResolver`, and on `WorkPackageProjectAllowedBulkCheck
   id/subject through to_id/to_subject even though it isn't independently
   readable.
 - `create()` takes a genuine caller-supplied target reference
-  (`related_to_work_package_id`) -- uses `WorkPackageIdResolver(ref,
+  (`related_to_work_package_id`) -- uses `WorkPackageRecordResolver(ref,
   write=True)`: OpenProject authorizes relation creation primarily via the
   `from` work package's project, but this server's own WRITE_PROJECTS
   contract must also hold for the `to` target (a caller with write on one
@@ -81,11 +81,12 @@ from ..policies import scope as scope_policy
 from ..ports.relation_api import RelationApi, RelationRecord
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import (
-    WorkPackageIdResolver,
     WorkPackageProjectAllowedBulkCheck,
+    WorkPackageRecordResolver,
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._work_package_presentation import present_target
 
 # Mirrors OpenProject's own Relation::TYPES hash (app/models/relation.rb):
 # for a relation stored with this type, "from"-side is read as the type
@@ -146,7 +147,7 @@ class RelationService:
         work_package_lookup_api: WorkPackageLookupApi,
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
-        resolve_work_package_id: WorkPackageIdResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
         work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
         api_prefix: str,
     ) -> None:
@@ -154,7 +155,7 @@ class RelationService:
         self._work_package_lookup_api = work_package_lookup_api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
-        self._resolve_work_package_id = resolve_work_package_id
+        self._resolve_work_package_record = resolve_work_package_record
         self._work_package_project_allowed_bulk = work_package_project_allowed_bulk
         self._api_prefix = api_prefix
 
@@ -274,7 +275,7 @@ class RelationService:
         # this before that fetch, not after.
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_limit = effective_limit(limit, settings=self._settings)
-        resolved_id = await self._resolve_work_package_id(work_package_id)
+        resolved_id = (await self._resolve_work_package_record(work_package_id)).id
         filters = json.dumps([{"involved": {"operator": "=", "values": [str(resolved_id)]}}])
         return await self._list(
             filters=filters, offset=offset, limit=resolved_limit, queried_work_package_id=resolved_id
@@ -306,7 +307,8 @@ class RelationService:
         confirm: bool = False,
     ) -> RelationWriteResult:
         _validate_work_package_ref(work_package_id)
-        related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id, write=True)
+        related_record = await self._resolve_work_package_record(related_to_work_package_id, write=True)
+        related_numeric_id = related_record.id
         work_package = await self._work_package_lookup_api.get(str(work_package_id))
         scope_policy.ensure_project_write_link_allowed(
             work_package.get("_links", {}).get("project"),
@@ -314,6 +316,8 @@ class RelationService:
             project_id_to_identifier=self._project_id_to_identifier,
         )
         source_numeric_id = int(work_package["id"])
+        target = present_target(work_package, settings=self._settings)
+        related_target = present_target(related_record.payload, settings=self._settings)
         hidden_fields.ensure_field_writable("relation", "type", settings=self._settings)
         payload: dict[str, Any] = {
             "type": relation_type,
@@ -337,6 +341,8 @@ class RelationService:
                 payload=preview_payload,
                 validation_errors={},
                 result=None,
+                target=target,
+                related_target=related_target,
             )
         access.ensure_write_enabled("work_package", settings=self._settings)
         record = await self._api.create(str(work_package_id), payload)
@@ -351,6 +357,8 @@ class RelationService:
             payload=preview_payload,
             validation_errors={},
             result=result,
+            target=target,
+            related_target=related_target,
         )
 
     async def update(

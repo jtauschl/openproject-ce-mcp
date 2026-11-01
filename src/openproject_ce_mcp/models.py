@@ -573,6 +573,8 @@ class RelationWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: RelationSummary | None
+    target: ResolvedWorkPackage | None = None
+    related_target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1029,6 +1031,7 @@ class AttachmentWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: AttachmentSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1118,6 +1121,7 @@ class TimeEntryWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: TimeEntrySummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1383,6 +1387,7 @@ class WatcherWriteResult(ConfirmationHeader):
     watcher_user_id: int | None
     validation_errors: dict
     result: WatcherSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1706,6 +1711,7 @@ class ReminderWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: ReminderSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1738,6 +1744,7 @@ class WikiPageLinkWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: WikiPageLinkSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 @dataclass
@@ -1874,6 +1881,7 @@ class MeetingAgendaItemWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: MeetingAgendaItemSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 # --- Meeting Outcomes (OpenProject 17.6+) ---
@@ -1905,6 +1913,7 @@ class MeetingOutcomeWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: MeetingOutcomeSummary | None
+    target: ResolvedWorkPackage | None = None
 
 
 # --- Meeting Sections ---

@@ -4,8 +4,10 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _work_package_target_helpers import resolved_record
 
 from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.services.watcher_service import WatcherService
 from openproject_ce_mcp.models import WatcherSummary
 
@@ -42,19 +44,19 @@ class _FakeWatcherApi:
         self.remove_calls.append((work_package_id, user_id))
 
 
-def _resolve_work_package_id_ok(resolved_id: int = 9):
+def _resolve_work_package_record_ok(resolved_id: int = 9):
     calls: list[tuple[int | str, bool]] = []
 
-    async def resolve(work_package_ref: int | str, *, write: bool = False) -> int:
+    async def resolve(work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
         calls.append((work_package_ref, write))
-        return resolved_id
+        return resolved_record(resolved_id)
 
     resolve.calls = calls  # type: ignore[attr-defined]
     return resolve
 
 
-def _resolve_work_package_id_denied():
-    async def resolve(work_package_ref: int | str, *, write: bool = False) -> int:
+def _resolve_work_package_record_denied():
+    async def resolve(work_package_ref: int | str, *, write: bool = False) -> ResolvedRecord:
         raise PermissionDeniedError("OpenProject access to this project is disabled.")
 
     return resolve
@@ -64,12 +66,12 @@ def _service(
     *,
     api: _FakeWatcherApi | None = None,
     settings=None,
-    resolve_work_package_id=None,
+    resolve_work_package_record=None,
 ) -> WatcherService:
     return WatcherService(
         api=api or _FakeWatcherApi(),
         settings=settings or make_settings(),
-        resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok(),
+        resolve_work_package_record=resolve_work_package_record or _resolve_work_package_record_ok(),
     )
 
 
@@ -79,8 +81,8 @@ def _service(
 @pytest.mark.asyncio
 async def test_list_for_work_package_returns_stamped_summaries() -> None:
     api = _FakeWatcherApi()
-    resolver = _resolve_work_package_id_ok(resolved_id=9)
-    service = _service(api=api, resolve_work_package_id=resolver)
+    resolver = _resolve_work_package_record_ok(resolved_id=9)
+    service = _service(api=api, resolve_work_package_record=resolver)
 
     result = await service.list_for_work_package(9)
 
@@ -93,7 +95,7 @@ async def test_list_for_work_package_returns_stamped_summaries() -> None:
 @pytest.mark.asyncio
 async def test_list_for_work_package_denies_anchor_outside_read_allowlist() -> None:
     api = _FakeWatcherApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.list_for_work_package(9)
@@ -117,8 +119,8 @@ async def test_list_for_work_package_masks_hidden_login() -> None:
 @pytest.mark.asyncio
 async def test_add_preview_without_confirm_does_not_call_api_add() -> None:
     api = _FakeWatcherApi()
-    resolver = _resolve_work_package_id_ok(resolved_id=9)
-    service = _service(api=api, resolve_work_package_id=resolver)
+    resolver = _resolve_work_package_record_ok(resolved_id=9)
+    service = _service(api=api, resolve_work_package_record=resolver)
 
     result = await service.add(9, 5, confirm=False)
 
@@ -165,7 +167,7 @@ async def test_add_masks_hidden_login_in_preview_and_commit() -> None:
 @pytest.mark.asyncio
 async def test_add_denies_write_outside_write_allowlist() -> None:
     api = _FakeWatcherApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.add(9, 5, confirm=True)
@@ -175,7 +177,7 @@ async def test_add_denies_write_outside_write_allowlist() -> None:
 
 @pytest.mark.asyncio
 async def test_add_denies_write_even_without_confirm() -> None:
-    """The write-allowlist check (via resolve_work_package_id(write=True))
+    """The write-allowlist check (via resolve_work_package_record(write=True))
     runs BEFORE the confirm branch, not just as part of the confirm=True
     commit path -- found missing during this migration's step-6 self-audit.
     A confirm=True-only denial test can't distinguish "checked before
@@ -183,7 +185,7 @@ async def test_add_denies_write_even_without_confirm() -> None:
     denying on a confirm=False (preview) call, where no api.get_user call
     should happen either."""
     api = _FakeWatcherApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.add(9, 5, confirm=False)
@@ -198,8 +200,8 @@ async def test_add_denies_write_even_without_confirm() -> None:
 @pytest.mark.asyncio
 async def test_remove_preview_without_confirm_does_not_call_api_remove() -> None:
     api = _FakeWatcherApi()
-    resolver = _resolve_work_package_id_ok(resolved_id=9)
-    service = _service(api=api, resolve_work_package_id=resolver)
+    resolver = _resolve_work_package_record_ok(resolved_id=9)
+    service = _service(api=api, resolve_work_package_record=resolver)
 
     result = await service.remove(9, 5, confirm=False)
 
@@ -226,7 +228,7 @@ async def test_remove_commit_with_confirm_calls_api_remove() -> None:
 @pytest.mark.asyncio
 async def test_remove_denies_write_outside_write_allowlist() -> None:
     api = _FakeWatcherApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.remove(9, 5, confirm=True)
@@ -240,7 +242,7 @@ async def test_remove_denies_write_even_without_confirm() -> None:
     check must fire even on a confirm=False preview call, not only as part
     of the confirm=True commit path."""
     api = _FakeWatcherApi()
-    service = _service(api=api, resolve_work_package_id=_resolve_work_package_id_denied())
+    service = _service(api=api, resolve_work_package_record=_resolve_work_package_record_denied())
 
     with pytest.raises(PermissionDeniedError):
         await service.remove(9, 5, confirm=False)

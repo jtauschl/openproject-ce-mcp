@@ -1511,16 +1511,16 @@ def test_file_link_service_binds_its_three_dependencies_to_the_right_protocols()
 
 def test_watcher_service_binds_the_api_and_resolver_params_to_the_right_protocols() -> None:
     """Watchers is the second domain to consume the
-    WorkPackageIdResolver seam -- a cleaner fit than File Links had, since
+    WorkPackageRecordResolver seam -- a cleaner fit than File Links had, since
     add()/remove() resolve a genuine caller-supplied work-package reference
-    (via WorkPackageIdResolver(ref, write=True)) rather than an
+    (via WorkPackageRecordResolver(ref, write=True)) rather than an
     already-known numeric id. Only two Protocol dependencies here (WatcherApi,
-    WorkPackageIdResolver) -- no second WorkPackageLookupApi dependency,
+    WorkPackageRecordResolver) -- no second WorkPackageLookupApi dependency,
     since neither add() nor remove() needs a raw work-package payload fetch
     outside the resolver."""
     from openproject_ce_mcp.app.adapters.httpx_watcher_api import HttpxWatcherApi
     from openproject_ce_mcp.app.ports.watcher_api import WatcherApi
-    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageRecordResolver
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.watcher_service import WatcherService
 
@@ -1528,11 +1528,11 @@ def test_watcher_service_binds_the_api_and_resolver_params_to_the_right_protocol
     assert hints["api"] is WatcherApi, "WatcherService.__init__'s api param must be typed WatcherApi"
     assert hints["api"] is not HttpxWatcherApi, "WatcherService.__init__'s api param must not be the concrete adapter"
 
-    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
-        "WatcherService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    assert hints["resolve_work_package_record"] is WorkPackageRecordResolver, (
+        "WatcherService.__init__'s resolve_work_package_record param must be typed WorkPackageRecordResolver"
     )
-    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
-        "WatcherService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    assert hints["resolve_work_package_record"] is not WorkPackageResolver, (
+        "WatcherService.__init__'s resolve_work_package_record param must not be the concrete resolver class"
     )
 
 
@@ -1580,7 +1580,7 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
     WorkPackageAllowedContext (not used by File Links/Watchers/Emoji
     Reactions, whose list() methods each scope to one already-resolved
     anchor); create() resolves a genuine caller-supplied reference via
-    WorkPackageIdResolver(ref, write=True) (Watchers' shape); update()/
+    WorkPackageRecordResolver(ref, write=True) (Watchers' shape); update()/
     delete() derive an already-concrete work-package id from the reminder's
     own remindable link via WorkPackageLookupApi directly (Emoji Reactions'/
     File Links' shape). All four Protocol dependencies must be pinned."""
@@ -1589,8 +1589,8 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
     from openproject_ce_mcp.app.ports.reminder_api import ReminderApi
     from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
     from openproject_ce_mcp.app.ports.work_package_ref import (
-        WorkPackageIdResolver,
         WorkPackageProjectAllowedBulkCheck,
+        WorkPackageRecordResolver,
     )
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.reminder_service import ReminderService
@@ -1606,11 +1606,11 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
         "ReminderService.__init__'s work_package_lookup_api param must not be the concrete adapter"
     )
 
-    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
-        "ReminderService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    assert hints["resolve_work_package_record"] is WorkPackageRecordResolver, (
+        "ReminderService.__init__'s resolve_work_package_record param must be typed WorkPackageRecordResolver"
     )
-    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
-        "ReminderService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    assert hints["resolve_work_package_record"] is not WorkPackageResolver, (
+        "ReminderService.__init__'s resolve_work_package_record param must not be the concrete resolver class"
     )
 
     assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
@@ -1657,7 +1657,7 @@ def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> Non
     list_for_work_package() each check TWO work packages per relation (from
     AND to, not a single anchor) via WorkPackageProjectAllowedCheck +
     WorkPackageAllowedContext; create() resolves a genuine caller-supplied
-    target reference via WorkPackageIdResolver(ref, write=True); update()/
+    target reference via WorkPackageRecordResolver(ref, write=True); update()/
     delete() derive an already-concrete work package from the relation's own
     from link via WorkPackageLookupApi directly. All four Protocol
     dependencies must be pinned."""
@@ -1666,8 +1666,8 @@ def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> Non
     from openproject_ce_mcp.app.ports.relation_api import RelationApi
     from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
     from openproject_ce_mcp.app.ports.work_package_ref import (
-        WorkPackageIdResolver,
         WorkPackageProjectAllowedBulkCheck,
+        WorkPackageRecordResolver,
     )
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.relation_service import RelationService
@@ -1683,11 +1683,11 @@ def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> Non
         "RelationService.__init__'s work_package_lookup_api param must not be the concrete adapter"
     )
 
-    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
-        "RelationService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    assert hints["resolve_work_package_record"] is WorkPackageRecordResolver, (
+        "RelationService.__init__'s resolve_work_package_record param must be typed WorkPackageRecordResolver"
     )
-    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
-        "RelationService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    assert hints["resolve_work_package_record"] is not WorkPackageResolver, (
+        "RelationService.__init__'s resolve_work_package_record param must not be the concrete resolver class"
     )
 
     assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
@@ -1760,13 +1760,13 @@ def test_time_entry_service_binds_its_dependencies_to_the_right_protocols() -> N
 def test_attachment_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
     """Attachments follows File Links' three-Protocol shape: its own Port,
     WorkPackageLookupApi (get()/delete()'s container-derived id), and
-    WorkPackageIdResolver (list()'s anchor, create()'s caller-supplied
+    WorkPackageRecordResolver (list()'s anchor, create()'s caller-supplied
     reference)."""
     from openproject_ce_mcp.app.adapters.httpx_attachment_api import HttpxAttachmentApi
     from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
     from openproject_ce_mcp.app.ports.attachment_api import AttachmentApi
     from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
-    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageRecordResolver
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.attachment_service import AttachmentService
 
@@ -1783,11 +1783,11 @@ def test_attachment_service_binds_its_three_dependencies_to_the_right_protocols(
         "AttachmentService.__init__'s work_package_lookup_api param must not be the concrete adapter"
     )
 
-    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
-        "AttachmentService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    assert hints["resolve_work_package_record"] is WorkPackageRecordResolver, (
+        "AttachmentService.__init__'s resolve_work_package_record param must be typed WorkPackageRecordResolver"
     )
-    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
-        "AttachmentService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    assert hints["resolve_work_package_record"] is not WorkPackageResolver, (
+        "AttachmentService.__init__'s resolve_work_package_record param must not be the concrete resolver class"
     )
 
 

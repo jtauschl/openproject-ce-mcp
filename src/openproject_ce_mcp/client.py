@@ -567,7 +567,7 @@ class OpenProjectClient:
         self._watcher_service = WatcherService(
             api=self._watcher_api,
             settings=settings,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
         )
 
         self._emoji_reaction_api: EmojiReactionApi = HttpxEmojiReactionApi(self._transport)
@@ -583,7 +583,7 @@ class OpenProjectClient:
         self._wiki_page_link_service = WikiPageLinkService(
             api=self._wiki_page_link_api,
             settings=settings,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
             current_user=self._current_user_resolver,
         )
 
@@ -617,7 +617,7 @@ class OpenProjectClient:
             work_package_lookup_api=self._work_package_lookup_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
             work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
         )
 
@@ -636,7 +636,7 @@ class OpenProjectClient:
             work_package_lookup_api=self._work_package_lookup_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
             work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
             api_prefix=self._api_prefix,
         )
@@ -688,7 +688,7 @@ class OpenProjectClient:
             work_package_lookup_api=self._work_package_lookup_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
         )
 
         # Meetings (5 sub-resources). Meeting is constructed first --
@@ -715,7 +715,7 @@ class OpenProjectClient:
             meeting_api=self._meeting_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
             api_prefix=self._api_prefix,
         )
 
@@ -737,7 +737,7 @@ class OpenProjectClient:
             meeting_api=self._meeting_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
-            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
             api_prefix=self._api_prefix,
         )
 
