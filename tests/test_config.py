@@ -490,6 +490,21 @@ def test_disabled_tls_verification_warns_and_names_the_host_but_not_the_token(ca
     assert "token-value" not in " ".join(record.getMessage() for record in caplog.records)
 
 
+def test_disabled_tls_verification_warning_leaves_url_credentials_out(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        Settings.from_env(
+            {
+                **_TLS_ENV,
+                "OPENPROJECT_BASE_URL": "https://admin:s3cret@op.example.com",
+                "OPENPROJECT_VERIFY_SSL": "false",
+            }
+        )
+    logged = " ".join(record.getMessage() for record in caplog.records)
+    assert "op.example.com" in logged
+    assert "s3cret" not in logged
+    assert "admin" not in logged
+
+
 @pytest.mark.parametrize(
     "env",
     [

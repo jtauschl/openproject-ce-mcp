@@ -261,7 +261,7 @@ defense in depth.
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `OPENPROJECT_TIMEOUT` | no | `12` | Request timeout in seconds |
-| `OPENPROJECT_VERIFY_SSL` | no | `true` | Verify TLS certificates. `false` turns verification off for an `https://` base URL and logs a startup warning naming the host; anyone on the network path can then read the API token. For an instance behind a private CA, keep this `true` and set `SSL_CERT_FILE` (or `SSL_CERT_DIR`) to the CA bundle instead; the HTTP client reads both. A plain `http://` base URL to a non-local host also logs a startup warning |
+| `OPENPROJECT_VERIFY_SSL` | no | `true` | Verify TLS certificates. `false` turns verification off for an `https://` base URL and logs a startup warning naming the host; anyone on the network path can then read the API token. For an instance behind a private CA, keep this `true` and set `SSL_CERT_FILE` to the CA bundle instead; the HTTP client reads it. A plain `http://` base URL to a non-local host also logs a startup warning |
 | `OPENPROJECT_MAX_RETRIES` | no | `3` | Retries for 429/5xx responses, max `10` |
 | `OPENPROJECT_RETRY_BASE_DELAY` | no | `1.0` | Initial retry delay in seconds |
 | `OPENPROJECT_RETRY_MAX_DELAY` | no | `60.0` | Maximum retry delay in seconds; must be ≥ `OPENPROJECT_RETRY_BASE_DELAY` |
