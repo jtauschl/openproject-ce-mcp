@@ -10,6 +10,12 @@ All mutating tools follow the same guarded write pattern by default:
 
 - Call the tool without `confirm=true` to get a preview or validation result.
 - Call it again with `confirm=true` to execute the write or delete.
+- A write that takes a work package reference names the work package it
+  resolved to in `target` (id, display id, project, subject, status), in the
+  preview and in the result. A bare number is the internal id and `PROJ-123`
+  the display id, so check `target` before confirming. For the create tools
+  `target` is the referenced parent, and for relations `related_target` names
+  the other end.
 
 Every mutation requires explicit `confirm=true` — there is no way to skip the
 preview step.

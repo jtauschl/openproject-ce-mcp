@@ -14,6 +14,12 @@ and 0.2.0 the first one published to PyPI.
 
 ### Fixed
 
+- A write that takes a work package reference now names the work package it resolved to in `target` (id,
+  display id, project, subject, status), in the preview and in the result, so a bare number read as an
+  internal id is visible before `confirm`. This covers comments, updates, deletes, subtasks and parents,
+  relations (`target` and `related_target`), reminders, watchers, time entries, wiki links, attachments, and
+  meeting agenda items and outcomes. For the create tools `target` is the referenced parent.
+
 - `get_project_phase` now reports the phase definition, which was always empty.
 - `update_meeting` can clear the location: `location=""` empties it instead of being dropped
   without a message.
