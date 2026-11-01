@@ -511,13 +511,11 @@ class WorkPackageDetail:
     custom_comments_truncated: bool = False
 
 
+# Not frozen: hiding a field stamps `_hidden_keys` onto the instance. A comment,
+# not a docstring: newer pydantic copies a dataclass docstring into the output
+# schema, which would make the pinned schema depend on the installed version.
 @dataclass
 class ResolvedWorkPackage:
-    """The work package a caller-typed reference resolved to, as read when the write was previewed.
-
-    Not frozen: hiding a field stamps `_hidden_keys` onto the instance.
-    """
-
     id: int
     display_id: str | None = None
     project: str | None = None
