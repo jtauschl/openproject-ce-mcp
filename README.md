@@ -103,6 +103,19 @@ numbers, and how to reproduce them, see
 
 ---
 
+## Requirements
+
+| | |
+| --- | --- |
+| Python | 3.10 or later (tested on 3.10 to 3.13) |
+| OpenProject | Community Edition 16.0 or later with API v3 accessible (source-audited and smoke-tested through 17.9) |
+| OS | macOS 12+, Linux, or Windows 10/11 |
+| MCP client | any client that starts a stdio MCP server; see [Clients](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/clients.md) |
+| Credentials | an OpenProject API token of a user who can read the projects you scope |
+
+[Installation](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/installation.md#requirements)
+lists which tools need a newer OpenProject version.
+
 ## Install
 
 This quickstart requires [`pipx`](https://pipx.pypa.io/); see [Installation](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/installation.md) if it isn't installed yet.
