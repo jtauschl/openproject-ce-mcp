@@ -25,6 +25,7 @@ from _work_package_target_helpers import (
     R2,
     RECORDS_BY_REFERENCE,
     REFERENCES,
+    expectation_for,
     form_response,
     project_response,
     work_package_record,
@@ -101,40 +102,47 @@ def _client(server: _Server, settings: Settings | None = None) -> OpenProjectCli
     return OpenProjectClient(settings or _write_enabled_settings(), transport=httpx.MockTransport(server.handler))
 
 
-def _expectation(ref: str) -> str | None:
-    """A bare number on a record with a display id needs the ticket named: here the one the number resolves to."""
-    return EXPECTED_R1["display_id"] if ref == "436" else None
-
-
 async def _comment(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await add_work_package_comment(ctx, ref, "hello", expect_display_id=_expectation(ref), confirm=confirm)
+    return await add_work_package_comment(ctx, ref, "hello", expect_display_id=expectation_for(ref), confirm=confirm)
 
 
 async def _update(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await update_work_package(ctx, ref, subject="Renamed", expect_display_id=_expectation(ref), confirm=confirm)
+    return await update_work_package(
+        ctx, ref, subject="Renamed", expect_display_id=expectation_for(ref), confirm=confirm
+    )
 
 
 async def _delete(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await delete_work_package(ctx, ref, expect_display_id=_expectation(ref), confirm=confirm)
+    return await delete_work_package(ctx, ref, expect_display_id=expectation_for(ref), confirm=confirm)
 
 
 async def _subtask(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_subtask(ctx, ref, "Task", "Child", confirm=confirm)
+    return await create_subtask(
+        ctx, ref, "Task", "Child", expect_parent_display_id=expectation_for(ref), confirm=confirm
+    )
 
 
 async def _create_under_parent(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_work_package(ctx, "demo", "Task", "Child", parent=ref, confirm=confirm)
+    return await create_work_package(
+        ctx, "demo", "Task", "Child", parent=ref, expect_parent_display_id=expectation_for(ref), confirm=confirm
+    )
 
 
 async def _bulk_update(ctx: Any, ref: str, confirm: bool) -> Any:
-    item = {"work_package_id": ref, "subject": "Renamed", "expect_display_id": _expectation(ref)}
+    item = {"work_package_id": ref, "subject": "Renamed", "expect_display_id": expectation_for(ref)}
     result = await bulk_update_work_packages(ctx, [item], confirm=confirm)
     assert result.failed == 0, result.items[0].error
     return result.items[0].result
 
 
 async def _bulk_create_under_parent(ctx: Any, ref: str, confirm: bool) -> Any:
-    item = {"project": "demo", "type": "Task", "subject": "Child", "parent": ref}
+    item = {
+        "project": "demo",
+        "type": "Task",
+        "subject": "Child",
+        "parent": ref,
+        "expect_parent_display_id": expectation_for(ref),
+    }
     result = await bulk_create_work_packages(ctx, [item], confirm=confirm)
     assert result.failed == 0, result.items[0].error
     return result.items[0].result

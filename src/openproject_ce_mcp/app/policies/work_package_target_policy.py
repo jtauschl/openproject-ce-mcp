@@ -77,6 +77,17 @@ def named_ticket(*, display_id: str | None, project: str | None, work_package_id
     return f"{name} ({shown_project})" if shown_project else name
 
 
+def ensure_expectation_has_reference(
+    expect_display_id: str | None, *, reference_given: bool, parameter: str, reference: str
+) -> None:
+    """An expectation with no work package to check would be dropped without a word."""
+    if expect_display_id is not None and not reference_given:
+        raise InvalidInputError(
+            f"{parameter} was given but {reference} names no work package to check; "
+            f"omit {parameter} or pass {reference}."
+        )
+
+
 def no_semantic_display_id_message(work_package_id: int, *, parameter: str = DEFAULT_PARAMETER) -> str:
     return (
         f"Work package {work_package_id} has no semantic display id (classic identifier mode or no identifier "

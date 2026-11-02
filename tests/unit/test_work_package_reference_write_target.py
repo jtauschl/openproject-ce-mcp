@@ -18,9 +18,9 @@ from _work_package_target_helpers import (
     EXPECTED_R1,
     EXPECTED_R2,
     REFERENCES,
+    expectation_for,
 )
 from _work_package_write_harness import (
-    EXPECTATION_FOR_REFERENCE,
     TOOLS,
     Call,
     _run,
@@ -51,7 +51,7 @@ reference_param = pytest.mark.parametrize(("ref", "expected"), REFERENCES, ids=[
 async def test_preview_names_the_work_package_the_reference_resolved_to(
     call: Call, ref: str, expected: dict, tmp_path: Path
 ) -> None:
-    result, server = await _run(call, ref, tmp_path, confirm=False, expect=EXPECTATION_FOR_REFERENCE[ref])
+    result, server = await _run(call, ref, tmp_path, confirm=False, expect=expectation_for(ref))
 
     assert result.state == "preview"
     assert _to_payload(result)["target"] == expected
@@ -64,7 +64,7 @@ async def test_preview_names_the_work_package_the_reference_resolved_to(
 async def test_confirmed_result_names_the_same_work_package(
     call: Call, ref: str, expected: dict, tmp_path: Path
 ) -> None:
-    result, server = await _run(call, ref, tmp_path, confirm=True, expect=EXPECTATION_FOR_REFERENCE[ref])
+    result, server = await _run(call, ref, tmp_path, confirm=True, expect=expectation_for(ref))
 
     assert result.state == "confirmed"
     assert _to_payload(result)["target"] == expected

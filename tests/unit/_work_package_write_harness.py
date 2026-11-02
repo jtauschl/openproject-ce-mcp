@@ -190,9 +190,6 @@ def _settings(tmp_path: Path, **overrides: Any) -> Settings:
 
 Call = Callable[[Any, str, bool], Awaitable[Any]]
 
-# The bare number is the internal id of A-1; the display reference carries its own display id.
-EXPECTATION_FOR_REFERENCE: dict[str, str | None] = {"436": "A-1", "PROJ-436": None}
-
 
 async def _reminder(ctx: Any, ref: str, confirm: bool) -> Any:
     return await create_work_package_reminder(ctx, ref, "2026-12-01T09:00:00Z", note="n", confirm=confirm)

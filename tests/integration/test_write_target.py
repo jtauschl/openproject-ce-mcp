@@ -134,9 +134,13 @@ async def test_an_update_names_the_parent_its_reference_resolved_to(
     parent = await _create(client, test_project, wp_ids, "[integration-test] parent target parent")
     assert parent.display_id is not None
 
+    expect_parent = parent.display_id if has_semantic_display_id(parent.display_id) else None
     for reference in (parent.id, parent.display_id):
         preview = await client.work_package.update(
-            work_package_id=await write_ref(client, child.id), parent_work_package_id=reference, confirm=False
+            work_package_id=await write_ref(client, child.id),
+            parent_work_package_id=reference,
+            expect_parent_display_id=expect_parent if reference == parent.id else None,
+            confirm=False,
         )
         assert preview.target is not None and preview.target.id == child.id
         assert preview.parent_target is not None

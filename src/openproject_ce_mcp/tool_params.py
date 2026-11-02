@@ -45,6 +45,9 @@ OptionalWorkPackageRef = Annotated[int | str | None, Field(description=_WORK_PAC
 _EXPECT_DISPLAY_ID = 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.'
 ExpectDisplayId = Annotated[str | None, Field(description=_EXPECT_DISPLAY_ID)]
 
+_EXPECT_PARENT_DISPLAY_ID = 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.'
+ExpectParentDisplayId = Annotated[str | None, Field(description=_EXPECT_PARENT_DISPLAY_ID)]
+
 # The resolver falls back to the display name and then to a unique search
 # match on name or identifier (app/resolvers/project_resolver.py), for writes
 # as well.
@@ -73,6 +76,7 @@ class BulkCreateWorkPackageItem(TypedDict, total=False):
     custom_fields: dict[str, Any] | None
     parent: IdOrName | None
     parent_work_package_id: OptionalWorkPackageRef
+    expect_parent_display_id: ExpectParentDisplayId
     start_date: str | None
     due_date: str | None
     estimated_time: str | None
@@ -102,6 +106,7 @@ class BulkUpdateWorkPackageItem(TypedDict, total=False):
     custom_fields: dict[str, Any] | None
     parent: IdOrName | None
     parent_work_package_id: OptionalWorkPackageRef
+    expect_parent_display_id: ExpectParentDisplayId
     start_date: str | None
     due_date: str | None
     estimated_time: str | None

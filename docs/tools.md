@@ -36,6 +36,13 @@ All mutating tools follow the same guarded write pattern by default:
   ticket, not a copied `target.display_id`. A record that has no project
   identifier (semantic mode before an identifier is allocated) shows its
   numeric id as display id and is written by that id without a guard.
+- The same rule covers a parent: `create_work_package`, `create_subtask`,
+  `update_work_package` and each item of `bulk_create_work_packages` and
+  `bulk_update_work_packages` refuse a parent named by a bare number unless
+  `expect_parent_display_id` names the ticket. The refusal names the parameter
+  to repeat the call with. `update_work_package` checks its own
+  `work_package_id` and its parent independently. An expectation with no parent
+  to check (none given, or `parent` set to `none`) is refused.
 
 Every mutation requires explicit `confirm=true` — there is no way to skip the
 preview step.

@@ -122,6 +122,11 @@ the call with `expect_display_id`. A given `expect_display_id` that does not nam
 resolved work package is refused. While the `display_id` field is hidden the guard is
 off and `expect_display_id` is refused.
 
+A parent follows the same rule with `expect_parent_display_id`: `create_work_package`,
+`create_subtask`, `update_work_package` and each item of `bulk_create_work_packages` and
+`bulk_update_work_packages` refuse a parent that is a bare number unless that parameter
+names the ticket. An expectation with no parent to check (none given, or `none`) is refused.
+
 ## Some tool groups are opt-in
 
 A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,

@@ -69,7 +69,7 @@ async def test_a_work_package_does_not_name_a_parent_in_a_project_outside_the_re
         project=parent_project,
         type="Task",
         subject="[integration-test] below a foreign parent",
-        parent_work_package_id=child_wp.work_package_id,
+        parent_work_package_id=await write_ref(everywhere, child_wp.work_package_id),
         confirm=True,
     )
     assert below.ready, below.validation_errors
@@ -123,7 +123,7 @@ async def test_activity_details_are_left_out_unless_the_read_scope_allows_all(
         project=parent_project,
         type="Task",
         subject="[integration-test] activity details",
-        parent_work_package_id=foreign.work_package_id,
+        parent_work_package_id=await write_ref(everywhere, foreign.work_package_id),
         confirm=True,
     )
     assert below.ready, below.validation_errors

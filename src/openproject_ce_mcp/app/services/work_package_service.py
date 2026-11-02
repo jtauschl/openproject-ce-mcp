@@ -126,7 +126,7 @@ from ..errors import (
     ProjectScopeDeniedError,
 )
 from ..pagination import collection_exhausted, effective_limit, paginate_server
-from ..policies import access, hidden_fields, work_package_query_policy
+from ..policies import access, hidden_fields, work_package_query_policy, work_package_target_policy
 from ..policies import work_package_policy as _work_package_policy
 from ..policies.scope import (
     ensure_project_link_allowed,
@@ -152,6 +152,7 @@ from ..ports.user_names import UserNames
 from ..ports.version_ref import VersionIdResolver
 from ..ports.work_package_api import WorkPackageApi, WorkPackageFormResult, WorkPackageRecord
 from ..ports.work_package_ref import (
+    ResolvedRecord,
     WorkPackageProjectAllowedBulkCheck,
     WorkPackageRecordResolver,
     work_package_ref,
@@ -167,7 +168,7 @@ from ._work_package_references import (
     hidden_references_replaced,
     visible_references,
 )
-from ._work_package_target import write_target
+from ._work_package_target import resolved_target, write_target
 from ._work_package_write_helpers import (
     VERSION_ERROR_KEYS,
     resolve_custom_field_key,
@@ -259,6 +260,8 @@ _DATE_SHAPED = re.compile(r"[0-9]+(?:-[0-9]+)+")
 # work package reference resolution, and cannot be confused with any valid parent
 # reference.
 CLEAR_PARENT = object()
+
+_EXPECT_PARENT = "expect_parent_display_id"
 
 # Sentinel for create()/update(): distinguishes "clear the version" (unassign
 # via _links.version = {"href": null}) from "leave unchanged" (None). Same
@@ -1752,7 +1755,12 @@ class WorkPackageService:
         return present_target(payload, settings=self._settings)
 
     async def _write_target(
-        self, ref: str, expect_display_id: str | None, *, text_limit: int | None = None
+        self,
+        ref: str,
+        expect_display_id: str | None,
+        *,
+        text_limit: int | None = None,
+        parameter: str = work_package_target_policy.DEFAULT_PARAMETER,
     ) -> tuple[WorkPackageRecord, ResolvedWorkPackage]:
         return await write_target(
             ref,
@@ -1761,6 +1769,30 @@ class WorkPackageService:
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
             expect_display_id=expect_display_id,
+            parameter=parameter,
+        )
+
+    def _ensure_parent_expectation(self, expect_parent_display_id: str | None, *, parent_given: bool) -> None:
+        """Both checks need only settings, so they run before the first request of a write."""
+        work_package_target_policy.ensure_expectation_usable(
+            expect_parent_display_id, settings=self._settings, parameter=_EXPECT_PARENT
+        )
+        work_package_target_policy.ensure_expectation_has_reference(
+            expect_parent_display_id, reference_given=parent_given, parameter=_EXPECT_PARENT, reference="parent"
+        )
+
+    async def _resolved_parent(
+        self, parent: int | str, expect_parent_display_id: str | None
+    ) -> tuple[ResolvedRecord, ResolvedWorkPackage]:
+        # The parent goes into a HAL link href, which resolves only by numeric id.
+        # write=True (inside resolved_target): the parent must itself be write-authorized, not just readable,
+        # otherwise a caller could attach a writable work package under a parent they can only read.
+        return await resolved_target(
+            parent,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_parent_display_id,
+            parameter=_EXPECT_PARENT,
         )
 
     async def _to_write_result(
@@ -1844,6 +1876,7 @@ class WorkPackageService:
         category: Any = None,
         custom_fields: dict[str, Any] | None = None,
         parent_work_package_id: int | str | None = None,
+        expect_parent_display_id: str | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
         estimated_time: str | None = None,
@@ -1852,6 +1885,7 @@ class WorkPackageService:
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
+        self._ensure_parent_expectation(expect_parent_display_id, parent_given=parent_work_package_id is not None)
         # Deliberately NO access.ensure_read_enabled gate here -- an instance
         # can have work-package writes enabled with reads entirely disabled,
         # and this must still work.
@@ -1877,14 +1911,8 @@ class WorkPackageService:
         wp_context.project_context.seed(project_id, project_payload, write=True)
         wp_context.project_context.seed(project_id, project_payload, write=False)
         if parent_work_package_id is not None:
-            # parent goes into a HAL link href, which resolves only by
-            # numeric id. write=True: the new parent must itself be
-            # write-authorized, not just readable -- otherwise a caller could
-            # attach a writable work package under a parent they can only
-            # read.
-            parent_record = await self._resolve_work_package_record(parent_work_package_id, write=True)
+            parent_record, target = await self._resolved_parent(parent_work_package_id, expect_parent_display_id)
             parent_work_package_id = parent_record.id
-            target = self._present_target(parent_record.payload)
         payload = await self._build_write_payload(
             project=project_id,
             type=type,
@@ -1950,26 +1978,20 @@ class WorkPackageService:
         custom_fields: dict[str, Any] | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
+        expect_parent_display_id: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
         # Deliberately NO access.ensure_read_enabled gate -- see create()'s
         # identical comment.
-        parent_record = await self._api.get(work_package_ref(parent_work_package_id))
+        parent_record, target = await self._write_target(
+            work_package_ref(parent_work_package_id), expect_parent_display_id, parameter=_EXPECT_PARENT
+        )
         parent_payload = parent_record.payload
         # The parent link needs the numeric id (HAL hrefs don't resolve
         # displayId); read it back from the fetched parent rather than
         # reusing the semantic ref.
         parent_numeric_id = int(parent_payload["id"])
-        parent_project_link = parent_payload.get("_links", {}).get("project")
-        if not isinstance(parent_project_link, dict) or parent_project_link.get("href") is None:
-            # A server-data anomaly (an unexpected/malformed OpenProject
-            # response), not a caller mistake -- OpenProjectServerError, not
-            # InvalidInputError.
-            raise OpenProjectServerError("OpenProject work package is missing a project link.")
-        ensure_project_write_link_allowed(
-            parent_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
-        )
-        target = self._present_target(parent_payload)
+        parent_project_link = parent_payload["_links"]["project"]
         project_id = project_id_from_href(parent_project_link["href"], settings=self._settings)
         if project_id is None:
             # An undisclosed project passes under a wide-open scope but names
@@ -2052,6 +2074,7 @@ class WorkPackageService:
                         category=item.get("category"),
                         custom_fields=item.get("custom_fields"),
                         parent_work_package_id=item.get("parent_work_package_id"),
+                        expect_parent_display_id=item.get("expect_parent_display_id"),
                         start_date=item.get("start_date"),
                         due_date=item.get("due_date"),
                         estimated_time=item.get("estimated_time"),
@@ -2172,6 +2195,7 @@ class WorkPackageService:
         duration: Any = None,
         percentage_done: int | None = None,
         expect_display_id: str | None = None,
+        expect_parent_display_id: str | None = None,
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
@@ -2180,19 +2204,16 @@ class WorkPackageService:
         # status via self._status_api directly rather than
         # StatusPriorityTypeService, which WOULD gate on read-enablement.
         ref = work_package_ref(work_package_id)
+        work_package_target_policy.ensure_expectation_usable(expect_display_id, settings=self._settings)
+        parent_given = parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT
+        self._ensure_parent_expectation(expect_parent_display_id, parent_given=parent_given)
         parent_target = None
-        if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
-            # parent goes into a HAL link href, which resolves only by
-            # numeric id. CLEAR_PARENT is a sentinel (un-parent) and must
-            # pass through unresolved. write=True: the new parent must
-            # itself be write-authorized, not just readable -- otherwise a
-            # caller could reparent a writable work package under a parent
-            # they can only read.
-            parent_record = await self._resolve_work_package_record(
-                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
+        if parent_given:
+            # CLEAR_PARENT is a sentinel (un-parent) and must pass through unresolved.
+            parent_record, parent_target = await self._resolved_parent(
+                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), expect_parent_display_id
             )
             parent_work_package_id = parent_record.id
-            parent_target = self._present_target(parent_record.payload)
         current_record, target = await self._write_target(ref, expect_display_id)
         current = current_record.payload
         if version is not None and target_versions is None:
@@ -2356,6 +2377,7 @@ class WorkPackageService:
                         duration=item.get("duration"),
                         percentage_done=item.get("percentage_done"),
                         expect_display_id=item.get("expect_display_id"),
+                        expect_parent_display_id=item.get("expect_parent_display_id"),
                         confirm=confirm,
                         wp_context=wp_context,
                     )

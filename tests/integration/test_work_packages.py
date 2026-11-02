@@ -132,7 +132,7 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
 
     # Create subtask
     child = await client.work_package.create_subtask(
-        parent_work_package_id=parent.work_package_id,
+        parent_work_package_id=await write_ref(client, parent.work_package_id),
         type="Task",
         subject=f"{_SUBJECT} child",
         confirm=True,
@@ -298,7 +298,7 @@ async def test_get_work_package_ancestors_tolerate_missing_display_id(
     wp_ids.append(parent.work_package_id)
 
     child = await client.work_package.create_subtask(
-        parent_work_package_id=parent.work_package_id,
+        parent_work_package_id=await write_ref(client, parent.work_package_id),
         type="Task",
         subject=f"{_SUBJECT} ancestors child",
         confirm=True,
@@ -420,7 +420,7 @@ async def test_create_reparent_and_unparent_work_package(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} reparent child",
-        parent_work_package_id=parent_a.work_package_id,
+        parent_work_package_id=await write_ref(client, parent_a.work_package_id),
         confirm=True,
     )
     assert child.ready, child.validation_errors
@@ -430,7 +430,7 @@ async def test_create_reparent_and_unparent_work_package(
     # Re-parent to B.
     reparent = await client.work_package.update(
         work_package_id=await write_ref(client, child.work_package_id),
-        parent_work_package_id=parent_b.work_package_id,
+        parent_work_package_id=await write_ref(client, parent_b.work_package_id),
         confirm=True,
     )
     assert reparent.ready, reparent.validation_errors
@@ -908,7 +908,7 @@ async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} inside-scope child",
-        parent_work_package_id=outside_parent.work_package_id,
+        parent_work_package_id=await write_ref(unrestricted_client, outside_parent.work_package_id),
         confirm=True,
     )
     assert child.ready, child.validation_errors
@@ -1438,7 +1438,7 @@ async def _assert_version_param_round_trips(
     assert (await client.work_package.get(created.work_package_id)).version == name
 
     subtask = await client.work_package.create_subtask(
-        parent_work_package_id=created.work_package_id,
+        parent_work_package_id=await write_ref(client, created.work_package_id),
         type="Task",
         subject=f"{_SUBJECT} version subtask",
         version=name,

@@ -50,6 +50,11 @@ EXPECTED_R2 = {
 REFERENCES = [("436", EXPECTED_R1), ("PROJ-436", EXPECTED_R2)]
 
 
+def expectation_for(reference: str) -> str | None:
+    """A bare number on a record with a display id needs the ticket named: here the one the number resolves to."""
+    return EXPECTED_R1["display_id"] if reference == "436" else None
+
+
 def form_response(request: httpx.Request) -> httpx.Response:
     body = json.loads(request.content)
     return httpx.Response(

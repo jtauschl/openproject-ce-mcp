@@ -24,6 +24,7 @@ from _work_package_target_helpers import (
     EXPECTED_R2,
     RECORDS_BY_REFERENCE,
     REFERENCES,
+    expectation_for,
     form_response,
     project_response,
     work_package_record,
@@ -84,11 +85,17 @@ def _client(server: _Server, settings: Settings | None = None) -> OpenProjectCli
 
 
 async def _update(ctx: Any, parent: str, confirm: bool) -> Any:
-    return await update_work_package(ctx, "A-5", parent=parent, confirm=confirm)
+    return await update_work_package(
+        ctx, "A-5", parent=parent, expect_parent_display_id=expectation_for(parent), confirm=confirm
+    )
 
 
 async def _bulk_update(ctx: Any, parent: str, confirm: bool) -> Any:
-    result = await bulk_update_work_packages(ctx, [{"work_package_id": "A-5", "parent": parent}], confirm=confirm)
+    result = await bulk_update_work_packages(
+        ctx,
+        [{"work_package_id": "A-5", "parent": parent, "expect_parent_display_id": expectation_for(parent)}],
+        confirm=confirm,
+    )
     assert result.failed == 0, result.items[0].error
     return result.items[0].result
 
@@ -146,7 +153,7 @@ async def test_each_bulk_item_names_its_own_parent() -> None:
     server = _Server()
     client = _client(server)
     items = [
-        {"work_package_id": "A-5", "parent": "436"},
+        {"work_package_id": "A-5", "parent": "436", "expect_parent_display_id": "A-1"},
         {"work_package_id": "A-5", "parent": "PROJ-436"},
     ]
 
@@ -233,7 +240,10 @@ def _text(result: types.CallToolResult) -> str:
 @pytest.mark.parametrize(("ref", "expected"), REFERENCES, ids=["bare-number", "display-reference"])
 @pytest.mark.asyncio
 async def test_the_agent_sees_the_parent_in_the_update_preview(mcp_call, ref: str, expected: dict) -> None:
-    result = await mcp_call("update_work_package", {"work_package_id": "A-5", "parent": ref, "confirm": False})
+    result = await mcp_call(
+        "update_work_package",
+        {"work_package_id": "A-5", "parent": ref, "expect_parent_display_id": expectation_for(ref), "confirm": False},
+    )
 
     assert result.is_error is False, _text(result)
     assert json.loads(_text(result))["parent_target"] == expected
@@ -243,7 +253,11 @@ async def test_the_agent_sees_the_parent_in_the_update_preview(mcp_call, ref: st
 @pytest.mark.asyncio
 async def test_the_agent_sees_the_parent_in_the_bulk_preview(mcp_call, ref: str, expected: dict) -> None:
     result = await mcp_call(
-        "bulk_update_work_packages", {"items": [{"work_package_id": "A-5", "parent": ref}], "confirm": False}
+        "bulk_update_work_packages",
+        {
+            "items": [{"work_package_id": "A-5", "parent": ref, "expect_parent_display_id": expectation_for(ref)}],
+            "confirm": False,
+        },
     )
 
     assert result.is_error is False, _text(result)

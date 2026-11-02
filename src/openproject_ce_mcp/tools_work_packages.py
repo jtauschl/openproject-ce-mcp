@@ -54,6 +54,7 @@ from .tool_params import (
     BulkUpdateWorkPackageItem,
     Confirm,
     ExpectDisplayId,
+    ExpectParentDisplayId,
     Limit,
     Offset,
     OptionalProjectRef,
@@ -620,6 +621,7 @@ async def create_work_package(
     estimated_time: str | None = None,
     remaining_time: str | None = None,
     duration: str | None = None,
+    expect_parent_display_id: ExpectParentDisplayId = None,
     confirm: Confirm = False,
 ) -> WorkPackageWriteResult:
     """Create a work package.
@@ -639,7 +641,8 @@ async def create_work_package(
     (OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
-    When a parent is given, the result names the work package it resolved to in `target`.
+    When a parent is given, the result names the work package it resolved to in `target`, and
+    expect_parent_display_id names the parent you mean and makes a mismatch an error; see the server instructions.
     If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in
     server completion order, not call order; use bulk_create_work_packages instead when relative
     ID/creation order across a batch matters.
@@ -666,6 +669,7 @@ async def create_work_package(
         duration=duration,
     )
     safe_parent = _validate_optional_work_package_ref(parent, field_name="parent")
+    safe_expect_parent = _validate_expect_display_id(expect_parent_display_id, field_name="expect_parent_display_id")
     return await _run_tool(
         client.work_package.create(
             project=safe_project,
@@ -682,6 +686,7 @@ async def create_work_package(
             category=common["category"],
             custom_fields=common["custom_fields"],
             parent_work_package_id=safe_parent,
+            expect_parent_display_id=safe_expect_parent,
             start_date=common["start_date"],
             due_date=common["due_date"],
             estimated_time=common["estimated_time"],
@@ -806,6 +811,7 @@ async def update_work_package(
     duration: str | None = None,
     percentage_done: int | None = None,
     expect_display_id: ExpectDisplayId = None,
+    expect_parent_display_id: ExpectParentDisplayId = None,
     confirm: Confirm = False,
 ) -> WorkPackageWriteResult:
     """Update a work package.
@@ -832,11 +838,13 @@ async def update_work_package(
     on create_work_package.
     expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
-    When `parent` is given, `parent_target` names the work package it resolved to.
+    When `parent` is given, `parent_target` names the work package it resolved to, and
+    expect_parent_display_id names the parent you mean and makes a mismatch an error.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_expect = _validate_expect_display_id(expect_display_id)
+    safe_expect_parent = _validate_expect_display_id(expect_parent_display_id, field_name="expect_parent_display_id")
     common = _validate_work_package_update_fields(
         subject=subject,
         description=description,
@@ -889,6 +897,7 @@ async def update_work_package(
             duration=common["duration"],
             percentage_done=common["percentage_done"],
             expect_display_id=safe_expect,
+            expect_parent_display_id=safe_expect_parent,
             confirm=confirm,
         )
     )
@@ -931,8 +940,9 @@ async def bulk_create_work_packages(
     item), `project_phase`,
     `assignee`, `responsible`, `priority`, `category`,
     `custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching
-    `create_work_package`'s naming; do not specify both on the same item), `start_date`
-    (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
+    `create_work_package`'s naming; do not specify both on the same item), `expect_parent_display_id`
+    (the parent you mean, see the server instructions; a refused item is reported in its `error`),
+    `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
     (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'). An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
     due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
@@ -991,6 +1001,9 @@ async def bulk_create_work_packages(
         subject = item.get("subject")
         parent_value, parent_field_name = _resolve_bulk_parent_field(item, i)
         safe_parent_work_package_id = _validate_optional_work_package_ref(parent_value, field_name=parent_field_name)
+        safe_expect_parent = _validate_expect_display_id(
+            item.get("expect_parent_display_id"), field_name=f"items[{i}].expect_parent_display_id"
+        )
         if project is None:
             raise ValueError(f"items[{i}].project is required.")
         if type_ is None:
@@ -1031,6 +1044,7 @@ async def bulk_create_work_packages(
                 "category": common["category"],
                 "custom_fields": common["custom_fields"],
                 "parent_work_package_id": safe_parent_work_package_id,
+                "expect_parent_display_id": safe_expect_parent,
                 "start_date": common["start_date"],
                 "due_date": common["due_date"],
                 "estimated_time": common["estimated_time"],
@@ -1073,7 +1087,8 @@ async def bulk_update_work_packages(
     both on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,
     `remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear
     one of these), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean, see
-    the server instructions; a refused item is reported in its `error`). Pass 'none' to `version`, `sprint`,
+    the server instructions; a refused item is reported in its `error`), `expect_parent_display_id` (the parent
+    you mean, same rules). Pass 'none' to `version`, `sprint`,
     `project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to
     clear that field on the item, same as `update_work_package`. An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
@@ -1116,6 +1131,9 @@ async def bulk_update_work_packages(
         safe_id = _validate_work_package_ref(work_package_id, field_name=f"items[{i}].work_package_id")
         safe_expect = _validate_expect_display_id(
             item.get("expect_display_id"), field_name=f"items[{i}].expect_display_id"
+        )
+        safe_expect_parent = _validate_expect_display_id(
+            item.get("expect_parent_display_id"), field_name=f"items[{i}].expect_parent_display_id"
         )
         parent_value, parent_field_name = _resolve_bulk_parent_field(item, i)
         common = _validate_work_package_update_fields(
@@ -1172,6 +1190,7 @@ async def bulk_update_work_packages(
                 "duration": common["duration"],
                 "percentage_done": common["percentage_done"],
                 "expect_display_id": safe_expect,
+                "expect_parent_display_id": safe_expect_parent,
             }
         )
     return await _run_tool(client.work_package.bulk_update(items=safe_items, confirm=confirm))
@@ -1217,6 +1236,7 @@ async def create_subtask(
     custom_fields: dict[str, Any] | None = None,
     start_date: str | None = None,
     due_date: str | None = None,
+    expect_parent_display_id: ExpectParentDisplayId = None,
     confirm: Confirm = False,
 ) -> WorkPackageWriteResult:
     """Create a subtask under an existing work package.
@@ -1229,10 +1249,12 @@ async def create_subtask(
     data and cannot be used together in one call.
     observed_in_versions accepts a list of version names/ids recording where a bug was observed
     (OpenProject 17.9+, types with the attribute enabled); pass [] to clear.
+    expect_parent_display_id names the parent you mean and makes a mismatch an error; see the server instructions.
     The result names the parent work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
+    safe_expect_parent = _validate_expect_display_id(expect_parent_display_id, field_name="expect_parent_display_id")
     safe_type = _validate_ref(type, field_name="type", max_length=100)
     safe_subject = _validate_required_query(subject, field_name="subject", max_length=255)
     common = _validate_work_package_create_fields(
@@ -1266,6 +1288,7 @@ async def create_subtask(
             custom_fields=common["custom_fields"],
             start_date=common["start_date"],
             due_date=common["due_date"],
+            expect_parent_display_id=safe_expect_parent,
             confirm=confirm,
         )
     )

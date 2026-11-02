@@ -243,7 +243,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_create_work_packages": {
-        "description_hash": "c131e1f8c55543a22a8509072263249ee15a8db1c9e2f90348b4422fc52ffffb",
+        "description_hash": "bea8bb28fb00439f84af36d15899bc511be0fe3ae784d5ca8784ec7cfeeb9e12",
         "input_schema": {
             "$defs": {
                 "BulkCreateWorkPackageItem": {
@@ -309,6 +309,11 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                             "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                             "title": "Parent Work Package Id",
                         },
+                        "expect_parent_display_id": {
+                            "anyOf": [{"type": "string"}, {"type": "null"}],
+                            "description": 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.',
+                            "title": "Expect Parent Display Id",
+                        },
                         "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Start Date"},
                         "due_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Due Date"},
                         "estimated_time": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Estimated Time"},
@@ -347,7 +352,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_update_work_packages": {
-        "description_hash": "58deab53fdbe9e7158776b7a62a76e004a46cf5069a07f7c8eb69e979fafed37",
+        "description_hash": "4a07c1709b899cad9f489517f2d800be47c031644b977875cfdd7ff055159da3",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
@@ -420,6 +425,11 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                             "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                             "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                             "title": "Parent Work Package Id",
+                        },
+                        "expect_parent_display_id": {
+                            "anyOf": [{"type": "string"}, {"type": "null"}],
+                            "description": 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.',
+                            "title": "Expect Parent Display Id",
                         },
                         "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Start Date"},
                         "due_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Due Date"},
@@ -1220,7 +1230,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_ADMIN_WRITE", "OPENPROJECT_ENABLE_ADMIN_READ"),
     },
     "create_subtask": {
-        "description_hash": "878dbb8794df141ef840a0eee3e7e6d7dd63af5eb237ca906696d523970c021c",
+        "description_hash": "47c55d39ccdaff2ec2723b93e544b263828becef67a69a1bd18e55055516b56e",
         "input_schema": {
             "properties": {
                 "parent_work_package_id": {
@@ -1288,6 +1298,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Date"},
                 "due_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Due Date"},
+                "expect_parent_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Parent Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -1639,7 +1655,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "create_work_package": {
-        "description_hash": "724baf540a934872127b866360d6025d8a5fb30f8f0e7aba732524c4a59d2bbd",
+        "description_hash": "46ca159d9e2ae599081dbd18a1291c919680dd4a154324092fe230420ae9af04",
         "input_schema": {
             "properties": {
                 "project": {
@@ -1723,6 +1739,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "title": "Remaining Time",
                 },
                 "duration": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Duration"},
+                "expect_parent_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Parent Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -8507,7 +8529,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "7de5926547022afa7d59bf2d0b25fbbb3d09a8df5f990435bd57a922c98017bc",
+        "description_hash": "7e9b51be8fe443eea6f11c2af385e07a5b9fcb39a19d69fd55de404c9c63516c",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -8615,6 +8637,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
                     "title": "Expect Display Id",
+                },
+                "expect_parent_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Parent Display Id",
                 },
                 "confirm": {
                     "default": False,

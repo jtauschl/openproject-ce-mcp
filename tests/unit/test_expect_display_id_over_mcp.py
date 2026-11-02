@@ -72,6 +72,9 @@ def server(recorder: _Recorder) -> StrictMCPServer:
             tools_work_packages.bulk_update_work_packages.__name__,
             tools_watchers.set_work_package_watcher.__name__,
             tools_attachments.create_work_package_attachment.__name__,
+            tools_work_packages.create_work_package.__name__,
+            tools_work_packages.create_subtask.__name__,
+            tools_work_packages.bulk_create_work_packages.__name__,
         ],
         hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
@@ -203,3 +206,77 @@ async def test_a_group_one_expectation_of_the_wrong_json_type_is_rejected_before
     assert result.is_error is True
     assert "expect_display_id" in _text(result)
     assert recorder.requests == []
+
+
+GUARDING_A_PARENT = ("create_work_package", "create_subtask", "update_work_package")
+
+
+async def _listed(server: StrictMCPServer) -> dict[str, types.Tool]:
+    async with Client(server, mode="legacy") as client:
+        return {tool.name: tool for tool in (await client.list_tools()).tools}
+
+
+def _assert_optional_string_or_null(parameter: dict) -> None:
+    assert {branch["type"] for branch in parameter["anyOf"]} == {"string", "null"}
+    assert parameter["description"]
+
+
+@pytest.mark.parametrize("name", GUARDING_A_PARENT)
+async def test_the_schema_offers_an_optional_parent_expectation(server: StrictMCPServer, name: str) -> None:
+    schema = (await _listed(server))[name].input_schema
+
+    _assert_optional_string_or_null(schema["properties"]["expect_parent_display_id"])
+    assert "expect_parent_display_id" not in schema.get("required", [])
+
+
+@pytest.mark.parametrize(
+    ("name", "item"),
+    [
+        ("bulk_create_work_packages", "BulkCreateWorkPackageItem"),
+        ("bulk_update_work_packages", "BulkUpdateWorkPackageItem"),
+    ],
+)
+async def test_the_bulk_item_schema_offers_an_optional_parent_expectation(
+    server: StrictMCPServer, name: str, item: str
+) -> None:
+    schema = (await _listed(server))[name].input_schema
+
+    definition = schema["$defs"][item]
+    _assert_optional_string_or_null(definition["properties"]["expect_parent_display_id"])
+    assert "expect_parent_display_id" not in definition.get("required", [])
+
+
+async def test_a_parent_by_a_bare_number_is_refused_naming_the_parent_parameter(
+    call_tool: CallTool, recorder: _Recorder
+) -> None:
+    result = await call_tool(
+        "update_work_package",
+        {"work_package_id": 436, "expect_display_id": "A-1", "parent": 436, "confirm": True},
+    )
+
+    assert result.is_error is True
+    assert "repeat with expect_parent_display_id 'A-1'" in _text(result)
+    assert recorder.writes() == []
+
+
+async def test_a_parent_expectation_of_the_wrong_json_type_is_rejected_before_any_request(
+    call_tool: CallTool, recorder: _Recorder
+) -> None:
+    result = await call_tool(
+        "update_work_package", {"work_package_id": 436, "parent": 436, "expect_parent_display_id": 51}
+    )
+
+    assert result.is_error is True
+    assert "expect_parent_display_id" in _text(result)
+    assert recorder.requests == []
+
+
+async def test_a_bulk_item_accepts_the_parent_expectation_key(call_tool: CallTool, recorder: _Recorder) -> None:
+    result = await call_tool(
+        "bulk_update_work_packages",
+        {"items": [{"work_package_id": 436, "expect_display_id": "A-1", "parent": 436}], "confirm": False},
+    )
+
+    assert result.is_error is False, _text(result)
+    assert "repeat with expect_parent_display_id 'A-1'" in json.loads(_text(result))["items"][0]["error"]
+    assert recorder.writes() == []

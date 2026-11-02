@@ -77,6 +77,10 @@ to install and discover.
   unless the new `expect_display_id` names the ticket (for example `"PROJ-51"`),
   in preview and in confirm. A bare number is the internal id and `PROJ-51` is
   another ticket; the refusal names the one the number resolved to.
+  A parent named by a bare number follows the same rule through the new
+  `expect_parent_display_id` on `create_work_package`, `create_subtask`,
+  `update_work_package` and each item of `bulk_create_work_packages` and
+  `bulk_update_work_packages`.
 - A rejected status change on `update_work_package` and
   `bulk_update_work_packages` now lists, in its `status` validation error, the
   status values OpenProject's update form offers for that work package,
