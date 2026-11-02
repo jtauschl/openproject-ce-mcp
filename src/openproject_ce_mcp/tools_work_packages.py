@@ -947,13 +947,18 @@ async def bulk_create_work_packages(
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
     due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
     next working day by OpenProject; compare the request and the returned item's
-    `result.result.due_date` if the exact calendar date matters. This server does not expose a
+    `result.result.due_date` (select `result.due_date`) if the exact calendar date matters. This server does not expose a
     way to opt out of that shift (OpenProject's own `ignoreNonWorkingDays` flag is not a write
     parameter here).
     When an item gives a parent, that item's result names the work package it resolved to in `target`.
 
     A rejected item's validation is not a tool error; inspect each item's `success`,
     `error`, and nested `result` rather than the MCP error envelope.
+
+    Without select, an item that succeeded in a confirmed call is lean: `work_package_id`, `state`,
+    `target` when the item gave a parent, and `result.display_id` and `result.status`. A failed
+    or rejected item and a preview keep the full write result. Name fields in select to get more; the
+    whole written work package is select ["work_package_id", "state", "result"].
 
     select restricts each item's nested result to the given fields (e.g.
     ["ready", "work_package_id"]); an invalid name returns the allowed set.
@@ -1102,9 +1107,9 @@ async def bulk_update_work_packages(
     due_date's non-working-day shift, the confirm/preview contract, select's item-trimming
     behavior, and cancellation/atomicity semantics all work exactly as documented on
     bulk_create_work_packages; only the affected result field differs
-    (`result.result.due_date` here too). As there, select names write-result
-    fields (work_package_id, ready, state, ...); fields of the written work
-    package are selected as result.<field> (e.g. "result.display_id").
+    (`result.result.due_date` here too, selected as `result.due_date`). The lean confirmed item and
+    select work as there: select names write-result fields (work_package_id, ready, state, ...); fields
+    of the written work package are selected as result.<field> (e.g. "result.display_id").
     Each item's result names the work package its reference resolved to in `target`.
     When an item gives a `parent`, its result also carries `parent_target`, the work package the parent
     reference resolved to.

@@ -38,8 +38,12 @@ REST API v3 (HAL) call or calls:
 | `get_work_package` (single read) | ~3,378 | ~461 | **−86%** |
 | `search_work_packages` (1 row) | ~6,946 | ~329 | **−95%** |
 | `update_work_package` (confirmed write) | ~3,379 | ~512 | **−85%** |
-| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,012 | ~1,354 | **−91%** |
-| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,017 | ~1,389 | **−91%** |
+| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,197 | ~304 | **−98%** |
+| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,202 | ~529 | **−97%** |
+
+The bulk rows measure the lean item a confirmed bulk write returns without
+`select` (see `docs/tools.md`); a preview or a failed item keeps its full write
+result and is larger.
 
 The savings are consistent across call shapes — this isn't a one-off number for
 list responses specifically. `select` remains the largest additional, opt-in

@@ -14,7 +14,7 @@ from dataclasses import dataclass, is_dataclass
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
-from .models import BatchWorkPackageReadItemResult, BulkWorkPackageItemResult
+from .models import BatchWorkPackageReadItemResult, BulkWorkPackageItemResult, WorkPackageWriteResult
 
 
 @dataclass
@@ -59,6 +59,9 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
     - **next_offset**: never dropped, even when ``None`` — it is the pagination
       control field, and callers page until it comes back ``null``, not until
       it is absent.
+    - **lean bulk item**: a bulk work package item that succeeded in a confirmed
+      call keeps only its reference, state, resolved targets and the written work
+      package's display id and status, unless the caller gave ``select``.
     - **hidden keys**: removed entirely (not nulled) when the client tagged
       the instance with ``_hidden_keys``.
     - **None-valued fields**: dropped when ``elide_none`` is true, kept as an
@@ -105,6 +108,12 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
     already return plain dicts are untouched.
     """
     if is_dataclass(value) and not isinstance(value, type):
+        if (
+            isinstance(value, BulkWorkPackageItemResult)
+            and value.result is not None
+            and value.result.state == "confirmed"
+        ):
+            return _select_fields(value, _lean_item_select(value.result), elide_none=elide_none)
         # "results" (list reads) and "items" (bulk writes) are the two row-list
         # field names the seam knows about. count/truncated are results-only —
         # BulkWorkPackageWriteResult carries total/succeeded/failed instead.
@@ -168,6 +177,22 @@ def _has_field(value: Any, name: str) -> bool:
 
 def _drops_payload(value: Any) -> bool:
     return getattr(value, "state", None) == "confirmed" and _has_field(value, "payload")
+
+
+def _lean_item_select(write: WorkPackageWriteResult) -> frozenset[str]:
+    """What a caller keeps of a bulk item that succeeded in a confirmed call: the write state, the reference,
+    the tickets it resolved to, and the display id and status of the written work package. A field is selected
+    only when it has a value, because a selected field is emitted even when it is ``None``."""
+    wanted = {
+        "work_package_id": write.work_package_id,
+        "state": write.state,
+        "target": write.target,
+        "parent_target": write.parent_target,
+    }
+    if write.result is not None:
+        wanted["result.display_id"] = write.result.display_id
+        wanted["result.status"] = write.result.status
+    return frozenset(name for name, value in wanted.items() if value is not None)
 
 
 # Rows that wrap a single nested entity instead of being the entity itself.

@@ -770,6 +770,67 @@ async def test_bulk_create_work_packages_select_is_threaded_through_the_register
     await client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_a_confirmed_bulk_create_returns_lean_items_through_the_registered_wrapper() -> None:
+    created = {
+        "id": 77,
+        "displayId": "DEMO-77",
+        "subject": "WP 1",
+        "lockVersion": 1,
+        "createdAt": "2026-11-02T20:22:38.520Z",
+        "updatedAt": "2026-11-02T20:22:38.520Z",
+        "_links": {
+            "self": {"href": "/api/v3/work_packages/77"},
+            "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+            "status": {"href": "/api/v3/statuses/1", "title": "New"},
+            "type": {"href": "/api/v3/types/7", "title": "Task"},
+            "author": {"href": "/api/v3/users/3", "title": "Ada"},
+        },
+    }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.method == "GET" and request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.method == "POST" and request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        if request.method == "POST" and request.url.path == "/api/v3/work_packages":
+            return httpx.Response(201, json=created, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    fn = _tools(create_app(settings))["bulk_create_work_packages"].fn
+    items = [{"project": "demo", "type": "Task", "subject": "WP 1"} for _ in range(40)]
+
+    lean = await fn(_FakeContext(client), items=items, confirm=True)
+    selected = await fn(_FakeContext(client), items=items, select=["work_package_id", "state", "result"], confirm=True)
+
+    assert max(len(json.dumps(item, separators=(",", ":"))) for item in lean["items"]) < 300
+    assert lean["items"][0] == {
+        "index": 0,
+        "success": True,
+        "result": {
+            "state": "confirmed",
+            "work_package_id": 77,
+            "result": {"display_id": "DEMO-77", "status": "New"},
+        },
+    }
+    assert set(selected["items"][0]["result"]["result"]) > {"display_id", "status", "created_at", "author", "subject"}
+
+    await client.aclose()
+
+
 # ── elide_none is derived from the tool's own signature, not its return type ─
 #
 # 14 list tools (e.g. list_statuses) return a `results`-bearing dataclass but

@@ -886,9 +886,14 @@ def _validate_select(
         else:
             owner = next((p for p in nested if not inner and f"{p}.{name}" in accepted), None)
             if owner is not None:
+                reference_hint = (
+                    " For the work package reference of the item use 'work_package_id'."
+                    if name == "id" and "work_package_id" in row_fields
+                    else ""
+                )
                 raise ValueError(
                     f"select field '{name}' is a field of the {nested[owner].__name__} in '{owner}'; "
-                    f"select it as '{owner}.{name}'. {_SELECT_NOTHING_SENT}"
+                    f"select it as '{owner}.{name}'.{reference_hint} {_SELECT_NOTHING_SENT}"
                 )
             allowed = ", ".join(sorted(field for field in accepted if "." not in field))
             hint = "".join(f" Fields of '{p}' are selected as '{p}.<field>'." for p in sorted(nested))

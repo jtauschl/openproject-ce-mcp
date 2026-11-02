@@ -95,7 +95,11 @@ On batch and bulk tools, `select` names fields of each item's entity, inside
 the item's `id`/`index`/`success`/`error` wrapper: for `get_work_packages` the
 work package itself (`["id", "status"]`), for a bulk write the item's write
 result (`["work_package_id", "ready"]`), whose written work package is reached
-as `result.<field>` (`["work_package_id", "result.status"]`).
+as `result.<field>` (`["work_package_id", "result.status"]`). Without `select`, a
+bulk item that succeeded in a confirmed call is lean: `work_package_id`, `state`,
+`target` and `parent_target` when present, and the written work package's `display_id`
+and `status`.
+Select `["work_package_id", "state", "result"]` for the whole written work package.
 
 With `select`, a failed batch-read or bulk-write item retains its nested
 `work_package` / `result` as an explicit `null` (inspect the sibling `error`

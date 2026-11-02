@@ -122,7 +122,11 @@ the batch-read `get_work_packages` and the bulk writes
 also its `exact_match` when present; for the bulk writes, per item's write
 result, with fields of the written work package selected as `result.<field>`,
 e.g. `["work_package_id", "result.status"]`); an invalid name returns the
-allowed set for that row type.
+allowed set for that row type. Without `select`, a bulk item that succeeded in a
+confirmed call is lean (`work_package_id`, `state`, `result.display_id`,
+`result.status`, and `target` and `parent_target` when present); a failed or
+rejected item and a preview keep their full write result, and
+`["work_package_id", "state", "result"]` returns the whole written work package.
 
 Beyond the obvious fields, work packages also carry scheduling/derived state
 (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`,

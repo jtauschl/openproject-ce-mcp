@@ -101,6 +101,13 @@ to install and discover.
   tools.
 - A confirmed bulk write no longer returns an item's echoed `payload` when
   `select` names it; the normalized `result` carries the same data.
+- **Breaking:** a confirmed `bulk_create_work_packages` or
+  `bulk_update_work_packages` call returns a lean item without `select` for each
+  item that succeeded: `work_package_id`, `state`, `target` and `parent_target`
+  when present, and the written work package's `display_id` and `status`. A
+  failed or rejected item and a preview keep their full write result. Select
+  `["work_package_id", "state", "result"]` for the whole written work package.
+  A `select` that names `id` now points to `work_package_id`.
 - **Breaking:** Python 3.11 or later is required; Python 3.10 is no longer
   supported. Install or upgrade under Python 3.11+ (for example
   `pipx install --python python3.11 openproject-ce-mcp`).

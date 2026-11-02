@@ -243,7 +243,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_create_work_packages": {
-        "description_hash": "bea8bb28fb00439f84af36d15899bc511be0fe3ae784d5ca8784ec7cfeeb9e12",
+        "description_hash": "a382b792e7b18026c9e61728a9558b84c55a044a0664e69f717ba077b5822d42",
         "input_schema": {
             "$defs": {
                 "BulkCreateWorkPackageItem": {
@@ -352,7 +352,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_update_work_packages": {
-        "description_hash": "4a07c1709b899cad9f489517f2d800be47c031644b977875cfdd7ff055159da3",
+        "description_hash": "bc2a94d02eb390a444b0a95c0548ce1990d165693aa0c7fa83b1a028cd5da9c1",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
