@@ -811,7 +811,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "create_meeting_agenda_item": {
-        "description_hash": "1c21872da9ecf593328b71721bdb91774b4e707bf23f8c5e929d07b7a60ddedf",
+        "description_hash": "bdbaa01fde476fa3fa036de99852941251da822c1ee6036285ab66cad01fd8ff",
         "input_schema": {
             "properties": {
                 "meeting_id": {
@@ -854,6 +854,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Section of this meeting to add the item to, from list_meeting_sections; default: the last.",
                     "title": "Meeting Section Id",
                 },
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -878,7 +884,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "create_meeting_outcome": {
-        "description_hash": "ee16ce479d1f6f46ce6fe8c057813fb9678a8368bb41f42110df8aa7b14628bc",
+        "description_hash": "ce21c08e8caa6f8d8fceac4841669b32384a70f7a27bbe14c4ad32b32e3c023e",
         "input_schema": {
             "properties": {
                 "agenda_item_id": {"title": "Agenda Item Id", "type": "integer"},
@@ -889,6 +895,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                     "title": "Work Package Id",
+                },
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
                 },
                 "confirm": {
                     "default": False,
@@ -1323,7 +1335,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "create_time_entry": {
-        "description_hash": "b4af6940314b24c20f428bb4fed6c9c54ec0dbcd15c0b9abf703e15088d30d1f",
+        "description_hash": "940007b172af705f186ba52afb3c1dba518700972eee79915df9a8bd900c9884",
         "input_schema": {
             "properties": {
                 "activity": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Activity"},
@@ -1349,6 +1361,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "start_time": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Time"},
                 "comment": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Comment"},
                 "ongoing": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "default": None, "title": "Ongoing"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -1373,7 +1391,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "create_time_entry_until": {
-        "description_hash": "46b44116d534a248afd2fb9b9339c1449531d2d39956a9ab6c1e25696876d883",
+        "description_hash": "5522e868f155ec7d3eb71383e4ea6938d48cbefd9f91ba7f543ed4e4274e793a",
         "input_schema": {
             "properties": {
                 "activity": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Activity"},
@@ -1398,6 +1416,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "title": "User",
                 },
                 "comment": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Comment"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -1817,7 +1841,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         ),
     },
     "create_work_package_relation": {
-        "description_hash": "2cc655331363a0470c2de6dbe1681cff0be448e574354e7c24476c1c3df4af4a",
+        "description_hash": "c0cea20a1761d6e6d99c2752fb2feb76e992d9573db0e7a320cf6f3a43870ea6",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -1837,6 +1861,18 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "title": "Description",
                 },
                 "lag": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Lag"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
+                "expect_related_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the related work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Related Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -1856,7 +1892,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "create_work_package_reminder": {
-        "description_hash": "a34680640ac7e7bd32b21afd69f46af5df62158622905198ced0d39ae575fc31",
+        "description_hash": "ad4df5194608734154c14cdd39948b43b10ca8c90b611d348f95409554196d83",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -1866,6 +1902,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "remind_at": {"title": "Remind At", "type": "string"},
                 "note": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Note"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -1890,7 +1932,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "create_work_package_wiki_link": {
-        "description_hash": "8a59d2738ce20402fca8b8c058efd98aa034cd838def0a178264030450e0d550",
+        "description_hash": "16e271a0beeb497b38fc33b405dc33a85c727bfdd0180847652a4b33a7426537",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -1900,6 +1942,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "identifier": {"title": "Identifier", "type": "string"},
                 "provider": {"title": "Provider", "type": "string"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -2548,7 +2596,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "delete_work_package_wiki_link": {
-        "description_hash": "95c602310ec2048a2952e913e502382e9842eb97e97790a03b60aa916b655c6d",
+        "description_hash": "fe7fd82eb5c566fc2e346a10b856ba079a6a7d094f10314dea3789e8dc5f8844",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -2557,6 +2605,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "title": "Work Package Id",
                 },
                 "link_id": {"title": "Link Id", "type": "integer"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -7731,7 +7785,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "update_meeting_agenda_item": {
-        "description_hash": "c8bc8bc95870483fe70d720ebfc655f46ddec3de8dccd004785dcc95f92ae474",
+        "description_hash": "9f110d17721a5ebbd006cdad890190396313869b2c46fbe1e809508f60e6834f",
         "input_schema": {
             "properties": {
                 "agenda_item_id": {
@@ -7775,6 +7829,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Section to move the item into, from list_meeting_sections: one of the same meeting, or of another meeting in the same series.",
                     "title": "Meeting Section Id",
                 },
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -7794,7 +7854,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "update_meeting_outcome": {
-        "description_hash": "12a84b5d406fd0ac491abc1020c0ee2ff85e4d570baddd244cff82d64f9087dd",
+        "description_hash": "6f694c9d7656ef84c7d097528b71cb5135b2752af122be65c3087ce2f0411c88",
         "input_schema": {
             "properties": {
                 "outcome_id": {"title": "Outcome Id", "type": "integer"},
@@ -7805,6 +7865,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                     "title": "Work Package Id",
+                },
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
                 },
                 "confirm": {
                     "default": False,

@@ -127,6 +127,14 @@ A parent follows the same rule with `expect_parent_display_id`: `create_work_pac
 `bulk_update_work_packages` refuse a parent that is a bare number unless that parameter
 names the ticket. An expectation with no parent to check (none given, or `none`) is refused.
 
+The other writes that take a work package follow the same rule with `expect_display_id`:
+`create_work_package_relation` (the source), `create_work_package_reminder`,
+`create_work_package_wiki_link`, `delete_work_package_wiki_link`, `create_time_entry`,
+`create_time_entry_until`, `create_meeting_agenda_item`, `update_meeting_agenda_item`,
+`create_meeting_outcome` and `update_meeting_outcome`. The related work package of
+`create_work_package_relation` has its own `expect_related_display_id`. Where the work package is
+optional, an expectation with no work package to check is refused.
+
 ## Some tool groups are opt-in
 
 A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,

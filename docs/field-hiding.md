@@ -75,7 +75,8 @@ different name.
 ## Work package `display_id`: the bare-number guard
 
 A write that names a work package by a bare number is refused unless
-`expect_display_id` (or, for a parent, `expect_parent_display_id`) names the
+`expect_display_id` (or, for a parent, `expect_parent_display_id`; for the related
+work package of a relation, `expect_related_display_id`) names the
 ticket (see [Tool reference](tools.md)). While
 `display_id` is hidden by `OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS`, the server
 cannot show or compare the display id, so the guard is off and

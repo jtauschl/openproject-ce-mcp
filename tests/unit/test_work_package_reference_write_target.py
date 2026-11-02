@@ -132,6 +132,20 @@ RELATION_ENDS = [
     ("436", "PROJ-436", EXPECTED_R1, EXPECTED_R2),
     ("PROJ-436", "436", EXPECTED_R2, EXPECTED_R1),
 ]
+
+
+async def _relate(ctx: Any, source: str, related: str, confirm: bool) -> Any:
+    return await create_work_package_relation(
+        ctx,
+        source,
+        related,
+        "relates",
+        expect_display_id=expectation_for(source),
+        expect_related_display_id=expectation_for(related),
+        confirm=confirm,
+    )
+
+
 relation_ends_param = pytest.mark.parametrize(
     ("source", "related", "expected_target", "expected_related_target"),
     RELATION_ENDS,
@@ -146,7 +160,7 @@ async def test_a_relation_names_both_ends(
     source: str, related: str, expected_target: dict, expected_related_target: dict, confirm: bool, tmp_path: Path
 ) -> None:
     async def relate(ctx: Any, _ref: str, confirm: bool) -> Any:
-        return await create_work_package_relation(ctx, source, related, "relates", confirm=confirm)
+        return await _relate(ctx, source, related, confirm)
 
     result, server = await _run(relate, "", tmp_path, confirm=confirm)
 
@@ -161,7 +175,7 @@ async def test_a_hidden_field_is_absent_from_both_ends_of_a_relation(tmp_path: P
     settings = dataclasses.replace(_settings(tmp_path), hide_work_package_fields=("subject",))
 
     async def relate(ctx: Any, _ref: str, confirm: bool) -> Any:
-        return await create_work_package_relation(ctx, "436", "PROJ-436", "relates", confirm=confirm)
+        return await _relate(ctx, "436", "PROJ-436", confirm)
 
     result, _ = await _run(relate, "", tmp_path, confirm=False, settings=settings)
 
@@ -176,11 +190,11 @@ OUT_OF_READ_SCOPE = dataclasses.replace(_write_enabled_settings(), read_projects
 
 
 async def _relate_outside_scope(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_work_package_relation(ctx, "436", ref, "relates", confirm=confirm)
+    return await _relate(ctx, "436", ref, confirm)
 
 
 async def _relate_source_outside_scope(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_work_package_relation(ctx, ref, "436", "relates", confirm=confirm)
+    return await _relate(ctx, ref, "436", confirm)
 
 
 @pytest.mark.parametrize(

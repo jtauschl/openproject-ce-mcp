@@ -275,6 +275,10 @@ def _get_current_user_ok(name: str = "Current User"):
     return get
 
 
+async def _unexpected_work_package_resolution(*_args: object, **_kwargs: object) -> object:
+    raise AssertionError("the work package resolver is only used to resolve an expectation")
+
+
 def _service(
     *,
     api: _FakeTimeEntryApi | None = None,
@@ -284,6 +288,7 @@ def _service(
     resolve_project_ref=None,
     resolve_project_id=None,
     resolve_principal_id=None,
+    resolve_work_package_record=None,
 ) -> TimeEntryService:
     return TimeEntryService(
         api=api or _FakeTimeEntryApi(),
@@ -294,6 +299,7 @@ def _service(
         resolve_project_ref=resolve_project_ref or _resolve_project_ref_ok(),
         resolve_project_id=resolve_project_id or _resolve_project_id_ok(),
         resolve_principal_id=resolve_principal_id or _resolve_principal_id_ok(),
+        resolve_work_package_record=resolve_work_package_record or _unexpected_work_package_resolution,
         api_prefix="/api/v3/",
     )
 

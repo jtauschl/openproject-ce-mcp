@@ -8,6 +8,7 @@ import pytest
 
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
+from ._write_ref import write_ref
 from .conftest import skip_if_unsupported
 
 pytestmark = pytest.mark.integration
@@ -34,7 +35,7 @@ async def test_create_reminder_rejects_hidden_note_field(
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_REMINDER_FIELDS"):
         await hidden_client.reminder.create(
-            work_package_id=result.work_package_id,
+            work_package_id=await write_ref(client, result.work_package_id),
             remind_at="2027-01-01T09:00:00Z",
             note="hidden note",
             confirm=False,
@@ -54,10 +55,9 @@ async def test_list_reminders_finds_created_reminder(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
+    ref = await write_ref(client, wp.work_package_id)
     created = await skip_if_unsupported(
-        lambda: client.reminder.create(
-            work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
-        )
+        lambda: client.reminder.create(work_package_id=ref, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
@@ -82,10 +82,9 @@ async def test_update_reminder_denied_outside_write_allowlist(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
+    ref = await write_ref(client, wp.work_package_id)
     created = await skip_if_unsupported(
-        lambda: client.reminder.create(
-            work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
-        )
+        lambda: client.reminder.create(work_package_id=ref, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
@@ -103,10 +102,9 @@ async def test_update_reminder_changes_note(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
+    ref = await write_ref(client, wp.work_package_id)
     created = await skip_if_unsupported(
-        lambda: client.reminder.create(
-            work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
-        )
+        lambda: client.reminder.create(work_package_id=ref, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
@@ -138,10 +136,9 @@ async def test_delete_reminder_denied_outside_write_allowlist(
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
+    ref = await write_ref(client, wp.work_package_id)
     created = await skip_if_unsupported(
-        lambda: client.reminder.create(
-            work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
-        )
+        lambda: client.reminder.create(work_package_id=ref, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
 
@@ -159,10 +156,9 @@ async def test_delete_reminder_removes_it(client: OpenProjectClient, test_projec
     assert wp.ready
     wp_ids.append(wp.work_package_id)
 
+    ref = await write_ref(client, wp.work_package_id)
     created = await skip_if_unsupported(
-        lambda: client.reminder.create(
-            work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
-        )
+        lambda: client.reminder.create(work_package_id=ref, remind_at="2027-01-01T09:00:00Z", confirm=True)
     )
     assert created.state == "confirmed"
 

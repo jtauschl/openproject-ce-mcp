@@ -796,7 +796,7 @@ def test_create_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_meeting_agenda_item"]
     assert (
         tool.description
-        == "Add an item to a meeting's agenda.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. For a work package, its project must be\ninside OPENPROJECT_WRITE_PROJECTS. To record a result of a discussed item use create_meeting_outcome.\nWhen a work package is given, the result names the work package it resolved to in `target`.\n"
+        == "Add an item to a meeting's agenda.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. For a work package, its project must be\ninside OPENPROJECT_WRITE_PROJECTS. To record a result of a discussed item use create_meeting_outcome.\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -837,6 +837,12 @@ def test_create_meeting_agenda_item_schema() -> None:
                 "description": "Section of this meeting to add the item to, from list_meeting_sections; default: the last.",
                 "title": "Meeting Section Id",
             },
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -858,6 +864,7 @@ def test_create_meeting_agenda_item_schema() -> None:
         "item_type",
         "work_package_id",
         "meeting_section_id",
+        "expect_display_id",
         "confirm",
     ]
 
@@ -866,7 +873,7 @@ def test_update_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_meeting_agenda_item"]
     assert (
         tool.description
-        == "Update one agenda item of a meeting; omitted fields stay unchanged.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. Each confirmed update also updates the\nmeeting's own timestamp. Outcomes of the item are changed with update_meeting_outcome.\nWhen a work package is given, the result names the work package it resolved to in `target`.\n"
+        == "Update one agenda item of a meeting; omitted fields stay unchanged.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. Each confirmed update also updates the\nmeeting's own timestamp. Outcomes of the item are changed with update_meeting_outcome.\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -912,6 +919,12 @@ def test_update_meeting_agenda_item_schema() -> None:
                 "description": "Section to move the item into, from list_meeting_sections: one of the same meeting, or of another meeting in the same series.",
                 "title": "Meeting Section Id",
             },
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -933,6 +946,7 @@ def test_update_meeting_agenda_item_schema() -> None:
         "item_type",
         "work_package_id",
         "meeting_section_id",
+        "expect_display_id",
         "confirm",
     ]
 
@@ -1141,7 +1155,7 @@ def test_create_meeting_outcome_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_meeting_outcome"]
     assert (
         tool.description
-        == 'Create a meeting outcome on an agenda item.\n\nRequires OpenProject 17.6+.\n\nkind must be one of "information", "decision", "work_package" (OpenProject\'s\nreal enum values, not e.g. "info" or "action", which OpenProject rejects\nwith an internal server error rather than a clean validation error).\n"information"-kind outcomes require notes; "work_package"-kind outcomes\nrequire work_package_id.\nWhen a work package is given, the result names the work package it resolved to in `target`.\n'
+        == 'Create a meeting outcome on an agenda item.\n\nRequires OpenProject 17.6+.\n\nkind must be one of "information", "decision", "work_package" (OpenProject\'s\nreal enum values, not e.g. "info" or "action", which OpenProject rejects\nwith an internal server error rather than a clean validation error).\n"information"-kind outcomes require notes; "work_package"-kind outcomes\nrequire work_package_id.\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n'
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1154,6 +1168,12 @@ def test_create_meeting_outcome_schema() -> None:
                 "default": None,
                 "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                 "title": "Work Package Id",
+            },
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
             },
             "confirm": {
                 "default": False,
@@ -1168,14 +1188,21 @@ def test_create_meeting_outcome_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["agenda_item_id", "kind", "notes", "work_package_id", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "agenda_item_id",
+        "kind",
+        "notes",
+        "work_package_id",
+        "expect_display_id",
+        "confirm",
+    ]
 
 
 def test_update_meeting_outcome_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_meeting_outcome"]
     assert (
         tool.description
-        == 'Update a meeting outcome.\n\nRequires OpenProject 17.6+.\n\nkind, if given, must be one of "information", "decision", "work_package"\n(OpenProject\'s real enum values, not e.g. "info" or "action", which\nOpenProject rejects with an internal server error rather than a clean\nvalidation error).\nWhen a work package is given, the result names the work package it resolved to in `target`.\n'
+        == 'Update a meeting outcome.\n\nRequires OpenProject 17.6+.\n\nkind, if given, must be one of "information", "decision", "work_package"\n(OpenProject\'s real enum values, not e.g. "info" or "action", which\nOpenProject rejects with an internal server error rather than a clean\nvalidation error).\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n'
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1188,6 +1215,12 @@ def test_update_meeting_outcome_schema() -> None:
                 "default": None,
                 "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                 "title": "Work Package Id",
+            },
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
             },
             "confirm": {
                 "default": False,
@@ -1202,7 +1235,14 @@ def test_update_meeting_outcome_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["outcome_id", "kind", "notes", "work_package_id", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "outcome_id",
+        "kind",
+        "notes",
+        "work_package_id",
+        "expect_display_id",
+        "confirm",
+    ]
 
 
 def test_delete_meeting_outcome_schema() -> None:

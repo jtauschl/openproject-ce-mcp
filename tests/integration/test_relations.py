@@ -8,6 +8,7 @@ import pytest
 
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
+from ._write_ref import write_ref
 from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
@@ -51,8 +52,8 @@ async def test_create_relation_denied_when_target_outside_write_allowlist(
     # relation write must be denied.
     with pytest.raises(PermissionDeniedError):
         await client.relation.create(
-            work_package_id=source.work_package_id,
-            related_to_work_package_id=target.work_package_id,
+            work_package_id=await write_ref(client, source.work_package_id),
+            related_to_work_package_id=await write_ref(client, target.work_package_id),
             relation_type="relates",
             confirm=True,
         )
@@ -79,8 +80,8 @@ async def test_create_relation_rejects_hidden_type_field(
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_RELATION_FIELDS"):
         await hidden_client.relation.create(
-            work_package_id=source.work_package_id,
-            related_to_work_package_id=target.work_package_id,
+            work_package_id=await write_ref(client, source.work_package_id),
+            related_to_work_package_id=await write_ref(client, target.work_package_id),
             relation_type="relates",
             confirm=False,
         )
@@ -104,8 +105,8 @@ async def test_delete_relation_denied_outside_write_allowlist(
     wp_ids.append(target.work_package_id)
 
     created = await client.relation.create(
-        work_package_id=source.work_package_id,
-        related_to_work_package_id=target.work_package_id,
+        work_package_id=await write_ref(client, source.work_package_id),
+        related_to_work_package_id=await write_ref(client, target.work_package_id),
         relation_type="relates",
         confirm=True,
     )
@@ -148,16 +149,16 @@ async def test_update_and_delete_relation_denied_when_target_outside_allowlist(
     assert outside_source.ready
 
     inside_to_outside = await unrestricted.relation.create(
-        work_package_id=inside.work_package_id,
-        related_to_work_package_id=outside.work_package_id,
+        work_package_id=await write_ref(unrestricted, inside.work_package_id),
+        related_to_work_package_id=await write_ref(unrestricted, outside.work_package_id),
         relation_type="relates",
         confirm=True,
     )
     assert inside_to_outside.ready
     relation_id = inside_to_outside.result.id
     outside_to_inside = await unrestricted.relation.create(
-        work_package_id=outside_source.work_package_id,
-        related_to_work_package_id=inside.work_package_id,
+        work_package_id=await write_ref(unrestricted, outside_source.work_package_id),
+        related_to_work_package_id=await write_ref(unrestricted, inside.work_package_id),
         relation_type="relates",
         confirm=True,
     )
@@ -204,8 +205,8 @@ async def test_update_relation_changes_description_and_type(
     wp_ids.append(target.work_package_id)
 
     created = await client.relation.create(
-        work_package_id=source.work_package_id,
-        related_to_work_package_id=target.work_package_id,
+        work_package_id=await write_ref(client, source.work_package_id),
+        related_to_work_package_id=await write_ref(client, target.work_package_id),
         relation_type="relates",
         confirm=True,
     )
@@ -252,8 +253,8 @@ async def test_get_work_package_relations_stamps_queried_perspective_from_both_s
     wp_ids.append(target.work_package_id)
 
     created = await client.relation.create(
-        work_package_id=source.work_package_id,
-        related_to_work_package_id=target.work_package_id,
+        work_package_id=await write_ref(client, source.work_package_id),
+        related_to_work_package_id=await write_ref(client, target.work_package_id),
         relation_type="follows",
         confirm=True,
     )
@@ -310,8 +311,8 @@ async def test_delete_relation_removes_it(client: OpenProjectClient, test_projec
     wp_ids.append(target.work_package_id)
 
     created = await client.relation.create(
-        work_package_id=source.work_package_id,
-        related_to_work_package_id=target.work_package_id,
+        work_package_id=await write_ref(client, source.work_package_id),
+        related_to_work_package_id=await write_ref(client, target.work_package_id),
         relation_type="relates",
         confirm=True,
     )
@@ -357,16 +358,16 @@ async def test_list_relations_paginates_beyond_a_single_page(
     wp_ids.append(leaf_b.work_package_id)
 
     relation_a = await client.relation.create(
-        work_package_id=hub.work_package_id,
-        related_to_work_package_id=leaf_a.work_package_id,
+        work_package_id=await write_ref(client, hub.work_package_id),
+        related_to_work_package_id=await write_ref(client, leaf_a.work_package_id),
         relation_type="relates",
         confirm=True,
     )
     assert relation_a.ready
 
     relation_b = await client.relation.create(
-        work_package_id=hub.work_package_id,
-        related_to_work_package_id=leaf_b.work_package_id,
+        work_package_id=await write_ref(client, hub.work_package_id),
+        related_to_work_package_id=await write_ref(client, leaf_b.work_package_id),
         relation_type="relates",
         confirm=True,
     )

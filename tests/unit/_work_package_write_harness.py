@@ -192,7 +192,9 @@ Call = Callable[[Any, str, bool], Awaitable[Any]]
 
 
 async def _reminder(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_work_package_reminder(ctx, ref, "2026-12-01T09:00:00Z", note="n", confirm=confirm)
+    return await create_work_package_reminder(
+        ctx, ref, "2026-12-01T09:00:00Z", note="n", expect_display_id=ctx.expect_display_id, confirm=confirm
+    )
 
 
 async def _watcher_add(ctx: Any, ref: str, confirm: bool) -> Any:
@@ -204,7 +206,9 @@ async def _watcher_remove(ctx: Any, ref: str, confirm: bool) -> Any:
 
 
 async def _time_entry(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_time_entry(ctx, "1", "PT1H", "2026-11-01", work_package_id=ref, confirm=confirm)
+    return await create_time_entry(
+        ctx, "1", "PT1H", "2026-11-01", work_package_id=ref, expect_display_id=ctx.expect_display_id, confirm=confirm
+    )
 
 
 async def _time_entry_until(ctx: Any, ref: str, confirm: bool) -> Any:
@@ -215,16 +219,19 @@ async def _time_entry_until(ctx: Any, ref: str, confirm: bool) -> Any:
         "2026-11-01T10:00:00Z",
         "2026-11-01",
         work_package_id=ref,
+        expect_display_id=ctx.expect_display_id,
         confirm=confirm,
     )
 
 
 async def _wiki_create(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_work_package_wiki_link(ctx, ref, "7", "internal", confirm=confirm)
+    return await create_work_package_wiki_link(
+        ctx, ref, "7", "internal", expect_display_id=ctx.expect_display_id, confirm=confirm
+    )
 
 
 async def _wiki_delete(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await delete_work_package_wiki_link(ctx, ref, 12, confirm=confirm)
+    return await delete_work_package_wiki_link(ctx, ref, 12, expect_display_id=ctx.expect_display_id, confirm=confirm)
 
 
 async def _attachment(ctx: Any, ref: str, confirm: bool) -> Any:
@@ -234,19 +241,27 @@ async def _attachment(ctx: Any, ref: str, confirm: bool) -> Any:
 
 
 async def _agenda_create(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_meeting_agenda_item(ctx, 4, "Item", work_package_id=ref, confirm=confirm)
+    return await create_meeting_agenda_item(
+        ctx, 4, "Item", work_package_id=ref, expect_display_id=ctx.expect_display_id, confirm=confirm
+    )
 
 
 async def _agenda_update(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await update_meeting_agenda_item(ctx, 21, work_package_id=ref, confirm=confirm)
+    return await update_meeting_agenda_item(
+        ctx, 21, work_package_id=ref, expect_display_id=ctx.expect_display_id, confirm=confirm
+    )
 
 
 async def _outcome_create(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await create_meeting_outcome(ctx, 21, "decision", work_package_id=ref, confirm=confirm)
+    return await create_meeting_outcome(
+        ctx, 21, "decision", work_package_id=ref, expect_display_id=ctx.expect_display_id, confirm=confirm
+    )
 
 
 async def _outcome_update(ctx: Any, ref: str, confirm: bool) -> Any:
-    return await update_meeting_outcome(ctx, 31, work_package_id=ref, confirm=confirm)
+    return await update_meeting_outcome(
+        ctx, 31, work_package_id=ref, expect_display_id=ctx.expect_display_id, confirm=confirm
+    )
 
 
 TOOLS: dict[str, Call] = {

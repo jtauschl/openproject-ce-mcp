@@ -704,6 +704,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
             resolve_project_id=self._resolve_project_id,
             resolve_principal_id=self._resolve_principal_id,
+            resolve_work_package_record=self._work_package_resolver.resolve_record,
             api_prefix=self._api_prefix,
         )
 

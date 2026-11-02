@@ -58,7 +58,7 @@ from ..ports.current_user import CurrentUserLookup
 from ..ports.wiki_page_link_api import WikiPageLinkApi, WikiPageLinkRecord
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
-from ._work_package_presentation import present_target
+from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -144,12 +144,17 @@ class WikiPageLinkService:
         *,
         identifier: str,
         provider: str,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> WikiPageLinkWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
-        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved, target = await resolved_target(
+            work_package_id,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_display_id,
+        )
         resolved_id = resolved.id
-        target = present_target(resolved.payload, settings=self._settings)
         hidden_fields.ensure_field_writable("wiki_page_link", "identifier", settings=self._settings)
         hidden_fields.ensure_field_writable("wiki_page_link", "provider", settings=self._settings)
         payload = {"identifier": identifier, "provider": provider}
@@ -183,12 +188,16 @@ class WikiPageLinkService:
         return self._to_write_result("create", outcome, target=target)
 
     async def delete(
-        self, work_package_id: int | str, link_id: int, *, confirm: bool = False
+        self, work_package_id: int | str, link_id: int, *, expect_display_id: str | None = None, confirm: bool = False
     ) -> WikiPageLinkWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
-        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved, target = await resolved_target(
+            work_package_id,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_display_id,
+        )
         resolved_id = resolved.id
-        target = present_target(resolved.payload, settings=self._settings)
         record = await self._find_link_of_work_package(resolved_id, link_id)
         # DELETE wiki_page_links/{id} looks the id up as a relation link only,
         # so it answers 404 for an inline link on every version.

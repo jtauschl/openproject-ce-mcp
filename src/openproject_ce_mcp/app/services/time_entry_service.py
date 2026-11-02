@@ -60,15 +60,16 @@ from ...work_package_reference import is_numeric_ref
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError, NotFoundError, OpenProjectServerError, PermissionDeniedError
 from ..pagination import collection_exhausted, effective_limit, fetch_bounded_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, hidden_fields, work_package_target_policy
 from ..policies import scope as scope_policy
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_api import ProjectApi
 from ..ports.project_ref import ProjectIdResolver, ProjectRefResolver
 from ..ports.time_entry_api import TimeEntryApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
+from ..ports.work_package_ref import WorkPackageRecordResolver, work_package_ref
 from ..resolvers.project_query import fetch_project_page
-from ._work_package_presentation import present_target
+from ._work_package_target import check_target
 from ._write_outcome import _finalize_write
 from .project_scoped_list import SUBJECT_LIMIT
 from .project_scoped_list import trim_text as _trim_text
@@ -133,6 +134,7 @@ class TimeEntryService:
         resolve_project_ref: ProjectRefResolver,
         resolve_project_id: ProjectIdResolver,
         resolve_principal_id: PrincipalRefResolver,
+        resolve_work_package_record: WorkPackageRecordResolver,
         api_prefix: str,
     ) -> None:
         self._api = api
@@ -143,6 +145,7 @@ class TimeEntryService:
         self._resolve_project_ref = resolve_project_ref
         self._resolve_project_id = resolve_project_id
         self._resolve_principal_id = resolve_principal_id
+        self._resolve_work_package_record = resolve_work_package_record
         self._api_prefix = api_prefix
 
     def _stamp(self, summary: TimeEntrySummary) -> TimeEntrySummary:
@@ -483,8 +486,13 @@ class TimeEntryService:
         start_time: str | None = None,
         comment: str | None = None,
         ongoing: bool | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> TimeEntryWriteResult:
+        work_package_target_policy.ensure_expectation_usable(expect_display_id, settings=self._settings)
+        work_package_target_policy.ensure_expectation_has_reference(
+            expect_display_id, reference_given=work_package_id is not None
+        )
         project_name: str | None = None
         activity_project_id: int | None = None
         work_package_numeric_id: int | None = None
@@ -494,14 +502,21 @@ class TimeEntryService:
             project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
             activity_project_id = int(project_payload["id"])
         if work_package_id is not None:
-            work_package_payload = await self._work_package_lookup_api.get(str(work_package_id))
+            work_package_reference = work_package_ref(work_package_id)
+            work_package_payload = await self._work_package_lookup_api.get(work_package_reference)
             scope_policy.ensure_project_write_link_allowed(
                 work_package_payload.get("_links", {}).get("project"),
                 settings=self._settings,
                 project_id_to_identifier=self._project_id_to_identifier,
             )
             work_package_numeric_id = int(work_package_payload["id"])
-            target = present_target(work_package_payload, settings=self._settings)
+            target = await check_target(
+                work_package_reference,
+                payload=work_package_payload,
+                resolve_expected=lambda expected: self._resolve_work_package_record(expected, write=True),
+                settings=self._settings,
+                expect_display_id=expect_display_id,
+            )
             work_package_project_link = work_package_payload.get("_links", {}).get("project")
             wp_project_title, wp_project_id = self._api.project_link_title_and_id(work_package_project_link)
             if project_name is None:

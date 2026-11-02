@@ -78,7 +78,11 @@ def named_ticket(*, display_id: str | None, project: str | None, work_package_id
 
 
 def ensure_expectation_has_reference(
-    expect_display_id: str | None, *, reference_given: bool, parameter: str, reference: str
+    expect_display_id: str | None,
+    *,
+    reference_given: bool,
+    parameter: str = DEFAULT_PARAMETER,
+    reference: str = "work_package_id",
 ) -> None:
     """An expectation with no work package to check would be dropped without a word."""
     if expect_display_id is not None and not reference_given:

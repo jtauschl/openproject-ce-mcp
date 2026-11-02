@@ -16,9 +16,10 @@ from mcp.server.mcpserver import Context
 from pydantic import Field
 
 from .models import ReminderListResult, ReminderSummary, ReminderWriteResult
-from .tool_params import Confirm, WorkPackageRef, select_field
+from .tool_params import Confirm, ExpectDisplayId, WorkPackageRef, select_field
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
+    _validate_expect_display_id,
     _validate_optional_datetime,
     _validate_optional_text,
     _validate_optional_update_text,
@@ -45,6 +46,7 @@ async def create_work_package_reminder(
     work_package_id: WorkPackageRef,
     remind_at: str,
     note: str | None = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> ReminderWriteResult:
     """Create a reminder on a work package.
@@ -52,10 +54,12 @@ async def create_work_package_reminder(
     `remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one
     active reminder per work package is allowed; creating a second one fails.
     Requires OpenProject 16.1+.
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_remind_at = _validate_required_datetime(remind_at, field_name="remind_at")
     safe_note = _validate_optional_text(note, field_name="note", max_length=2000)
     return await _run_tool(
@@ -63,6 +67,7 @@ async def create_work_package_reminder(
             work_package_id=safe_id,
             remind_at=safe_remind_at,
             note=safe_note,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )

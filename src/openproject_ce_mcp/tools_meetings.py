@@ -47,6 +47,7 @@ from .models import (
 )
 from .tool_params import (
     Confirm,
+    ExpectDisplayId,
     Limit,
     Offset,
     OptionalProjectRef,
@@ -60,6 +61,7 @@ from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _require_at_least_one,
     _validate_choice,
+    _validate_expect_display_id,
     _validate_limit,
     _validate_offset,
     _validate_optional_choice,
@@ -402,19 +404,22 @@ async def create_meeting_agenda_item(
         int | None,
         Field(description="Section of this meeting to add the item to, from list_meeting_sections; default: the last."),
     ] = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> MeetingAgendaItemWriteResult:
     """Add an item to a meeting's agenda.
 
     Requires OpenProject 17.6+. Rejected while the meeting is closed. For a work package, its project must be
     inside OPENPROJECT_WRITE_PROJECTS. To record a result of a discussed item use create_meeting_outcome.
-    When a work package is given, the result names the work package it resolved to in `target`.
+    When a work package is given, the result names the work package it resolved to in `target`, and
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_meeting_id = _validate_positive_int(meeting_id, field_name="meeting_id")
     safe_title = _validate_required_text(title, field_name="title", max_length=255)
     safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_section_id = (
         _validate_positive_int(meeting_section_id, field_name="meeting_section_id")
         if meeting_section_id is not None
@@ -429,6 +434,7 @@ async def create_meeting_agenda_item(
             item_type=item_type,
             work_package_id=safe_work_package_id,
             meeting_section_id=safe_section_id,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )
@@ -452,19 +458,22 @@ async def update_meeting_agenda_item(
             )
         ),
     ] = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> MeetingAgendaItemWriteResult:
     """Update one agenda item of a meeting; omitted fields stay unchanged.
 
     Requires OpenProject 17.6+. Rejected while the meeting is closed. Each confirmed update also updates the
     meeting's own timestamp. Outcomes of the item are changed with update_meeting_outcome.
-    When a work package is given, the result names the work package it resolved to in `target`.
+    When a work package is given, the result names the work package it resolved to in `target`, and
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
     safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_section_id = (
         _validate_positive_int(meeting_section_id, field_name="meeting_section_id")
         if meeting_section_id is not None
@@ -488,6 +497,7 @@ async def update_meeting_agenda_item(
             item_type=item_type,
             work_package_id=safe_work_package_id,
             meeting_section_id=safe_section_id,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )
@@ -558,6 +568,7 @@ async def create_meeting_outcome(
     kind: str,
     notes: str | None = None,
     work_package_id: OptionalWorkPackageRef = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> MeetingOutcomeWriteResult:
     """Create a meeting outcome on an agenda item.
@@ -569,19 +580,22 @@ async def create_meeting_outcome(
     with an internal server error rather than a clean validation error).
     "information"-kind outcomes require notes; "work_package"-kind outcomes
     require work_package_id.
-    When a work package is given, the result names the work package it resolved to in `target`.
+    When a work package is given, the result names the work package it resolved to in `target`, and
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_agenda_item_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
     safe_kind = _validate_choice(kind, field_name="kind", allowed_values=_MEETING_OUTCOME_KINDS)
     safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     return await _run_tool(
         client.meeting_outcome.create(
             agenda_item_id=safe_agenda_item_id,
             kind=safe_kind,
             notes=safe_notes,
             work_package_id=safe_work_package_id,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )
@@ -594,6 +608,7 @@ async def update_meeting_outcome(
     kind: str | None = None,
     notes: str | None = None,
     work_package_id: OptionalWorkPackageRef = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> MeetingOutcomeWriteResult:
     """Update a meeting outcome.
@@ -604,13 +619,15 @@ async def update_meeting_outcome(
     (OpenProject's real enum values, not e.g. "info" or "action", which
     OpenProject rejects with an internal server error rather than a clean
     validation error).
-    When a work package is given, the result names the work package it resolved to in `target`.
+    When a work package is given, the result names the work package it resolved to in `target`, and
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
     safe_kind = _validate_optional_choice(kind, field_name="kind", allowed_values=_MEETING_OUTCOME_KINDS)
     safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     _require_at_least_one(
         safe_kind, safe_notes, safe_work_package_id, message="At least one field to update is required."
     )
@@ -620,6 +637,7 @@ async def update_meeting_outcome(
             kind=safe_kind,
             notes=safe_notes,
             work_package_id=safe_work_package_id,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )

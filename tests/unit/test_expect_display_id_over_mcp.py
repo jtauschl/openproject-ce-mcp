@@ -22,6 +22,18 @@ import openproject_ce_mcp.tools_runtime as tools_runtime
 from openproject_ce_mcp import tools, tools_attachments, tools_watchers, tools_work_packages
 from openproject_ce_mcp.strict_mcpserver import StrictMCPServer
 
+GUARDING_A_REFERENCE = (
+    "create_work_package_reminder",
+    "create_work_package_wiki_link",
+    "delete_work_package_wiki_link",
+    "create_time_entry",
+    "create_time_entry_until",
+    "create_meeting_agenda_item",
+    "update_meeting_agenda_item",
+    "create_meeting_outcome",
+    "update_meeting_outcome",
+)
+
 CallTool = Callable[[str, dict], Awaitable[types.CallToolResult]]
 
 _WP_PATH = re.compile(r"^/api/v3/work_packages/([^/]+)(/form)?$")
@@ -75,6 +87,8 @@ def server(recorder: _Recorder) -> StrictMCPServer:
             tools_work_packages.create_work_package.__name__,
             tools_work_packages.create_subtask.__name__,
             tools_work_packages.bulk_create_work_packages.__name__,
+            *GUARDING_A_REFERENCE,
+            "create_work_package_relation",
         ],
         hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
@@ -280,3 +294,81 @@ async def test_a_bulk_item_accepts_the_parent_expectation_key(call_tool: CallToo
     assert result.is_error is False, _text(result)
     assert "repeat with expect_parent_display_id 'A-1'" in json.loads(_text(result))["items"][0]["error"]
     assert recorder.writes() == []
+
+
+@pytest.mark.parametrize("name", [*GUARDING_A_REFERENCE, "create_work_package_relation"])
+async def test_the_schema_offers_an_optional_expectation_on_each_remaining_write(
+    server: StrictMCPServer, name: str
+) -> None:
+    schema = (await _listed(server))[name].input_schema
+
+    _assert_optional_string_or_null(schema["properties"]["expect_display_id"])
+    assert "expect_display_id" not in schema.get("required", [])
+
+
+async def test_the_relation_schema_offers_a_separate_optional_related_expectation(server: StrictMCPServer) -> None:
+    schema = (await _listed(server))["create_work_package_relation"].input_schema
+
+    _assert_optional_string_or_null(schema["properties"]["expect_related_display_id"])
+    assert "expect_related_display_id" not in schema.get("required", [])
+    assert (
+        schema["properties"]["expect_related_display_id"]["description"]
+        != schema["properties"]["expect_display_id"]["description"]
+    )
+
+
+async def test_a_reminder_by_a_bare_number_is_refused_over_mcp(call_tool: CallTool, recorder: _Recorder) -> None:
+    result = await call_tool(
+        "create_work_package_reminder", {"work_package_id": 436, "remind_at": "2026-12-01T09:00:00Z", "confirm": True}
+    )
+
+    assert result.is_error is True
+    assert "[VALIDATION_FAILED] 436 is A-1 (Project A). If you mean A-1, repeat with expect_display_id 'A-1'" in _text(
+        result
+    )
+    assert recorder.writes() == []
+
+
+async def test_a_related_bare_number_is_refused_naming_the_related_parameter(
+    call_tool: CallTool, recorder: _Recorder
+) -> None:
+    result = await call_tool(
+        "create_work_package_relation",
+        {
+            "work_package_id": 436,
+            "related_to_work_package_id": 436,
+            "relation_type": "relates",
+            "expect_display_id": "A-1",
+            "confirm": True,
+        },
+    )
+
+    assert result.is_error is True
+    assert "repeat with expect_related_display_id 'A-1'" in _text(result)
+    assert recorder.writes() == []
+
+
+@pytest.mark.parametrize("field", ["expect_display_id", "expect_related_display_id"])
+async def test_a_relation_expectation_of_the_wrong_json_type_is_rejected_before_any_request(
+    call_tool: CallTool, recorder: _Recorder, field: str
+) -> None:
+    result = await call_tool(
+        "create_work_package_relation",
+        {"work_package_id": 436, "related_to_work_package_id": 436, "relation_type": "relates", field: 51},
+    )
+
+    assert result.is_error is True
+    assert field in _text(result)
+    assert recorder.requests == []
+
+
+async def test_an_expectation_without_a_work_package_is_refused_over_mcp(
+    call_tool: CallTool, recorder: _Recorder
+) -> None:
+    result = await call_tool(
+        "create_meeting_agenda_item", {"meeting_id": 4, "title": "Item", "expect_display_id": "A-1", "confirm": True}
+    )
+
+    assert result.is_error is True
+    assert "expect_display_id was given but work_package_id names no work package" in _text(result)
+    assert recorder.requests == []

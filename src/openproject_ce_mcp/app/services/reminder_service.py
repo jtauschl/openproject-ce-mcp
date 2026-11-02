@@ -51,7 +51,7 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..version_gate import call_version_gated
-from ._work_package_presentation import present_target
+from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -149,11 +149,16 @@ class ReminderService:
         work_package_id: int | str,
         remind_at: str,
         note: str | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> ReminderWriteResult:
-        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved, target = await resolved_target(
+            work_package_id,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_display_id,
+        )
         resolved_id = resolved.id
-        target = present_target(resolved.payload, settings=self._settings)
         hidden_fields.ensure_field_writable("reminder", "remind_at", settings=self._settings)
         payload: dict = {"remindAt": remind_at}
         if note is not None:

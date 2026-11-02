@@ -62,13 +62,9 @@ def test_list_reminders_schema() -> None:
 
 def test_create_work_package_reminder_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_work_package_reminder"]
-    assert tool.description == (
-        "Create a reminder on a work package.\n"
-        "\n"
-        "`remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one\n"
-        "active reminder per work package is allowed; creating a second one fails.\n"
-        "Requires OpenProject 16.1+.\n"
-        "The result names the work package the reference resolved to in `target`.\n"
+    assert (
+        tool.description
+        == "Create a reminder on a work package.\n\n`remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one\nactive reminder per work package is allowed; creating a second one fails.\nRequires OpenProject 16.1+.\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -80,6 +76,12 @@ def test_create_work_package_reminder_schema() -> None:
             },
             "remind_at": {"title": "Remind At", "type": "string"},
             "note": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Note"},
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -93,7 +95,13 @@ def test_create_work_package_reminder_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "remind_at", "note", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "work_package_id",
+        "remind_at",
+        "note",
+        "expect_display_id",
+        "confirm",
+    ]
 
 
 def test_update_reminder_schema() -> None:

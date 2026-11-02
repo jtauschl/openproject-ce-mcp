@@ -45,6 +45,11 @@ OptionalWorkPackageRef = Annotated[int | str | None, Field(description=_WORK_PAC
 _EXPECT_DISPLAY_ID = 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.'
 ExpectDisplayId = Annotated[str | None, Field(description=_EXPECT_DISPLAY_ID)]
 
+_EXPECT_RELATED_DISPLAY_ID = (
+    'Display id of the related work package you mean, e.g. "PROJ-51"; see the server instructions.'
+)
+ExpectRelatedDisplayId = Annotated[str | None, Field(description=_EXPECT_RELATED_DISPLAY_ID)]
+
 _EXPECT_PARENT_DISPLAY_ID = 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.'
 ExpectParentDisplayId = Annotated[str | None, Field(description=_EXPECT_PARENT_DISPLAY_ID)]
 

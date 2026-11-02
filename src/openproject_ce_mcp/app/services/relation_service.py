@@ -76,7 +76,7 @@ from ...models import (
 from ..api_href import api_href as _api_href
 from ..errors import OpenProjectServerError
 from ..pagination import effective_limit, fetch_bounded_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, hidden_fields, work_package_target_policy
 from ..policies import scope as scope_policy
 from ..ports.relation_api import RelationApi, RelationRecord
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
@@ -86,7 +86,9 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
-from ._work_package_presentation import present_target
+from ._work_package_target import check_target, resolved_target
+
+_EXPECT_RELATED = "expect_related_display_id"
 
 # Mirrors OpenProject's own Relation::TYPES hash (app/models/relation.rb):
 # for a relation stored with this type, "from"-side is read as the type
@@ -304,20 +306,34 @@ class RelationService:
         relation_type: str,
         description: str | None = None,
         lag: int | None = None,
+        expect_display_id: str | None = None,
+        expect_related_display_id: str | None = None,
         confirm: bool = False,
     ) -> RelationWriteResult:
-        _validate_work_package_ref(work_package_id)
-        related_record = await self._resolve_work_package_record(related_to_work_package_id, write=True)
+        source_ref = _validate_work_package_ref(work_package_id)
+        work_package_target_policy.ensure_expectation_usable(expect_display_id, settings=self._settings)
+        related_record, related_target = await resolved_target(
+            related_to_work_package_id,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_related_display_id,
+            parameter=_EXPECT_RELATED,
+        )
         related_numeric_id = related_record.id
-        work_package = await self._work_package_lookup_api.get(str(work_package_id))
+        work_package = await self._work_package_lookup_api.get(source_ref)
         scope_policy.ensure_project_write_link_allowed(
             work_package.get("_links", {}).get("project"),
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
         source_numeric_id = int(work_package["id"])
-        target = present_target(work_package, settings=self._settings)
-        related_target = present_target(related_record.payload, settings=self._settings)
+        target = await check_target(
+            source_ref,
+            payload=work_package,
+            resolve_expected=lambda expected: self._resolve_work_package_record(expected, write=True),
+            settings=self._settings,
+            expect_display_id=expect_display_id,
+        )
         hidden_fields.ensure_field_writable("relation", "type", settings=self._settings)
         payload: dict[str, Any] = {
             "type": relation_type,
@@ -345,7 +361,7 @@ class RelationService:
                 related_target=related_target,
             )
         access.ensure_write_enabled("work_package", settings=self._settings)
-        record = await self._api.create(str(work_package_id), payload)
+        record = await self._api.create(source_ref, payload)
         result = self._stamp(record.summary())
         return RelationWriteResult(
             action="create",

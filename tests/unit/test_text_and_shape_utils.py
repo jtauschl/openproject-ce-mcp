@@ -479,6 +479,7 @@ def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope():
             resolve_project_ref=None,
             resolve_project_id=None,
             resolve_principal_id=None,
+            resolve_work_package_record=None,
             api_prefix="/api/v3/",
         )
 

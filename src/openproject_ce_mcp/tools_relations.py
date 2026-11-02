@@ -30,9 +30,18 @@ from .models import (
     RelationUpdateResult,
     RelationWriteResult,
 )
-from .tool_params import Confirm, Limit, Offset, WorkPackageRef, select_field
+from .tool_params import (
+    Confirm,
+    ExpectDisplayId,
+    ExpectRelatedDisplayId,
+    Limit,
+    Offset,
+    WorkPackageRef,
+    select_field,
+)
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
+    _validate_expect_display_id,
     _validate_limit,
     _validate_offset,
     _validate_optional_non_negative_int,
@@ -53,6 +62,8 @@ async def create_work_package_relation(
     relation_type: str,
     description: str | None = None,
     lag: int | None = None,
+    expect_display_id: ExpectDisplayId = None,
+    expect_related_display_id: ExpectRelatedDisplayId = None,
     confirm: Confirm = False,
 ) -> RelationWriteResult:
     """Create a relation between work packages.
@@ -69,10 +80,14 @@ async def create_work_package_relation(
     assuming they match what you requested.
     The result names the work packages the two references resolved to in `target` (work_package_id)
     and `related_target` (related_to_work_package_id).
+    expect_display_id and expect_related_display_id name the tickets you mean for the two references and make a
+    mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_related_id = _validate_work_package_ref(related_to_work_package_id, field_name="related_to_work_package_id")
+    safe_expect = _validate_expect_display_id(expect_display_id)
+    safe_expect_related = _validate_expect_display_id(expect_related_display_id, field_name="expect_related_display_id")
     safe_relation_type = _validate_relation_type(relation_type)
     safe_description = _validate_optional_text(description, field_name="description", max_length=255)
     safe_lag = _validate_optional_non_negative_int(lag, field_name="lag")
@@ -83,6 +98,8 @@ async def create_work_package_relation(
             relation_type=safe_relation_type,
             description=safe_description,
             lag=safe_lag,
+            expect_display_id=safe_expect,
+            expect_related_display_id=safe_expect_related,
             confirm=confirm,
         )
     )

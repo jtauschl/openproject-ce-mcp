@@ -50,6 +50,7 @@ from openproject_ce_mcp.client import (
     PermissionDeniedError,
 )
 
+from ._write_ref import write_ref
 from .conftest import _run_rails_script, disposable_project_identifier
 
 pytestmark = pytest.mark.integration
@@ -403,7 +404,7 @@ async def test_meeting_agenda_item_links_to_work_package(
         create_result = await client.meeting_agenda_item.create(
             meeting_id=meeting_id,
             title="[integration-test] linked agenda item",
-            work_package_id=work_package_id,
+            work_package_id=await write_ref(client, work_package_id),
             confirm=True,
         )
     except NotFoundError:
@@ -456,7 +457,7 @@ async def test_work_package_agenda_items_follow_the_read_scope_of_their_meeting(
         item = await everywhere.meeting_agenda_item.create(
             meeting_id=meeting.meeting_id,
             title="[integration-test] cross-project item",
-            work_package_id=work_package.work_package_id,
+            work_package_id=await write_ref(everywhere, work_package.work_package_id),
             confirm=True,
         )
     except NotFoundError:

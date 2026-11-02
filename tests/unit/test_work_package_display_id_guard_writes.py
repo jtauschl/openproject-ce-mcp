@@ -27,11 +27,7 @@ from _work_package_write_harness import (
 from openproject_ce_mcp.presentation import _to_payload
 from openproject_ce_mcp.tool_errors import ToolCallError, ToolInputError
 
-GUARDED = (
-    "create_work_package_attachment",
-    "set_work_package_watcher_add",
-    "set_work_package_watcher_remove",
-)
+GUARDED = tuple(TOOLS)
 tool_param = pytest.mark.parametrize("call", [TOOLS[name] for name in GUARDED], ids=list(GUARDED))
 confirm_param = pytest.mark.parametrize("confirm", [False, True], ids=["preview", "confirm"])
 

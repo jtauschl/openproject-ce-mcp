@@ -81,6 +81,14 @@ to install and discover.
   `expect_parent_display_id` on `create_work_package`, `create_subtask`,
   `update_work_package` and each item of `bulk_create_work_packages` and
   `bulk_update_work_packages`.
+  The other writes that take a work package follow the same rule through
+  `expect_display_id`: `create_work_package_relation` (its related work
+  package has `expect_related_display_id`), `create_work_package_reminder`,
+  `create_work_package_wiki_link`, `delete_work_package_wiki_link`,
+  `create_time_entry`, `create_time_entry_until`, `create_meeting_agenda_item`,
+  `update_meeting_agenda_item`, `create_meeting_outcome` and
+  `update_meeting_outcome`. An expectation given without a work package to
+  check is refused.
 - A rejected status change on `update_work_package` and
   `bulk_update_work_packages` now lists, in its `status` validation error, the
   status values OpenProject's update form offers for that work package,

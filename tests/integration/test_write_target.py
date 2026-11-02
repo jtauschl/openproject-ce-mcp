@@ -65,6 +65,7 @@ async def test_a_confirmed_comment_and_a_relation_preview_name_their_work_packag
     relation = await client.relation.create(
         work_package_id=source.id,
         related_to_work_package_id=related.display_id,
+        expect_display_id=source.display_id if has_semantic_display_id(source.display_id) else None,
         relation_type="relates",
         confirm=False,
     )

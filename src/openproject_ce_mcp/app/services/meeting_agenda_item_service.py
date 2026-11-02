@@ -43,14 +43,14 @@ from ...models import (
 from ..api_href import api_href as _api_href
 from ..errors import NotFoundError
 from ..pagination import clamp_limit, paginate_client
-from ..policies import access, hidden_fields
+from ..policies import access, hidden_fields, work_package_target_policy
 from ..policies import scope as scope_policy
 from ..ports.meeting_agenda_item_api import MeetingAgendaItemApi, MeetingAgendaItemRecord
 from ..ports.meeting_api import MeetingApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
-from ._work_package_presentation import present_target
+from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -229,8 +229,12 @@ class MeetingAgendaItemService:
         item_type: str | None = None,
         work_package_id: int | str | None = None,
         meeting_section_id: int | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> MeetingAgendaItemWriteResult:
+        work_package_target_policy.ensure_expectation_has_reference(
+            expect_display_id, reference_given=work_package_id is not None
+        )
         await self._ensure_meeting_allowed(meeting_id, write=True)
         resolved_work_package_id: int | None = None
         target = None
@@ -242,9 +246,13 @@ class MeetingAgendaItemService:
             # the meeting but only READ access to the work package's project
             # must not be able to link that work package into a meeting they
             # can write to.
-            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved, target = await resolved_target(
+                work_package_id,
+                resolve=self._resolve_work_package_record,
+                settings=self._settings,
+                expect_display_id=expect_display_id,
+            )
             resolved_work_package_id = resolved.id
-            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             meeting_id=meeting_id,
             title=title,
@@ -286,8 +294,12 @@ class MeetingAgendaItemService:
         item_type: str | None = None,
         work_package_id: int | str | None = None,
         meeting_section_id: int | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> MeetingAgendaItemWriteResult:
+        work_package_target_policy.ensure_expectation_has_reference(
+            expect_display_id, reference_given=work_package_id is not None
+        )
         current = await call_version_gated(
             lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.6"
         )
@@ -301,9 +313,13 @@ class MeetingAgendaItemService:
         target = None
         if work_package_id is not None:
             # write=True: same reasoning as create() above.
-            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved, target = await resolved_target(
+                work_package_id,
+                resolve=self._resolve_work_package_record,
+                settings=self._settings,
+                expect_display_id=expect_display_id,
+            )
             resolved_work_package_id = resolved.id
-            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             meeting_id=None,
             title=title,

@@ -12,6 +12,8 @@ import pytest
 from openproject_ce_mcp import tools
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
+from ._write_ref import write_ref
+
 pytestmark = pytest.mark.integration
 
 
@@ -74,7 +76,7 @@ async def test_list_time_entries(
         activity=activity,
         hours="PT1H",
         spent_on=datetime.date.today().isoformat(),
-        work_package_id=wp_id,
+        work_package_id=await write_ref(client, wp_id),
         confirm=True,
     )
     assert result.ready, result.validation_errors
@@ -99,7 +101,7 @@ async def test_list_time_entries_filters_by_the_id_of_the_user(
         activity=activity,
         hours="PT1H",
         spent_on=datetime.date.today().isoformat(),
-        work_package_id=wp_result.work_package_id,
+        work_package_id=await write_ref(client, wp_result.work_package_id),
         confirm=True,
     )
     assert created.ready, created.validation_errors
@@ -128,7 +130,7 @@ async def test_create_get_update_delete_time_entry(
         hours="PT1H30M",
         spent_on=spent_on,
         project=test_project,
-        work_package_id=wp_id,
+        work_package_id=await write_ref(client, wp_id),
         comment="Integration test time entry",
         confirm=True,
     )
@@ -196,7 +198,7 @@ async def test_create_get_update_time_entry_until(
         end_time=f"{spent_on}T10:30:00Z",
         spent_on=spent_on,
         project=test_project,
-        work_package_id=wp_id,
+        work_package_id=await write_ref(client, wp_id),
         comment="Integration test time entry (until)",
         confirm=True,
     )
@@ -250,7 +252,7 @@ async def test_create_time_entry_until_rejects_end_time_before_start_time(
             end_time=f"{spent_on}T09:00:00Z",
             spent_on=spent_on,
             project=test_project,
-            work_package_id=wp_id,
+            work_package_id=await write_ref(client, wp_id),
             confirm=False,
         )
 
@@ -292,7 +294,7 @@ async def test_create_update_delete_time_entry_denied_outside_write_allowlist(
     with pytest.raises(PermissionDeniedError):
         await denied_client.time_entry.create(
             project=test_project,
-            work_package_id=wp_id,
+            work_package_id=await write_ref(client, wp_id),
             activity=activity,
             hours="PT1H",
             spent_on=spent_on,
@@ -300,7 +302,12 @@ async def test_create_update_delete_time_entry_denied_outside_write_allowlist(
         )
 
     existing = await client.time_entry.create(
-        project=test_project, work_package_id=wp_id, activity=activity, hours="PT1H", spent_on=spent_on, confirm=True
+        project=test_project,
+        work_package_id=await write_ref(client, wp_id),
+        activity=activity,
+        hours="PT1H",
+        spent_on=spent_on,
+        confirm=True,
     )
     assert existing.ready, existing.validation_errors
     te_id = existing.time_entry_id
@@ -366,7 +373,7 @@ async def test_create_time_entry_with_semantic_work_package_ref(
         activity=activity,
         hours="PT1H",
         spent_on=spent_on,
-        work_package_id=display_id,
+        work_package_id=await write_ref(client, display_id),
         confirm=True,
     )
     assert result.ready, result.validation_errors
@@ -414,7 +421,7 @@ async def test_create_time_entry_succeeds_for_log_own_time_only_role(
         activity=activity,
         hours="PT1H",
         spent_on=spent_on,
-        work_package_id=wp_id,
+        work_package_id=await write_ref(client, wp_id),
         confirm=True,
     )
     assert result.ready, result.validation_errors

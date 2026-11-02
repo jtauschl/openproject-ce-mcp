@@ -33,11 +33,20 @@ from .models import (
     TimeEntrySummary,
     TimeEntryWriteResult,
 )
-from .tool_params import Confirm, Limit, Offset, OptionalProjectRef, OptionalWorkPackageRef, select_field
+from .tool_params import (
+    Confirm,
+    ExpectDisplayId,
+    Limit,
+    Offset,
+    OptionalProjectRef,
+    OptionalWorkPackageRef,
+    select_field,
+)
 from .tool_types import IdOrName
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _require_at_least_one,
+    _validate_expect_display_id,
     _validate_limit,
     _validate_offset,
     _validate_optional_date,
@@ -147,6 +156,7 @@ async def create_time_entry(
     start_time: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> TimeEntryWriteResult:
     """Create a time entry.
@@ -156,7 +166,8 @@ async def create_time_entry(
     tracking of start and end times"; ignored otherwise. No end_time parameter --
     OpenProject derives it read-only from start_time + hours. Use
     create_time_entry_until to specify an end time instead of hours directly.
-    When a work package is given, the result names the work package it resolved to in `target`.
+    When a work package is given, the result names the work package it resolved to in `target`, and
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_ref(activity, field_name="activity", max_length=100)
@@ -164,6 +175,7 @@ async def create_time_entry(
     safe_spent_on = _validate_required_date(spent_on, field_name="spent_on")
     safe_project = _validate_optional_project_ref(project)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_user = _validate_optional_user_or_principal_ref(user, field_name="user")
     safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=None)
@@ -180,6 +192,7 @@ async def create_time_entry(
             start_time=safe_start_time,
             comment=safe_comment,
             ongoing=ongoing,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )
@@ -249,6 +262,7 @@ async def create_time_entry_until(
     work_package_id: OptionalWorkPackageRef = None,
     user: IdOrName | None = None,
     comment: str | None = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> TimeEntryWriteResult:
     """Create a time entry by start/end time instead of a duration.
@@ -259,7 +273,8 @@ async def create_time_entry_until(
     start_time. There is no ongoing parameter here -- a time entry with a
     known end time is complete, not still running; use create_time_entry for
     an ongoing entry.
-    When a work package is given, the result names the work package it resolved to in `target`.
+    When a work package is given, the result names the work package it resolved to in `target`, and
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_ref(activity, field_name="activity", max_length=100)
@@ -269,6 +284,7 @@ async def create_time_entry_until(
     safe_spent_on = _validate_required_date(spent_on, field_name="spent_on")
     safe_project = _validate_optional_project_ref(project)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_user = _validate_optional_user_or_principal_ref(user, field_name="user")
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=None)
     if safe_project is None and safe_work_package_id is None:
@@ -283,6 +299,7 @@ async def create_time_entry_until(
             spent_on=safe_spent_on,
             start_time=safe_start_time,
             comment=safe_comment,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )

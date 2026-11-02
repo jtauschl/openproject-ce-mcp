@@ -35,14 +35,14 @@ from ...models import (
 from ..api_href import api_href as _api_href
 from ..errors import NotFoundError
 from ..pagination import clamp_limit, paginate_client
-from ..policies import access, hidden_fields
+from ..policies import access, hidden_fields, work_package_target_policy
 from ..ports.meeting_agenda_item_api import MeetingAgendaItemApi
 from ..ports.meeting_api import MeetingApi
 from ..ports.meeting_outcome_api import MeetingOutcomeApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
-from ._work_package_presentation import present_target
+from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -179,8 +179,12 @@ class MeetingOutcomeService:
         kind: str,
         notes: str | None = None,
         work_package_id: int | str | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> MeetingOutcomeWriteResult:
+        work_package_target_policy.ensure_expectation_has_reference(
+            expect_display_id, reference_given=work_package_id is not None
+        )
         await self._ensure_via_agenda_item(agenda_item_id, write=True)
         resolved_work_package_id: int | None = None
         target = None
@@ -193,9 +197,13 @@ class MeetingOutcomeService:
             # link an arbitrary work package outside OPENPROJECT_WRITE_
             # PROJECTS -- this resolver call was entirely missing before,
             # not just using the wrong write= value.
-            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved, target = await resolved_target(
+                work_package_id,
+                resolve=self._resolve_work_package_record,
+                settings=self._settings,
+                expect_display_id=expect_display_id,
+            )
             resolved_work_package_id = resolved.id
-            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             agenda_item_id=agenda_item_id, kind=kind, notes=notes, work_package_id=resolved_work_package_id
         )
@@ -228,8 +236,12 @@ class MeetingOutcomeService:
         kind: str | None = None,
         notes: str | None = None,
         work_package_id: int | str | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> MeetingOutcomeWriteResult:
+        work_package_target_policy.ensure_expectation_has_reference(
+            expect_display_id, reference_given=work_package_id is not None
+        )
         current = await call_version_gated(lambda: self._api.get(outcome_id), feature="Meeting outcomes", floor="17.6")
         agenda_item_id = current.summary.meeting_agenda_item_id
         await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
@@ -237,9 +249,13 @@ class MeetingOutcomeService:
         target = None
         if work_package_id is not None:
             # write=True: same reasoning as create() above.
-            resolved = await self._resolve_work_package_record(work_package_id, write=True)
+            resolved, target = await resolved_target(
+                work_package_id,
+                resolve=self._resolve_work_package_record,
+                settings=self._settings,
+                expect_display_id=expect_display_id,
+            )
             resolved_work_package_id = resolved.id
-            target = present_target(resolved.payload, settings=self._settings)
         payload = await self._build_write_payload(
             agenda_item_id=None, kind=kind, notes=notes, work_package_id=resolved_work_package_id
         )

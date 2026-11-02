@@ -46,10 +46,20 @@ from .models import (
     WikiPageLinkListResult,
     WikiPageLinkWriteResult,
 )
-from .tool_params import Confirm, Limit, Offset, OptionalProjectRef, ProjectRef, WorkPackageRef, select_field
+from .tool_params import (
+    Confirm,
+    ExpectDisplayId,
+    Limit,
+    Offset,
+    OptionalProjectRef,
+    ProjectRef,
+    WorkPackageRef,
+    select_field,
+)
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _require_at_least_one,
+    _validate_expect_display_id,
     _validate_limit,
     _validate_list_query_params,
     _validate_offset,
@@ -341,6 +351,7 @@ async def create_work_package_wiki_link(
     work_package_id: WorkPackageRef,
     identifier: str,
     provider: str,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> WikiPageLinkWriteResult:
     """Create a link from a work package to a wiki page.
@@ -354,14 +365,22 @@ async def create_work_package_wiki_link(
     while none of a work package's links resolves to a page.
     provider: the wiki provider's universal identifier (e.g. "internal" for
     OpenProject's built-in wiki).
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_identifier = _validate_required_query(identifier, field_name="identifier", max_length=255)
     safe_provider = _validate_required_query(provider, field_name="provider", max_length=255)
     return await _run_tool(
-        client.wiki_page_link.create(safe_id, identifier=safe_identifier, provider=safe_provider, confirm=confirm)
+        client.wiki_page_link.create(
+            safe_id,
+            identifier=safe_identifier,
+            provider=safe_provider,
+            expect_display_id=safe_expect,
+            confirm=confirm,
+        )
     )
 
 
@@ -370,6 +389,7 @@ async def delete_work_package_wiki_link(
     ctx: Context,
     work_package_id: WorkPackageRef,
     link_id: int,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> WikiPageLinkWriteResult:
     """Delete a work package's wiki page link; this cannot be undone.
@@ -395,9 +415,13 @@ async def delete_work_package_wiki_link(
     work_package_id must be the work package the link belongs to; OpenProject has no single GET for a link,
     so the delete is authorized against that work package's project.
     link_id: the wiki page link's own id, from list_work_package_wiki_links.
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_link_id = _validate_positive_int(link_id, field_name="link_id")
-    return await _run_tool(client.wiki_page_link.delete(safe_wp_id, safe_link_id, confirm=confirm))
+    safe_expect = _validate_expect_display_id(expect_display_id)
+    return await _run_tool(
+        client.wiki_page_link.delete(safe_wp_id, safe_link_id, expect_display_id=safe_expect, confirm=confirm)
+    )

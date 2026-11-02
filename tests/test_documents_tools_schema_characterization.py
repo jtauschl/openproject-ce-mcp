@@ -718,7 +718,7 @@ def test_create_work_package_wiki_link_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_work_package_wiki_link"]
     assert (
         tool.description
-        == "Create a link from a work package to a wiki page.\n\nRequires OpenProject 17.7+; on an older server this returns a\n[RESOURCE_NOT_FOUND] naming the required version.\n\nidentifier: the target wiki page's identifier at its provider; for the\ninternal wiki, the page's numeric id (the wiki_page_id of get_wiki_page).\nOpenProject accepts any string, but list_work_package_wiki_links fails\nwhile none of a work package's links resolves to a page.\nprovider: the wiki provider's universal identifier (e.g. \"internal\" for\nOpenProject's built-in wiki).\nThe result names the work package the reference resolved to in `target`.\n"
+        == "Create a link from a work package to a wiki page.\n\nRequires OpenProject 17.7+; on an older server this returns a\n[RESOURCE_NOT_FOUND] naming the required version.\n\nidentifier: the target wiki page's identifier at its provider; for the\ninternal wiki, the page's numeric id (the wiki_page_id of get_wiki_page).\nOpenProject accepts any string, but list_work_package_wiki_links fails\nwhile none of a work package's links resolves to a page.\nprovider: the wiki provider's universal identifier (e.g. \"internal\" for\nOpenProject's built-in wiki).\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -730,6 +730,12 @@ def test_create_work_package_wiki_link_schema() -> None:
             },
             "identifier": {"title": "Identifier", "type": "string"},
             "provider": {"title": "Provider", "type": "string"},
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -743,14 +749,20 @@ def test_create_work_package_wiki_link_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "identifier", "provider", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "work_package_id",
+        "identifier",
+        "provider",
+        "expect_display_id",
+        "confirm",
+    ]
 
 
 def test_delete_work_package_wiki_link_schema() -> None:
     tool = _tools(create_app(_make_settings()))["delete_work_package_wiki_link"]
     assert (
         tool.description
-        == "Delete a work package's wiki page link; this cannot be undone.\n\nRequires OpenProject 17.6+. On 17.4 or older this returns a\n[RESOURCE_NOT_FOUND] naming 17.6; on 17.5 the link check below usually\nfails first with an [OPENPROJECT_UNAVAILABLE].\n\nThis tool lists the work package's links first to verify that link_id\nbelongs to work_package_id (an authorization check), so it fails with an\n[OPENPROJECT_UNAVAILABLE] whenever list_work_package_wiki_links does (see\nthere).\n\nOnly relation links (link_type \"relation\") can be deleted. An inline\nlink comes from a wiki link in the work package's description or from a\nwiki page that mentions the work package; this tool rejects it with a\n[VALIDATION_FAILED], and the link goes away only when that text changes.\nDeleting needs the \"Manage wiki page links\" permission in the work\npackage's project; without it OpenProject answers 404, which the tool\nreports as a [RESOURCE_NOT_FOUND] naming 17.6, not as\n[OPENPROJECT_PERMISSION_DENIED].\n\nwork_package_id must be the work package the link belongs to; OpenProject has no single GET for a link,\nso the delete is authorized against that work package's project.\nlink_id: the wiki page link's own id, from list_work_package_wiki_links.\nThe result names the work package the reference resolved to in `target`.\n"
+        == "Delete a work package's wiki page link; this cannot be undone.\n\nRequires OpenProject 17.6+. On 17.4 or older this returns a\n[RESOURCE_NOT_FOUND] naming 17.6; on 17.5 the link check below usually\nfails first with an [OPENPROJECT_UNAVAILABLE].\n\nThis tool lists the work package's links first to verify that link_id\nbelongs to work_package_id (an authorization check), so it fails with an\n[OPENPROJECT_UNAVAILABLE] whenever list_work_package_wiki_links does (see\nthere).\n\nOnly relation links (link_type \"relation\") can be deleted. An inline\nlink comes from a wiki link in the work package's description or from a\nwiki page that mentions the work package; this tool rejects it with a\n[VALIDATION_FAILED], and the link goes away only when that text changes.\nDeleting needs the \"Manage wiki page links\" permission in the work\npackage's project; without it OpenProject answers 404, which the tool\nreports as a [RESOURCE_NOT_FOUND] naming 17.6, not as\n[OPENPROJECT_PERMISSION_DENIED].\n\nwork_package_id must be the work package the link belongs to; OpenProject has no single GET for a link,\nso the delete is authorized against that work package's project.\nlink_id: the wiki page link's own id, from list_work_package_wiki_links.\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -761,6 +773,12 @@ def test_delete_work_package_wiki_link_schema() -> None:
                 "title": "Work Package Id",
             },
             "link_id": {"title": "Link Id", "type": "integer"},
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -774,4 +792,4 @@ def test_delete_work_package_wiki_link_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "link_id", "confirm"]
+    assert list(tool.parameters["properties"]) == ["work_package_id", "link_id", "expect_display_id", "confirm"]

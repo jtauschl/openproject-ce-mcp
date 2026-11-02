@@ -128,6 +128,10 @@ _EXPECTED_DISPLAY_ID = (
 
 _EXPECTED_PARENT_DISPLAY_ID = "a display id such as PROJ-51 naming the parent; a bare number is the internal id"
 
+_EXPECTED_RELATED_DISPLAY_ID = (
+    "a display id such as PROJ-51 naming the related work package; a bare number is the internal id"
+)
+
 NAME_ONLY: dict[tuple[str, str], str] = {
     ("update_work_package", "expect_display_id"): _EXPECTED_DISPLAY_ID,
     ("delete_work_package", "expect_display_id"): _EXPECTED_DISPLAY_ID,
@@ -137,6 +141,17 @@ NAME_ONLY: dict[tuple[str, str], str] = {
     ("create_work_package", "expect_parent_display_id"): _EXPECTED_PARENT_DISPLAY_ID,
     ("create_subtask", "expect_parent_display_id"): _EXPECTED_PARENT_DISPLAY_ID,
     ("update_work_package", "expect_parent_display_id"): _EXPECTED_PARENT_DISPLAY_ID,
+    ("create_work_package_relation", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_work_package_reminder", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_work_package_wiki_link", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("delete_work_package_wiki_link", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_time_entry", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_time_entry_until", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_meeting_agenda_item", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("update_meeting_agenda_item", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_meeting_outcome", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("update_meeting_outcome", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_work_package_relation", "expect_related_display_id"): _EXPECTED_RELATED_DISPLAY_ID,
     ("copy_project", "identifier"): _NEW_IDENTIFIER,
     ("copy_project", "status"): _PROJECT_STATUS,
     ("create_project", "identifier"): _NEW_IDENTIFIER,

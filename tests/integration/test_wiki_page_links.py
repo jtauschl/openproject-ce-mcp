@@ -69,7 +69,7 @@ async def test_create_list_and_delete_a_resolving_wiki_page_link(
 
     try:
         create_result = await client.wiki_page_link.create(
-            work_package_id, identifier=identifier, provider=_PROVIDER, confirm=True
+            await write_ref(client, work_package_id), identifier=identifier, provider=_PROVIDER, confirm=True
         )
     except NotFoundError:
         pytest.skip("POST work_packages/{id}/wiki_page_links not available (requires OpenProject 17.7+)")
@@ -81,7 +81,9 @@ async def test_create_list_and_delete_a_resolving_wiki_page_link(
         listed = await client.wiki_page_link.list_for_work_package(work_package_id)
         assert [(link.id, link.identifier) for link in listed.results] == [(link_id, identifier)]
 
-        delete_result = await client.wiki_page_link.delete(work_package_id, link_id, confirm=True)
+        delete_result = await client.wiki_page_link.delete(
+            await write_ref(client, work_package_id), link_id, confirm=True
+        )
         deleted = True
         assert delete_result.state == "confirmed"
         assert (await client.wiki_page_link.list_for_work_package(work_package_id)).results == []
@@ -117,7 +119,7 @@ async def test_delete_rejects_an_inline_link_from_the_work_package_description(
         link_id = listed.results[0].id
 
         with pytest.raises(InvalidInputError) as exc_info:
-            await client.wiki_page_link.delete(work_package_id, link_id, confirm=True)
+            await client.wiki_page_link.delete(await write_ref(client, work_package_id), link_id, confirm=True)
 
         assert str(exc_info.value) == (
             f"Wiki page link {link_id} on work package {work_package_id} is an inline link: OpenProject "
@@ -148,7 +150,7 @@ async def test_create_wiki_page_link(client: OpenProjectClient, test_project: st
 
     try:
         create_result = await client.wiki_page_link.create(
-            work_package_id, identifier="wiki", provider=_PROVIDER, confirm=True
+            await write_ref(client, work_package_id), identifier="wiki", provider=_PROVIDER, confirm=True
         )
     except NotFoundError:
         pytest.skip("POST work_packages/{id}/wiki_page_links not available (requires OpenProject 17.7+)")
@@ -180,7 +182,7 @@ async def test_create_wiki_page_link_preview_without_confirm_does_not_write(
     # any API call) -- no 17.7+ skip needed here, unlike the confirmed-create
     # test above.
     preview_result = await client.wiki_page_link.create(
-        work_package_id, identifier="wiki", provider=_PROVIDER, confirm=False
+        await write_ref(client, work_package_id), identifier="wiki", provider=_PROVIDER, confirm=False
     )
     assert preview_result.state == "preview"
     assert preview_result.result is None
@@ -221,7 +223,7 @@ async def test_create_wiki_page_link_denies_work_package_outside_write_allowlist
 
     with pytest.raises(PermissionDeniedError):
         await restricted_client.wiki_page_link.create(
-            work_package_id, identifier="wiki", provider=_PROVIDER, confirm=True
+            await write_ref(client, work_package_id), identifier="wiki", provider=_PROVIDER, confirm=True
         )
 
 
@@ -247,7 +249,7 @@ async def test_list_work_package_wiki_links_with_only_an_unresolvable_link(
 
     try:
         create_result = await client.wiki_page_link.create(
-            work_package_id, identifier="wiki", provider=_PROVIDER, confirm=True
+            await write_ref(client, work_package_id), identifier="wiki", provider=_PROVIDER, confirm=True
         )
     except NotFoundError:
         pytest.skip("POST work_packages/{id}/wiki_page_links not available (requires OpenProject 17.7+)")

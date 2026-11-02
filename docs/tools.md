@@ -43,6 +43,17 @@ All mutating tools follow the same guarded write pattern by default:
   to repeat the call with. `update_work_package` checks its own
   `work_package_id` and its parent independently. An expectation with no parent
   to check (none given, or `parent` set to `none`) is refused.
+- The remaining writes that take a work package apply the same rule through
+  `expect_display_id`: `create_work_package_relation`,
+  `create_work_package_reminder`, `create_work_package_wiki_link`,
+  `delete_work_package_wiki_link`, `create_time_entry`,
+  `create_time_entry_until`, `create_meeting_agenda_item`,
+  `update_meeting_agenda_item`, `create_meeting_outcome` and
+  `update_meeting_outcome`. `create_work_package_relation` guards its source
+  with `expect_display_id` and its related work package with
+  `expect_related_display_id`, each independently. A tool whose work package is
+  optional (time entries, agenda items, outcomes) refuses an expectation given
+  without a work package.
 
 Every mutation requires explicit `confirm=true` — there is no way to skip the
 preview step.
