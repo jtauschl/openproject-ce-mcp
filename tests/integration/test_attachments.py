@@ -9,6 +9,8 @@ import pytest
 
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
+from ._write_ref import write_ref
+
 pytestmark = pytest.mark.integration
 
 
@@ -32,7 +34,7 @@ async def test_create_attachment_rejects_hidden_file_name_field(
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_ATTACHMENT_FIELDS"):
         await hidden_client.attachment.create(
-            work_package_id=result.work_package_id,
+            work_package_id=await write_ref(client, result.work_package_id),
             file_path="/nonexistent/path/does-not-matter.txt",
             confirm=False,
         )
@@ -66,7 +68,7 @@ async def test_list_work_package_attachments_and_delete_attachment(
     rooted_client = await _attachment_capable_client(client, open_client)
 
     created = await rooted_client.attachment.create(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         file_path="tests/fixtures/spec.md",
         description="[integration-test] attachment",
         confirm=True,
@@ -106,7 +108,7 @@ async def test_delete_attachment_denied_outside_write_allowlist(
     rooted_client = await _attachment_capable_client(client, open_client)
 
     created = await rooted_client.attachment.create(
-        work_package_id=result.work_package_id,
+        work_package_id=await write_ref(client, result.work_package_id),
         file_path="tests/fixtures/spec.md",
         description="[integration-test] attachment denied",
         confirm=True,
@@ -127,7 +129,7 @@ async def test_delete_attachment_denied_outside_write_allowlist(
 
 async def _upload(rooted_client: OpenProjectClient, work_package_id: int, file_path: str) -> int:
     created = await rooted_client.attachment.create(
-        work_package_id=work_package_id,
+        work_package_id=await write_ref(rooted_client, work_package_id),
         file_path=file_path,
         description="[integration-test] content",
         confirm=True,

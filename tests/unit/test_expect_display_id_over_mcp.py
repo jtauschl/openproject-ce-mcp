@@ -19,7 +19,7 @@ from mcp import types
 from mcp.client import Client
 
 import openproject_ce_mcp.tools_runtime as tools_runtime
-from openproject_ce_mcp import tools, tools_work_packages
+from openproject_ce_mcp import tools, tools_attachments, tools_watchers, tools_work_packages
 from openproject_ce_mcp.strict_mcpserver import StrictMCPServer
 
 CallTool = Callable[[str, dict], Awaitable[types.CallToolResult]]
@@ -53,7 +53,7 @@ def recorder() -> _Recorder:
 
 
 @pytest.fixture
-def call_tool(recorder: _Recorder) -> CallTool:
+def server(recorder: _Recorder) -> StrictMCPServer:
     settings = dataclasses.replace(make_settings(), enable_work_package_write=True)
 
     @asynccontextmanager
@@ -70,11 +70,17 @@ def call_tool(recorder: _Recorder) -> CallTool:
         names=[
             tools_work_packages.update_work_package.__name__,
             tools_work_packages.bulk_update_work_packages.__name__,
+            tools_watchers.set_work_package_watcher.__name__,
+            tools_attachments.create_work_package_attachment.__name__,
         ],
         hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
+    return server
 
+
+@pytest.fixture
+def call_tool(server: StrictMCPServer, recorder: _Recorder) -> CallTool:
     async def call(name: str, arguments: dict) -> types.CallToolResult:
         async with Client(server, mode="legacy") as client:
             recorder.requests.clear()
@@ -153,4 +159,47 @@ async def test_a_bulk_item_rejects_an_unknown_key_beside_expect_display_id(
 
     assert result.is_error is True
     assert "expect_display_ids" in _text(result)
+    assert recorder.requests == []
+
+
+GUARDED_BY_EXPECT_DISPLAY_ID = ("set_work_package_watcher", "create_work_package_attachment")
+
+
+@pytest.mark.parametrize("name", GUARDED_BY_EXPECT_DISPLAY_ID)
+async def test_the_schema_offers_an_optional_expectation_of_a_string_or_null(
+    server: StrictMCPServer, name: str
+) -> None:
+    async with Client(server, mode="legacy") as client:
+        listed = {tool.name: tool for tool in (await client.list_tools()).tools}
+
+    schema = listed[name].input_schema
+    parameter = schema["properties"]["expect_display_id"]
+    assert {branch["type"] for branch in parameter["anyOf"]} == {"string", "null"}
+    assert parameter["description"]
+    assert "expect_display_id" not in schema.get("required", [])
+
+
+async def test_a_watcher_write_by_a_bare_number_is_refused_over_mcp(call_tool: CallTool, recorder: _Recorder) -> None:
+    result = await call_tool(
+        "set_work_package_watcher", {"work_package_id": 436, "user_id": 3, "watching": False, "confirm": True}
+    )
+
+    assert result.is_error is True
+    assert "[VALIDATION_FAILED] 436 is A-1 (Project A). If you mean A-1, repeat with expect_display_id 'A-1'" in _text(
+        result
+    )
+    assert recorder.writes() == []
+
+
+@pytest.mark.parametrize("name", GUARDED_BY_EXPECT_DISPLAY_ID)
+async def test_a_group_one_expectation_of_the_wrong_json_type_is_rejected_before_any_request(
+    call_tool: CallTool, recorder: _Recorder, name: str
+) -> None:
+    arguments = {"work_package_id": 436, "expect_display_id": 51}
+    result = await call_tool(
+        name, {**arguments, "user_id": 3, "watching": False} if "watcher" in name else {**arguments, "file_path": "x"}
+    )
+
+    assert result.is_error is True
+    assert "expect_display_id" in _text(result)
     assert recorder.requests == []

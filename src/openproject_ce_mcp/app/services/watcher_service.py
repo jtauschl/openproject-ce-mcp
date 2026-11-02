@@ -32,7 +32,7 @@ from ...models import WatcherListResult, WatcherSummary, WatcherWriteResult
 from ..policies import access, hidden_fields
 from ..ports.watcher_api import WatcherApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
-from ._work_package_presentation import present_target
+from ._work_package_target import resolved_target
 
 
 class WatcherService:
@@ -60,13 +60,24 @@ class WatcherService:
         results = [self._stamp(summary) for summary in summaries]
         return WatcherListResult(count=len(results), results=results)
 
-    async def add(self, work_package_id: int | str, user_id: int, *, confirm: bool = False) -> WatcherWriteResult:
+    async def add(
+        self,
+        work_package_id: int | str,
+        user_id: int,
+        *,
+        expect_display_id: str | None = None,
+        confirm: bool = False,
+    ) -> WatcherWriteResult:
         # write=True enforces OPENPROJECT_WRITE_PROJECTS against the resolved
         # work package's own project, before any preview or mutation -- this
         # check runs unconditionally, even on a confirm=False preview call.
-        record = await self._resolve_work_package_record(work_package_id, write=True)
+        record, target = await resolved_target(
+            work_package_id,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_display_id,
+        )
         resolved_id = record.id
-        target = present_target(record.payload, settings=self._settings)
         if not confirm:
             watcher = self._stamp(await self._api.get_user(user_id))
             return WatcherWriteResult(
@@ -94,10 +105,21 @@ class WatcherService:
             target=target,
         )
 
-    async def remove(self, work_package_id: int | str, user_id: int, *, confirm: bool = False) -> WatcherWriteResult:
-        record = await self._resolve_work_package_record(work_package_id, write=True)
+    async def remove(
+        self,
+        work_package_id: int | str,
+        user_id: int,
+        *,
+        expect_display_id: str | None = None,
+        confirm: bool = False,
+    ) -> WatcherWriteResult:
+        record, target = await resolved_target(
+            work_package_id,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_display_id,
+        )
         resolved_id = record.id
-        target = present_target(record.payload, settings=self._settings)
         if not confirm:
             return WatcherWriteResult(
                 action="remove",

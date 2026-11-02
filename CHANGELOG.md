@@ -71,7 +71,8 @@ to install and discover.
   cannot match an identifier, such as a name with spaces, stops the server at
   start; use the identifier.
 - **Breaking:** on an instance with semantic display ids, `update_work_package`,
-  `delete_work_package`, `add_work_package_comment` and each item of
+  `delete_work_package`, `add_work_package_comment`,
+  `create_work_package_attachment`, `set_work_package_watcher` and each item of
   `bulk_update_work_packages` refuse a work package named by a bare number
   unless the new `expect_display_id` names the ticket (for example `"PROJ-51"`),
   in preview and in confirm. A bare number is the internal id and `PROJ-51` is

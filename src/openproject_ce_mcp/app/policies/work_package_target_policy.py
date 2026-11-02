@@ -2,8 +2,9 @@
 
 A bare integer is the internal id; `PROJ-436` is another ticket. Where the record carries a semantic
 display id, a write that was given only a bare integer must also say which ticket it means
-(`expect_display_id`). The decisions are pure; the lookup of an expectation that differs from the
-record's display id stays with the service.
+(`expect_display_id`, or the sibling parameter of a write that names a second work package: the caller's
+parameter name is printed in every refusal). The decisions are pure; the lookup of an expectation that differs from
+the record's display id stays with the service.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from ..errors import InvalidInputError
 from . import hidden_fields
 
 _ENTITY = "work_package"
+DEFAULT_PARAMETER = "expect_display_id"
 
 
 class GuardOutcome(Enum):
@@ -36,18 +38,18 @@ class Lookup:
 Decision = GuardOutcome | Lookup
 
 
-def ensure_expectation_usable(expect_display_id: str | None, *, settings: Settings) -> None:
+def ensure_expectation_usable(
+    expect_display_id: str | None, *, settings: Settings, parameter: str = DEFAULT_PARAMETER
+) -> None:
     """A numeric expectation would resolve to the record the bare number already names, so it names no
     ticket; a hidden `display_id` cannot be compared, a match would confirm the hidden value."""
     if expect_display_id is None:
         return
     if canonical_display_id(expect_display_id) != expect_display_id:
-        raise InvalidInputError(
-            "expect_display_id must be a display id like 'PROJ-51' (project identifier case-sensitive)."
-        )
+        raise InvalidInputError(f"{parameter} must be a display id like 'PROJ-51' (project identifier case-sensitive).")
     if hidden_fields.field_hidden(_ENTITY, "display_id", settings=settings):
         raise InvalidInputError(
-            "expect_display_id cannot be used: the display_id field is hidden by OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS."
+            f"{parameter} cannot be used: the display_id field is hidden by OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS."
         )
 
 
@@ -75,21 +77,25 @@ def named_ticket(*, display_id: str | None, project: str | None, work_package_id
     return f"{name} ({shown_project})" if shown_project else name
 
 
-def no_semantic_display_id_message(work_package_id: int) -> str:
+def no_semantic_display_id_message(work_package_id: int, *, parameter: str = DEFAULT_PARAMETER) -> str:
     return (
         f"Work package {work_package_id} has no semantic display id (classic identifier mode or no identifier "
-        "allocated); omit expect_display_id."
+        f"allocated); omit {parameter}."
     )
 
 
-def expectation_required_message(*, reference: str, ticket: str, display_id: str | None) -> str:
+def expectation_required_message(
+    *, reference: str, ticket: str, display_id: str | None, parameter: str = DEFAULT_PARAMETER
+) -> str:
     """`display_id` is shown here: the requirement does not apply while it is hidden."""
     return (
-        f"{reference} is {ticket}. If you mean {display_id}, repeat with expect_display_id {display_id!r}; "
+        f"{reference} is {ticket}. If you mean {display_id}, repeat with {parameter} {display_id!r}; "
         "if you mean another ticket, pass its display id as the reference."
     )
 
 
-def mismatch_message(*, expected: str, reference: str, ticket: str, detail: str | None = None) -> str:
-    base = f"expect_display_id {expected!r} does not name the work package that {reference} resolved to ({ticket})."
+def mismatch_message(
+    *, expected: str, reference: str, ticket: str, detail: str | None = None, parameter: str = DEFAULT_PARAMETER
+) -> str:
+    base = f"{parameter} {expected!r} does not name the work package that {reference} resolved to ({ticket})."
     return f"{base} {detail}" if detail else base

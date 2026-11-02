@@ -130,6 +130,8 @@ NAME_ONLY: dict[tuple[str, str], str] = {
     ("update_work_package", "expect_display_id"): _EXPECTED_DISPLAY_ID,
     ("delete_work_package", "expect_display_id"): _EXPECTED_DISPLAY_ID,
     ("add_work_package_comment", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("create_work_package_attachment", "expect_display_id"): _EXPECTED_DISPLAY_ID,
+    ("set_work_package_watcher", "expect_display_id"): _EXPECTED_DISPLAY_ID,
     ("copy_project", "identifier"): _NEW_IDENTIFIER,
     ("copy_project", "status"): _PROJECT_STATUS,
     ("create_project", "identifier"): _NEW_IDENTIFIER,

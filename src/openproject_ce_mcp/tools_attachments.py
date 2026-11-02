@@ -49,10 +49,11 @@ from .models import (
     FileLinkWriteResult,
 )
 from .presentation import ContentBundle
-from .tool_params import Confirm, Limit, Offset, WorkPackageRef, select_field
+from .tool_params import Confirm, ExpectDisplayId, Limit, Offset, WorkPackageRef, select_field
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _validate_choice,
+    _validate_expect_display_id,
     _validate_limit,
     _validate_offset,
     _validate_optional_text,
@@ -205,6 +206,7 @@ async def create_work_package_attachment(
         ),
     ],
     description: Annotated[str | None, Field(description="Markdown text stored with the attachment.")] = None,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> AttachmentWriteResult:
     """Upload a local file as an attachment to a work package.
@@ -212,10 +214,12 @@ async def create_work_package_attachment(
     The preview checks that the file exists inside OPENPROJECT_ATTACHMENT_ROOT, is not a credential or
     configuration file, and fits OpenProject's maximum attachment size. For wiki pages, forum posts, meetings
     or comments use create_container_attachment.
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_work_package_id = _validate_work_package_ref(work_package_id)
+    safe_expect = _validate_expect_display_id(expect_display_id)
     safe_file_path = _validate_required_text(file_path, field_name="file_path", max_length=4096)
     safe_description = _validate_optional_text(description, field_name="description", max_length=None)
     return await _run_tool(
@@ -223,6 +227,7 @@ async def create_work_package_attachment(
             work_package_id=safe_work_package_id,
             file_path=safe_file_path,
             description=safe_description,
+            expect_display_id=safe_expect,
             confirm=confirm,
         )
     )

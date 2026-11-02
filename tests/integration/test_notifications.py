@@ -136,7 +136,7 @@ async def _notification_from_second_user(
     assert wp_id is not None
     wp_ids.append(wp_id)
 
-    watch_result = await client.watcher.add(wp_id, me.id, confirm=True)
+    watch_result = await client.watcher.add(await write_ref(client, wp_id), me.id, confirm=True)
     assert watch_result.state == "confirmed"
 
     # The comment must come from a DIFFERENT user (second_client) -- OpenProject

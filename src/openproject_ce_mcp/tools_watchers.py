@@ -18,9 +18,14 @@ from typing import Annotated
 from mcp.server.mcpserver import Context
 
 from .models import WatcherListResult, WatcherSummary, WatcherWriteResult
-from .tool_params import Confirm, WorkPackageRef, select_field
+from .tool_params import Confirm, ExpectDisplayId, WorkPackageRef, select_field
 from .tools_runtime import _client_from_context, _run_tool, register_tool
-from .tools_validation import _validate_positive_int, _validate_select, _validate_work_package_ref
+from .tools_validation import (
+    _validate_expect_display_id,
+    _validate_positive_int,
+    _validate_select,
+    _validate_work_package_ref,
+)
 
 
 @register_tool
@@ -42,6 +47,7 @@ async def set_work_package_watcher(
     work_package_id: WorkPackageRef,
     user_id: int,
     watching: bool,
+    expect_display_id: ExpectDisplayId = None,
     confirm: Confirm = False,
 ) -> WatcherWriteResult:
     """Add/remove a watcher on a work package.
@@ -51,11 +57,17 @@ async def set_work_package_watcher(
     the user's summary (result is populated; whether the user already watches
     is not checked); watching=false's preview makes no extra lookup and always
     returns result=null.
+    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_user_id = _validate_positive_int(user_id, field_name="user_id")
+    safe_expect = _validate_expect_display_id(expect_display_id)
     if watching:
-        return await _run_tool(client.watcher.add(safe_wp_id, safe_user_id, confirm=confirm))
-    return await _run_tool(client.watcher.remove(safe_wp_id, safe_user_id, confirm=confirm))
+        return await _run_tool(
+            client.watcher.add(safe_wp_id, safe_user_id, expect_display_id=safe_expect, confirm=confirm)
+        )
+    return await _run_tool(
+        client.watcher.remove(safe_wp_id, safe_user_id, expect_display_id=safe_expect, confirm=confirm)
+    )

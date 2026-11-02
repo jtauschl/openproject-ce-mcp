@@ -710,17 +710,17 @@ async def test_add_and_remove_work_package_watcher(
 
     me = await client.current_user.get_current_user()
 
-    preview = await client.watcher.add(result.work_package_id, me.id)
+    preview = await client.watcher.add(await write_ref(client, result.work_package_id), me.id)
     assert preview.state == "preview"
 
-    added = await client.watcher.add(result.work_package_id, me.id, confirm=True)
+    added = await client.watcher.add(await write_ref(client, result.work_package_id), me.id, confirm=True)
     assert added.state == "confirmed"
     assert added.watcher_user_id == me.id
 
     watchers_after_add = await client.watcher.list_for_work_package(result.work_package_id)
     assert any(w.id == me.id for w in watchers_after_add.results)
 
-    removed = await client.watcher.remove(result.work_package_id, me.id, confirm=True)
+    removed = await client.watcher.remove(await write_ref(client, result.work_package_id), me.id, confirm=True)
     assert removed.state == "confirmed"
 
     watchers_after_remove = await client.watcher.list_for_work_package(result.work_package_id)

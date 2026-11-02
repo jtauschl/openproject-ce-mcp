@@ -279,7 +279,7 @@ def test_create_work_package_attachment_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_work_package_attachment"]
     assert (
         tool.description
-        == "Upload a local file as an attachment to a work package.\n\nThe preview checks that the file exists inside OPENPROJECT_ATTACHMENT_ROOT, is not a credential or\nconfiguration file, and fits OpenProject's maximum attachment size. For wiki pages, forum posts, meetings\nor comments use create_container_attachment.\nThe result names the work package the reference resolved to in `target`.\n"
+        == "Upload a local file as an attachment to a work package.\n\nThe preview checks that the file exists inside OPENPROJECT_ATTACHMENT_ROOT, is not a credential or\nconfiguration file, and fits OpenProject's maximum attachment size. For wiki pages, forum posts, meetings\nor comments use create_container_attachment.\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -300,6 +300,12 @@ def test_create_work_package_attachment_schema() -> None:
                 "description": "Markdown text stored with the attachment.",
                 "title": "Description",
             },
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -313,7 +319,13 @@ def test_create_work_package_attachment_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "file_path", "description", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "work_package_id",
+        "file_path",
+        "description",
+        "expect_display_id",
+        "confirm",
+    ]
 
 
 def test_delete_attachment_schema() -> None:

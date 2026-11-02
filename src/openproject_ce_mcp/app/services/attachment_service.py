@@ -78,7 +78,7 @@ from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
-from ._work_package_presentation import present_target
+from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 # Files that must never be uploaded even from inside the attachment root: the
@@ -592,12 +592,17 @@ class AttachmentService:
         work_package_id: int | str,
         file_path: str,
         description: str | None = None,
+        expect_display_id: str | None = None,
         confirm: bool = False,
     ) -> AttachmentWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
-        resolved = await self._resolve_work_package_record(work_package_id, write=True)
+        resolved, target = await resolved_target(
+            work_package_id,
+            resolve=self._resolve_work_package_record,
+            settings=self._settings,
+            expect_display_id=expect_display_id,
+        )
         resolved_id = resolved.id
-        target = present_target(resolved.payload, settings=self._settings)
         outcome = await self._upload(
             file_path=file_path,
             description=description,

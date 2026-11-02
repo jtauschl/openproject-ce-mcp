@@ -1742,7 +1742,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "create_work_package_attachment": {
-        "description_hash": "3239525b4900d36bd5259d7cfebfab7d1b186520377d61f7a07a774b2c733fa5",
+        "description_hash": "bb3d08add8da964f1bd8d1d1dd6b0ce04aa45d5596c02f4901f6ed81e9026d06",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -1760,6 +1760,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": "Markdown text stored with the attachment.",
                     "title": "Description",
+                },
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
                 },
                 "confirm": {
                     "default": False,
@@ -7232,7 +7238,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_ADMIN_WRITE", "OPENPROJECT_ENABLE_ADMIN_READ"),
     },
     "set_work_package_watcher": {
-        "description_hash": "3228b761586ec3ffa0b988779a40542ebada2f6348559caf8659a715b58dd975",
+        "description_hash": "650c06e0c3f9270316bcf5d35c83e98d0c1fb336d96427663e7ae94482d30c67",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -7242,6 +7248,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "user_id": {"title": "User Id", "type": "integer"},
                 "watching": {"title": "Watching", "type": "boolean"},
+                "expect_display_id": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "title": "Expect Display Id",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",

@@ -22,7 +22,8 @@ All mutating tools follow the same guarded write pattern by default:
   `parent_target` (id, identifier, name). An identifier wins over a project name,
   so check `parent_target` before confirming.
 - On an instance with semantic display ids, `update_work_package`,
-  `delete_work_package`, `add_work_package_comment` and each item of
+  `delete_work_package`, `add_work_package_comment`,
+  `create_work_package_attachment`, `set_work_package_watcher` and each item of
   `bulk_update_work_packages` refuse a write that names the work package by a
   bare number, in preview and in confirm, unless `expect_display_id` names the
   ticket you mean (for example `"PROJ-51"`, project identifier case-sensitive).

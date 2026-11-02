@@ -74,7 +74,7 @@ def test_set_work_package_watcher_schema() -> None:
     tool = _tools(create_app(_make_settings()))["set_work_package_watcher"]
     assert (
         tool.description
-        == "Add/remove a watcher on a work package.\n\nwatching=true adds the watcher; watching=false removes it. The two\npreviews are NOT symmetric: watching=true's preview looks up and returns\nthe user's summary (result is populated; whether the user already watches\nis not checked); watching=false's preview makes no extra lookup and always\nreturns result=null.\nThe result names the work package the reference resolved to in `target`.\n"
+        == "Add/remove a watcher on a work package.\n\nwatching=true adds the watcher; watching=false removes it. The two\npreviews are NOT symmetric: watching=true's preview looks up and returns\nthe user's summary (result is populated; whether the user already watches\nis not checked); watching=false's preview makes no extra lookup and always\nreturns result=null.\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\n"
     )
     assert tool.output_schema == {
         "$defs": {
@@ -253,6 +253,12 @@ def test_set_work_package_watcher_schema() -> None:
             },
             "user_id": {"title": "User Id", "type": "integer"},
             "watching": {"title": "Watching", "type": "boolean"},
+            "expect_display_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                "title": "Expect Display Id",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -266,4 +272,10 @@ def test_set_work_package_watcher_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "user_id", "watching", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "work_package_id",
+        "user_id",
+        "watching",
+        "expect_display_id",
+        "confirm",
+    ]
