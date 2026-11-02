@@ -180,6 +180,7 @@ async def create_project(
     """Create a project.
 
     Omitted optional fields are not sent, so OpenProject's defaults apply.
+    `parent_target` names the project `parent` resolved to.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """
@@ -224,6 +225,7 @@ async def copy_project(
 
     name, identifier and the optional fields describe the new project. A confirmed
     copy starts a background job; poll get_job_status with the returned job_status_id.
+    `parent_target` names the project `parent` resolved to.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """
@@ -285,6 +287,7 @@ async def update_project(
     """Update a project.
 
     Omitted fields stay unchanged.
+    `parent_target` names the project `parent` resolved to.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """

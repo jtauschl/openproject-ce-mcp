@@ -95,3 +95,22 @@ async def test_an_update_names_the_parent_its_reference_resolved_to(
         work_package_id=child.id, parent_work_package_id=CLEAR_PARENT, confirm=False
     )
     assert cleared.parent_target is None
+
+
+async def test_a_project_update_names_the_parent_its_reference_resolved_to(
+    start_scoped_client, test_project: str
+) -> None:
+    wide = await start_scoped_client(read_projects=("*",), write_projects=("*",))
+    candidates = (await wide.project.list(limit=50)).results
+    others = [project for project in candidates if project.identifier not in (None, test_project)]
+    if not others:
+        pytest.skip("the instance shows no second project to name as a parent")
+    parent = others[0]
+
+    for reference in (parent.identifier, str(parent.id)):
+        preview = await wide.project.update(project_ref=test_project, parent=reference, confirm=False)
+        assert preview.state in {"preview", "rejected"}
+        assert preview.parent_target is not None
+        assert preview.parent_target.id == parent.id
+        assert preview.parent_target.identifier == parent.identifier
+        assert preview.parent_target.name == parent.name

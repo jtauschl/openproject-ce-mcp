@@ -390,6 +390,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "job_status_id",
+        "parent_target",
     ],
     "ProjectWriteResult": [
         "action",
@@ -401,6 +402,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "result",
+        "parent_target",
     ],
     "RecurringMeetingOccurrenceWriteResult": [
         "action",

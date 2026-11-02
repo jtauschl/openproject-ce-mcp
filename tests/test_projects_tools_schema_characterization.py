@@ -853,7 +853,7 @@ def test_create_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_project"]
     assert (
         tool.description
-        == "Create a project.\n\nOmitted optional fields are not sent, so OpenProject's defaults apply.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
+        == "Create a project.\n\nOmitted optional fields are not sent, so OpenProject's defaults apply.\n`parent_target` names the project `parent` resolved to.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -930,7 +930,7 @@ def test_copy_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["copy_project"]
     assert (
         tool.description
-        == "Copy an existing project into a new project.\n\nname, identifier and the optional fields describe the new project. A confirmed\ncopy starts a background job; poll get_job_status with the returned job_status_id.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
+        == "Copy an existing project into a new project.\n\nname, identifier and the optional fields describe the new project. A confirmed\ncopy starts a background job; poll get_job_status with the returned job_status_id.\n`parent_target` names the project `parent` resolved to.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1148,7 +1148,7 @@ def test_update_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_project"]
     assert (
         tool.description
-        == "Update a project.\n\nOmitted fields stay unchanged.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
+        == "Update a project.\n\nOmitted fields stay unchanged.\n`parent_target` names the project `parent` resolved to.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

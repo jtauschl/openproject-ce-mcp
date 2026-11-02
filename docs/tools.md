@@ -17,6 +17,10 @@ All mutating tools follow the same guarded write pattern by default:
   `target` is the referenced parent, for relations `related_target` names
   the other end, and `update_work_package` and `bulk_update_work_packages` name
   the work package a given `parent` resolved to in `parent_target`.
+  A project reference works the same way: `create_project`, `update_project`
+  and `copy_project` name the project a given `parent` resolved to in
+  `parent_target` (id, identifier, name). An identifier wins over a project name,
+  so check `parent_target` before confirming.
 
 Every mutation requires explicit `confirm=true` — there is no way to skip the
 preview step.

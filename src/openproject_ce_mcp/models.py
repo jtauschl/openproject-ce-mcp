@@ -155,6 +155,15 @@ class MembershipListResult(PageResult):
     results: list[MembershipSummary]
 
 
+# Not frozen and a comment, not a docstring, for the reasons given at ResolvedWorkPackage.
+# Not ProjectRef: that is a picklist entry whose schema another tool publishes.
+@dataclass
+class ResolvedParentProject:
+    id: int
+    identifier: str | None = None
+    name: str | None = None
+
+
 @dataclass
 class ProjectWriteResult(ConfirmationHeader):
     project_id: int | None
@@ -162,6 +171,8 @@ class ProjectWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: ProjectSummary | None
+    # The project the `parent` reference resolved to; None without a parent or when it is cleared.
+    parent_target: ResolvedParentProject | None = None
 
 
 @dataclass
@@ -171,6 +182,7 @@ class ProjectCopyResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     job_status_id: str | None
+    parent_target: ResolvedParentProject | None = None
 
 
 @dataclass
