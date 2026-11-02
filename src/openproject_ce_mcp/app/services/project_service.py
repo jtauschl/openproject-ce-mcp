@@ -18,7 +18,7 @@ identity part only.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 from urllib.parse import unquote
 
@@ -37,6 +37,7 @@ from ...models import (
     ProjectRef,
     ProjectSummary,
     ProjectWriteResult,
+    ResolvedParentProject,
 )
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError
@@ -92,6 +93,12 @@ def _slug_from_href(href: str | None) -> str | None:
 # client.py; client.py's create_project/update_project/copy_project wrappers
 # translate their own CLEAR into this one at the call boundary.
 CLEAR_PARENT = object()
+
+
+@dataclass(frozen=True)
+class _ProjectWritePayload:
+    payload: dict[str, Any]
+    parent_target: ResolvedParentProject | None
 
 
 def _without_uncovered_parents(
@@ -242,7 +249,7 @@ class ProjectService:
         confirm: bool = False,
     ) -> ProjectWriteResult:
         project_policy_module.ensure_project_create_target_allowed(identifier=identifier, settings=self._settings)
-        payload = await self._build_write_payload(
+        built = await self._build_write_payload(
             name=name,
             identifier=identifier,
             description=description,
@@ -253,7 +260,7 @@ class ProjectService:
             parent=parent,
             project_id=None,
         )
-        form = await self._api.create_form(payload)
+        form = await self._api.create_form(built.payload)
         outcome = await _finalize_write(
             confirm=confirm,
             payload=form.payload,
@@ -266,7 +273,7 @@ class ProjectService:
             preview_message="OpenProject validated the project. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Project created successfully.",
         )
-        return self._to_write_result("create", outcome)
+        return self._to_write_result("create", outcome, built.parent_target)
 
     async def update(
         self,
@@ -284,7 +291,7 @@ class ProjectService:
     ) -> ProjectWriteResult:
         record = await self._resolver.resolve_record(project_ref, write=True)
         project = record.summary
-        payload = await self._build_write_payload(
+        built = await self._build_write_payload(
             name=name,
             identifier=identifier,
             description=description,
@@ -295,7 +302,7 @@ class ProjectService:
             parent=parent,
             project_id=project.id,
         )
-        form = await self._api.update_form(project.id, payload)
+        form = await self._api.update_form(project.id, built.payload)
         outcome = await _finalize_write(
             confirm=confirm,
             payload=form.payload,
@@ -308,7 +315,7 @@ class ProjectService:
             preview_message="OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Project updated successfully.",
         )
-        return self._to_write_result("update", outcome)
+        return self._to_write_result("update", outcome, built.parent_target)
 
     async def delete(self, *, project_ref: str, confirm: bool = False) -> ProjectWriteResult:
         record = await self._resolver.resolve_record(project_ref, write=True)
@@ -362,7 +369,7 @@ class ProjectService:
         # the read/write allowlist (the source being allowed is not sufficient).
         project_policy_module.ensure_project_create_target_allowed(identifier=identifier, settings=self._settings)
         project = source_record.summary
-        payload = await self._build_write_payload(
+        built = await self._build_write_payload(
             name=name,
             identifier=identifier,
             description=description,
@@ -373,7 +380,7 @@ class ProjectService:
             parent=parent,
             project_id=None,
         )
-        form = await self._api.copy_form(project.id, payload)
+        form = await self._api.copy_form(project.id, built.payload)
         shown = without_foreign_capable_titles(form.payload)
         ready = not form.validation_errors
         if not confirm:
@@ -391,6 +398,7 @@ class ProjectService:
                 payload=shown,
                 validation_errors=form.validation_errors,
                 job_status_id=None,
+                parent_target=built.parent_target,
             )
         if form.validation_errors:
             return ProjectCopyResult(
@@ -403,6 +411,7 @@ class ProjectService:
                 payload=shown,
                 validation_errors=form.validation_errors,
                 job_status_id=None,
+                parent_target=built.parent_target,
             )
         access.ensure_write_enabled("project", settings=self._settings)
         job_status_url = await self._api.commit_copy(project.id, form.payload)
@@ -424,6 +433,7 @@ class ProjectService:
             # job_status_id, so the URL would be redundant with no independent
             # value, only an extra cost in tokens.
             job_status_id=_slug_from_href(job_status_url),
+            parent_target=built.parent_target,
         )
 
     async def set_favorite(self, project_ref: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
@@ -472,8 +482,9 @@ class ProjectService:
         status_explanation: str | None,
         parent: str | object | None,
         project_id: int | None,
-    ) -> dict[str, Any]:
+    ) -> _ProjectWritePayload:
         payload: dict[str, Any] = {}
+        parent_target: ResolvedParentProject | None = None
         links: dict[str, dict[str, str | None]] = {}
         schema_result = await self._api.get_schema(project_id=project_id, draft_payload=payload)
         schema = schema_result.schema
@@ -510,11 +521,17 @@ class ProjectService:
             # caller with write access to project A could attach it under
             # project B they can only read, the same gap update_board's
             # reparent-target fix already closed for boards.
-            parent_id = await self._resolver.resolve_id(parent, write=True)
-            links["parent"] = {"href": _api_href(f"projects/{parent_id}", api_prefix=self._api_prefix)}
+            parent_record = await self._resolver.resolve_record(parent, write=True)
+            parent_summary = parent_record.summary
+            links["parent"] = {"href": _api_href(f"projects/{parent_summary.id}", api_prefix=self._api_prefix)}
+            parent_target = self._stamp(
+                ResolvedParentProject(
+                    id=parent_summary.id, identifier=parent_summary.identifier, name=parent_summary.name
+                )
+            )
         if links:
             payload["_links"] = links
-        return payload
+        return _ProjectWritePayload(payload, parent_target)
 
     def _resolve_status_href(self, schema: dict[str, Any], raw_value: str) -> str:
         field = schema.get("status")
@@ -530,7 +547,12 @@ class ProjectService:
                 return href
         raise InvalidInputError(f"OpenProject project status '{raw_value}' is not allowed.")
 
-    def _to_write_result(self, action: str, outcome: _WriteOutcome[ProjectDetail]) -> ProjectWriteResult:
+    def _to_write_result(
+        self,
+        action: str,
+        outcome: _WriteOutcome[ProjectDetail],
+        parent_target: ResolvedParentProject | None = None,
+    ) -> ProjectWriteResult:
         return ProjectWriteResult(
             action=action,
             state=outcome.state,
@@ -539,6 +561,7 @@ class ProjectService:
             payload=outcome.payload,
             validation_errors=outcome.validation_errors,
             result=self._stamp(outcome.detail) if outcome.detail else None,
+            parent_target=parent_target,
             **outcome.identity,
         )
 

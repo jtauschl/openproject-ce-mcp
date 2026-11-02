@@ -497,7 +497,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "copy_project": {
-        "description_hash": "a93f1054d029d88b8f730dbf069b9014d97f4f02bbbc8167005c64da78a00df7",
+        "description_hash": "4021d24916cd23add35a07ba00885c9207eebc852bc01b86a1df3d7a546a96df",
         "input_schema": {
             "properties": {
                 "source_project": {
@@ -1029,7 +1029,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
     },
     "create_project": {
-        "description_hash": "c074f385b51e34ed55741b67dbf98b78dad7c3977f6f34310ba136cff1dc7b66",
+        "description_hash": "4e90b3819b9bc0f2c3051e4c262b08b10a5b12bf93291af8896889111a362b8d",
         "input_schema": {
             "properties": {
                 "name": {"description": "Display name, at most 255 characters.", "title": "Name", "type": "string"},
@@ -7961,7 +7961,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
     },
     "update_project": {
-        "description_hash": "c2c8c292763d7ec430ac82ca3345599fee0f81d80807c96ed38564711df7408f",
+        "description_hash": "e2e372ed69c83b02b5177b7f49b4a6aa049ee20a9cc129c828f80e400fc46be4",
         "input_schema": {
             "properties": {
                 "project": {

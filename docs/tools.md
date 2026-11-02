@@ -17,6 +17,10 @@ All mutating tools follow the same guarded write pattern by default:
   `target` is the referenced parent, for relations `related_target` names
   the other end, and `update_work_package` and `bulk_update_work_packages` name
   the work package a given `parent` resolved to in `parent_target`.
+  A project reference works the same way: `create_project`, `update_project`
+  and `copy_project` name the project a given `parent` resolved to in
+  `parent_target` (id, identifier, name). An identifier wins over a project name,
+  so check `parent_target` before confirming.
 - On an instance with semantic display ids, `update_work_package`,
   `delete_work_package`, `add_work_package_comment` and each item of
   `bulk_update_work_packages` refuse a write that names the work package by a

@@ -136,6 +136,10 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 - `update_work_package` and `bulk_update_work_packages` name the work package a given `parent` resolved to in
   `parent_target`, in the preview and in the result, so a bare number read as an internal id is visible
   before `confirm`.
+- `create_project`, `update_project` and `copy_project` name the project a given `parent` resolved to in
+  `parent_target` (id, identifier, name), in the preview and in the result. A project identifier wins over a
+  project name, so a name that is also another project's identifier moved the project under the other one
+  without showing it.
 
 - `get_project_phase` now reports the phase definition, which was always empty.
 - `update_meeting` can clear the location: `location=""` empties it instead of being dropped
