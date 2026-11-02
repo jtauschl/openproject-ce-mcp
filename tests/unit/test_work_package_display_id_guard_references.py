@@ -137,6 +137,7 @@ async def _relation_refused(
         await _run(relate, "", tmp_path, confirm=confirm, settings=settings, server=server)
     assert f"[{code}]" in str(caught.value)
     assert server.writes == [], "a refused relation must send no write request"
+    assert [r for r in server.requests if not r.startswith("GET ")] == [], "a refusal precedes any form POST"
     return str(caught.value), server
 
 

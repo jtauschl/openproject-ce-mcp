@@ -48,6 +48,7 @@ async def _refused(
         await _run(call, ref, tmp_path, confirm=confirm, expect=expect, settings=settings, server=server)
     assert f"[{code}]" in str(caught.value)
     assert server.writes == [], "a refused write must send no write request"
+    assert [r for r in server.requests if not r.startswith("GET ")] == [], "a refusal precedes any form POST"
     return str(caught.value), server
 
 
@@ -169,6 +170,20 @@ async def test_an_out_of_scope_work_package_gives_the_scope_denial_and_no_guard_
     assert "OPENPROJECT_WRITE_PROJECTS" in message
     assert "A-1" not in message
     assert "Project A" not in message
+
+
+@tool_param
+@pytest.mark.asyncio
+async def test_a_work_package_outside_the_write_scope_is_denied_before_its_verdict_even_when_the_rest_is_in_scope(
+    call: Call, tmp_path: Path
+) -> None:
+    settings = dataclasses.replace(_settings(tmp_path), write_projects=("1",))
+
+    message, _ = await _refused(call, "PROJ-436", tmp_path, "A-1", settings=settings, code="PROJECT_SCOPE_DENIED")
+
+    assert "OPENPROJECT_WRITE_PROJECTS" in message
+    assert "A-1" not in message
+    assert "Project B" not in message
 
 
 @tool_param
