@@ -16,6 +16,7 @@ from openproject_ce_mcp.app.errors import (
     PermissionDeniedError,
     ProjectLinkPrefixError,
     ProjectScopeDeniedError,
+    TransportError,
 )
 from openproject_ce_mcp.app.ports.activity_api import ActivityRecord
 from openproject_ce_mcp.app.ports.scoped_reference import ScopedReference
@@ -3366,6 +3367,28 @@ async def test_a_posted_comment_asks_for_no_name_when_the_user_is_a_hidden_activ
 
     assert result.result is not None and result.result.user is None
     assert names.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_posted_comment_stays_confirmed_without_a_user_when_the_name_cannot_be_read(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class _Failing(_UserNames):
+        async def __call__(self, user_ids):
+            self.calls.append(list(user_ids))
+            raise TransportError("users/4 is unreachable")
+
+    names = _Failing({4: "Jane"})
+    service = _service_naming(names)
+
+    with caplog.at_level("WARNING"):
+        result = await _comment_as(service, {"id": 55, "_links": {"user": {"href": "/api/v3/users/4"}}})
+
+    assert result.state == "confirmed"
+    assert result.result is not None and result.result.comment == "Hello"
+    assert result.result.user is None
+    assert names.calls == [[4]]
+    assert "the comment was saved" in caplog.text
 
 
 async def _comment_as(service, activity: dict):
