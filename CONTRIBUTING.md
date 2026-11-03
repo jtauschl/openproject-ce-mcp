@@ -70,6 +70,8 @@ uv run pytest -m integration -v
 
 `OPENPROJECT_TEST_PROJECT` is the project identifier used for write tests; it has no default, must be one identifier, and its name must contain a disposable token (`test`, `tst`, `tmp`, `sandbox`, `playground`, `scratch` or `disposable`, separated by `-` or `_`). `OPENPROJECT_TEST_DESTRUCTIVE_TARGET` repeats the base URL and says that this instance may be written to; it is only required when the target is not loopback (the local Docker instances need only the first three variables). A run that misses a required variable stops before the first test, and `tools/measure-context.py` stops before its first request. Integration tests are excluded from the default run (`-m 'not integration'`) and must be opted in explicitly.
 
+The token should belong to an admin. A test that opens a client allowed to write outside the test project creates disposable projects, and OpenProject lets only an admin delete a project, so with any other token those tests (and the ones that read `coreVersion`, which only an admin sees) skip instead of leaving projects behind. A test that changes instance settings or reads server state through a Rails script needs the Docker harness (`OPENPROJECT_DOCKER_SERVICE`) and skips without it.
+
 For local, throwaway instances across every supported OpenProject minor (16.0 through the latest — see [`docker/test/README.md`](docker/test/README.md) for exactly which versions and why each one matters), see [`docker/test/`](docker/test/) — `docker/test/up.sh` boots and seeds them and prints the env block to run the integration tests against each. To verify the client's API assumptions against the OpenProject source across releases, see [`tools/api-check/`](tools/api-check/).
 
 ## After code changes

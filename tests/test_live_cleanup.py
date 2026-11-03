@@ -134,6 +134,124 @@ async def test_closing_twice_closes_each_client_once():
     assert log.count("close a") == 1
 
 
+# ── A client that may write outside the test project needs an admin token ──
+
+
+class _Settings:
+    def __init__(self, write_projects: tuple[str, ...]):
+        self.write_projects = write_projects
+
+
+def _is_admin(answer: bool, asked: list):
+    async def is_admin(settings):
+        asked.append(settings)
+        return answer
+
+    return is_admin
+
+
+@pytest.mark.parametrize(
+    ("write_projects", "outside"),
+    [
+        ((), False),
+        (("TST",), False),
+        (("tst",), False),
+        (("*",), True),
+        (("TST", "OTHER"), True),
+        (("it*",), True),
+    ],
+)
+def test_a_client_writes_outside_the_test_project_when_a_pattern_covers_more_than_it(write_projects, outside):
+    assert live_cleanup.writes_outside("TST", _Settings(write_projects)) is outside
+
+
+async def test_a_non_admin_token_skips_the_client_that_could_create_disposable_projects():
+    log: list = []
+    asked: list = []
+    registry = live_cleanup.ClientRegistry(
+        lambda settings: _Client("a", log),
+        before_open=live_cleanup.require_admin_for_wide_writes("TST", _is_admin(False, asked)),
+    )
+
+    with pytest.raises(pytest.skip.Exception, match="not an admin"):
+        await registry.open(_Settings(("*",)))
+
+    assert log == []
+    assert len(asked) == 1
+
+
+async def test_an_admin_token_opens_the_client_with_wide_writes():
+    log: list = []
+    registry = live_cleanup.ClientRegistry(
+        lambda settings: _Client("a", log),
+        before_open=live_cleanup.require_admin_for_wide_writes("TST", _is_admin(True, [])),
+    )
+
+    await registry.open(_Settings(("*",)))
+
+    assert log == ["init a"]
+
+
+async def test_a_client_confined_to_the_test_project_never_asks_whether_the_token_is_admin():
+    log: list = []
+    asked: list = []
+    registry = live_cleanup.ClientRegistry(
+        lambda settings: _Client("a", log),
+        before_open=live_cleanup.require_admin_for_wide_writes("TST", _is_admin(False, asked)),
+    )
+
+    await registry.open(_Settings(("TST",)))
+    await registry.open(_Settings(()))
+
+    assert log == ["init a", "init a"]
+    assert asked == []
+
+
+def test_the_integration_suite_opens_every_client_through_the_admin_check():
+    conftest = (_ROOT / "tests" / "integration" / "conftest.py").read_text(encoding="utf-8")
+
+    assert conftest.count("ClientRegistry(") == 1
+    assert "before_open=require_admin_for_wide_writes(" in conftest
+
+
+async def test_the_token_is_admin_only_when_users_me_says_so(monkeypatch):
+    class _Response:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class _Http:
+        payload: dict = {}
+
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def get(self, url):
+            assert url == "https://op.example/api/v3/users/me"
+            return _Response(self.payload)
+
+    monkeypatch.setattr(live_cleanup.httpx, "AsyncClient", _Http)
+    settings = type("S", (), {"base_url": "https://op.example/", "api_token": "t", "timeout": 5})()
+
+    _Http.payload = {"admin": True}
+    assert await live_cleanup.token_is_admin(settings) is True
+    _Http.payload = {"admin": False}
+    assert await live_cleanup.token_is_admin(settings) is False
+    _Http.payload = {"login": "member"}
+    assert await live_cleanup.token_is_admin(settings) is False
+
+
 # ── Structural guard for code written later ────────────────────────────────
 
 _LIVE_FILES = sorted((_ROOT / "tests" / "integration").glob("*.py")) + [_ROOT / "tools" / "measure-context.py"]

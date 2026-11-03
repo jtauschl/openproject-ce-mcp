@@ -46,7 +46,7 @@ from openproject_ce_mcp.config import Settings
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import live_target_guard  # noqa: E402
-from _live_cleanup import ClientRegistry, delete_all  # noqa: E402
+from _live_cleanup import ClientRegistry, delete_all, require_admin_for_wide_writes  # noqa: E402
 from _write_ref import write_ref  # noqa: E402
 
 # Directory containing docker/test/compose.yml -- `docker compose exec` needs
@@ -240,7 +240,9 @@ def _integration_settings() -> Settings | None:
 @pytest.fixture(scope="function")
 async def open_client():
     """Opens clients and closes every one of them after the test, in reverse order."""
-    registry = ClientRegistry()
+    registry = ClientRegistry(
+        before_open=require_admin_for_wide_writes(os.environ.get("OPENPROJECT_TEST_PROJECT", "").strip())
+    )
     try:
         yield registry.open
     finally:
@@ -289,7 +291,10 @@ async def openproject_version() -> tuple[int, int]:
     async with httpx.AsyncClient(auth=("apikey", settings.api_token), timeout=settings.timeout) as http:
         response = await http.get(f"{settings.base_url.rstrip('/')}/api/v3")
     response.raise_for_status()
-    major, minor = response.json()["coreVersion"].split(".")[:2]
+    core_version = response.json().get("coreVersion")
+    if core_version is None:
+        pytest.skip("The token is not an admin: OpenProject shows `coreVersion` to admins only.")
+    major, minor = core_version.split(".")[:2]
     return int(major), int(minor)
 
 
