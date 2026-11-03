@@ -134,6 +134,8 @@ to install and discover.
 
 ### Removed
 
+- **Breaking:** `create_board` and `update_board` no longer accept `hidden`,
+  which OpenProject ignores and the tools have not sent since 0.4.3.
 - **Breaking:** `OPENPROJECT_ALLOWED_PROJECTS`/`_READ`/`_WRITE` no longer emit
   a startup/`doctor` deprecation warning or get prefilled by `configure`.
   These names have had no effect on the running server since 0.3.0; use

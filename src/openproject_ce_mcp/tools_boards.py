@@ -34,10 +34,6 @@ _BOARD_ID = "Board (saved query) id, from list_boards."
 _NAME = "Board name, at most 255 characters."
 _PUBLIC = "Visible to other users; false keeps it to its creator."
 _STARRED = "Mark as a favorite query."
-# OpenProject's query representer ignores `hidden` on every supported version
-# (deprecated, setter is a no-op), so the tools accept the parameter but neither send it nor count it
-# as a change.
-_HIDDEN = "Ignored by OpenProject; the value is not stored."
 _INCLUDE_SUBPROJECTS = "Also show work packages of subprojects."
 _SHOW_HIERARCHIES = "Show parent/child tree; cannot combine with group_by, so it defaults to false there."
 _TIMELINE_VISIBLE = "Show the Gantt timeline."
@@ -123,7 +119,6 @@ async def create_board(
     project: OptionalProjectRef = None,
     public: Annotated[bool | None, Field(description=_PUBLIC)] = None,
     starred: Annotated[bool | None, Field(description=_STARRED)] = None,
-    hidden: Annotated[bool | None, Field(description=_HIDDEN)] = None,
     include_subprojects: Annotated[bool | None, Field(description=_INCLUDE_SUBPROJECTS)] = None,
     show_hierarchies: Annotated[bool | None, Field(description=_SHOW_HIERARCHIES)] = None,
     timeline_visible: Annotated[bool | None, Field(description=_TIMELINE_VISIBLE)] = None,
@@ -176,7 +171,6 @@ async def update_board(
     project: OptionalProjectRef = None,
     public: Annotated[bool | None, Field(description=_PUBLIC)] = None,
     starred: Annotated[bool | None, Field(description=_STARRED)] = None,
-    hidden: Annotated[bool | None, Field(description=_HIDDEN)] = None,
     include_subprojects: Annotated[bool | None, Field(description=_INCLUDE_SUBPROJECTS)] = None,
     show_hierarchies: Annotated[bool | None, Field(description=_SHOW_HIERARCHIES)] = None,
     timeline_visible: Annotated[bool | None, Field(description=_TIMELINE_VISIBLE)] = None,

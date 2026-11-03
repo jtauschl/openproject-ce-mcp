@@ -603,12 +603,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Mark as a favorite query.",
                     "title": "Starred",
                 },
-                "hidden": {
-                    "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Ignored by OpenProject; the value is not stored.",
-                    "title": "Hidden",
-                },
                 "include_subprojects": {
                     "anyOf": [{"type": "boolean"}, {"type": "null"}],
                     "default": None,
@@ -5752,12 +5746,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": "Mark as a favorite query.",
                     "title": "Starred",
-                },
-                "hidden": {
-                    "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Ignored by OpenProject; the value is not stored.",
-                    "title": "Hidden",
                 },
                 "include_subprojects": {
                     "anyOf": [{"type": "boolean"}, {"type": "null"}],

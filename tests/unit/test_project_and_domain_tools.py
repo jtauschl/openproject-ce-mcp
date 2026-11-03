@@ -567,49 +567,6 @@ async def test_update_board_tool_requires_at_least_one_field() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_board_tool_does_not_count_the_ignored_hidden_parameter_as_a_change() -> None:
-    """OpenProject discards `hidden`, so an update that sets only it would be a write that changes nothing."""
-
-    class StubClient:
-        @property
-        def board(self):
-            return self
-
-        async def update(self, **kwargs):
-            return kwargs
-
-    with pytest.raises(ValueError, match="At least one field"):
-        await update_board(FakeContext(StubClient()), 11, hidden=True)  # type: ignore[arg-type]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("tool", ["create_board", "update_board"])
-async def test_board_tools_do_not_pass_the_ignored_hidden_parameter_on(tool: str) -> None:
-    received: dict = {}
-
-    class StubClient:
-        @property
-        def board(self):
-            return self
-
-        async def create(self, **kwargs):
-            received.update(kwargs)
-            return kwargs
-
-        async def update(self, **kwargs):
-            received.update(kwargs)
-            return kwargs
-
-    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
-    if tool == "create_board":
-        await create_board(ctx, name="Board", hidden=True)
-    else:
-        await update_board(ctx, 11, name="Board", hidden=True)
-
-    assert "hidden" not in received
-
-
-@pytest.mark.asyncio
 async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_path) -> None:
     sample_file = tmp_path / "notes.txt"
     sample_file.write_text("hello", encoding="utf-8")

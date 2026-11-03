@@ -10,6 +10,8 @@ move changed the public tool contract, not just its location.
 
 from __future__ import annotations
 
+import pytest
+
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
 
@@ -123,12 +125,6 @@ def test_create_board_schema() -> None:
                 "description": "Mark as a favorite query.",
                 "title": "Starred",
             },
-            "hidden": {
-                "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                "default": None,
-                "description": "Ignored by OpenProject; the value is not stored.",
-                "title": "Hidden",
-            },
             "include_subprojects": {
                 "anyOf": [{"type": "boolean"}, {"type": "null"}],
                 "default": None,
@@ -198,7 +194,6 @@ def test_create_board_schema() -> None:
         "project",
         "public",
         "starred",
-        "hidden",
         "include_subprojects",
         "show_hierarchies",
         "timeline_visible",
@@ -247,12 +242,6 @@ def test_update_board_schema() -> None:
                 "default": None,
                 "description": "Mark as a favorite query.",
                 "title": "Starred",
-            },
-            "hidden": {
-                "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                "default": None,
-                "description": "Ignored by OpenProject; the value is not stored.",
-                "title": "Hidden",
             },
             "include_subprojects": {
                 "anyOf": [{"type": "boolean"}, {"type": "null"}],
@@ -324,7 +313,6 @@ def test_update_board_schema() -> None:
         "project",
         "public",
         "starred",
-        "hidden",
         "include_subprojects",
         "show_hierarchies",
         "timeline_visible",
@@ -335,6 +323,14 @@ def test_update_board_schema() -> None:
         "filters",
         "confirm",
     ]
+
+
+@pytest.mark.parametrize("tool_name", ["create_board", "update_board"])
+def test_the_board_write_tools_do_not_accept_the_parameter_openproject_ignores(tool_name: str) -> None:
+    tool = _tools(create_app(_make_settings()))[tool_name]
+
+    assert "hidden" not in tool.parameters["properties"]
+    assert tool.parameters["additionalProperties"] is False
 
 
 def test_delete_board_schema() -> None:
