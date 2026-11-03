@@ -178,7 +178,7 @@ Custom fields are filtered via the `custom_field_filters` parameter on
 `cf_<N>` on the wire):
 
 ```python
-custom_field_filters={
+custom_field_filters = {
     "cf_12": {"operator": "=", "values": ["42"]},
     "customField7": {"operator": "~", "values": ["Acme"]},
 }
