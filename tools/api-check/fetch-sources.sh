@@ -42,7 +42,7 @@ VERSIONS=(
     "17.6:v17.6.0"
     "17.7:v17.7.2"
     "17.8:v17.8.1"
-    "17.9:v17.9.4"
+    "17.9:v17.9.6"
 )
 
 # Subtrees that hold the API v3 definitions, representers and query filters,
