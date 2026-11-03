@@ -751,3 +751,21 @@ def test_a_number_from_the_environment_must_be_finite(name: str, value: str) -> 
 
     with pytest.raises(ConfigError, match=f"{name} must be a finite number"):
         Settings.from_env(env)
+
+
+def test_the_api_token_never_appears_in_the_text_form_of_settings() -> None:
+    settings = Settings.from_env(
+        {"OPENPROJECT_BASE_URL": "https://op.example.com", "OPENPROJECT_API_TOKEN": "secret-token-value"}
+    )
+
+    assert "secret-token-value" not in repr(settings)
+    assert "secret-token-value" not in str(settings)
+    assert "secret-token-value" not in repr(dataclasses.replace(settings, timeout=5.0))
+
+
+def test_the_token_is_still_part_of_settings_equality() -> None:
+    base = {"OPENPROJECT_BASE_URL": "https://op.example.com"}
+
+    assert Settings.from_env({**base, "OPENPROJECT_API_TOKEN": "a"}) != Settings.from_env(
+        {**base, "OPENPROJECT_API_TOKEN": "b"}
+    )

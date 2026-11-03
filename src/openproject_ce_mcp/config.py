@@ -354,7 +354,7 @@ HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
 @dataclass(frozen=True, slots=True)
 class Settings:
     base_url: str
-    api_token: str
+    api_token: str = field(repr=False)
     timeout: float
     verify_ssl: bool
     default_page_size: int
