@@ -45,7 +45,7 @@
 #           setting-enabled multi-value write path on the SAME container/
 #           volume -- no separate dedicated container needed, since a fresh
 #           17.8 instance already defaults to the enabled state.
-#   17.9.4  latest release as of this pin. New work package attribute
+#   17.9.6  latest release as of this pin. New work package attribute
 #           observedInVersions (multi-value, closed versions allowed, on by
 #           default for type Bug); GET /api/v3/meetings gains a title filter
 #           (case-insensitive partial, matches a recurring series' title);
@@ -360,7 +360,7 @@ services:
       start_period: 120s
 
   op-17-9:
-    image: openproject/openproject:17.9.4
+    image: openproject/openproject:17.9.6
     ports:
       - "8179:80"
     environment:
