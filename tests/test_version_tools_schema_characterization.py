@@ -95,7 +95,7 @@ def test_get_version_schema() -> None:
     # get_version is not trimmed (single-item read), unlike the list/write tools --
     # it carries a real output_schema; this test only proves the move leaves its
     # presence unchanged, not its full nested shape.
-    assert tool.output_schema is not None
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "version_id": {"title": "Version Id", "type": "integer"},

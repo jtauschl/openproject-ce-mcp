@@ -45,6 +45,9 @@ in README.md's "How it works" section). Three parts:
    deliberate, measured trade-off, not a regression — see part 2's savings
    numbers for what it sits alongside.
 
+Both sides of every comparison are serialised with the server's own `dump_payload` (compact JSON), so the
+numbers are what the server emits against the same data as compact JSON, not a re-indented rendering.
+
 Token counts use tiktoken's `o200k_base` encoding as a stable, reproducible
 BPE proxy, not an exact billed count for every model, provider, or MCP client.
 Requires the `measure` extra (`uv sync --extra measure`, or
@@ -80,7 +83,7 @@ import live_target_guard  # noqa: E402
 from openproject_ce_mcp.client import OpenProjectClient  # noqa: E402
 from openproject_ce_mcp.config import TOOL_GROUPS, Settings  # noqa: E402
 from openproject_ce_mcp.models import SortCriterion  # noqa: E402
-from openproject_ce_mcp.presentation import _to_payload  # noqa: E402
+from openproject_ce_mcp.presentation import _to_payload, dump_payload  # noqa: E402
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
 from openproject_ce_mcp.work_package_reference import has_semantic_display_id  # noqa: E402
 
@@ -355,7 +358,7 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
             resp.raise_for_status()
             raw_collection = resp.json()
 
-        raw_json = json.dumps(raw_collection)
+        raw_json = dump_payload(raw_collection)
         raw_tokens = _tokens(raw_json)
 
         # Sort by id desc so the work packages just created above are always
@@ -373,7 +376,7 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
                 f"Warning: expected ids {created_ids}, found {measured_ids} — numbers below may include concurrent writes.\n"
             )
 
-        full_json = json.dumps(_to_payload(result))
+        full_json = dump_payload(_to_payload(result))
         full_tokens = _tokens(full_json)
         # Use the real _select_fields() path (same as a caller passing `select`
         # would exercise via the registered wrapper) rather than filtering an
@@ -382,7 +385,7 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
         # already gone from _to_payload(r)'s default (elide_none=True) output
         # before the filter ever runs.
         select_fields = frozenset({"id", "display_id", "subject", "status", "assignee"})
-        select_json = json.dumps(_to_payload(result, select=select_fields))
+        select_json = dump_payload(_to_payload(result, select=select_fields))
         select_tokens = _tokens(select_json)
 
         print(f"Raw OpenProject REST API v3 (HAL), {len(rows)} rows: {len(raw_json)} bytes, ~{raw_tokens} tokens")
@@ -405,14 +408,14 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
             single_id = created_ids[0]
             resp = await http.get(f"/api/v3/work_packages/{single_id}")
             resp.raise_for_status()
-            raw_single_json = json.dumps(resp.json())
+            raw_single_json = dump_payload(resp.json())
             lock_version = resp.json()["lockVersion"]
 
             detail = await client.work_package.get(single_id)
             _report(
                 "get_work_package (single read)",
                 raw_single_json,
-                json.dumps(_to_payload(detail, elide_none=False)),
+                dump_payload(_to_payload(detail, elide_none=False)),
             )
 
             # --- Search: search_work_packages vs. GET /work_packages?filters=subject_or_id ---
@@ -428,13 +431,13 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
                 params={"offset": "1", "pageSize": "50", "filters": raw_filters},
             )
             resp.raise_for_status()
-            raw_search_json = json.dumps(resp.json())
+            raw_search_json = dump_payload(resp.json())
 
             search_result = await client.work_package.search(search=query, project=project, limit=50)
             _report(
                 f"search_work_packages ({len(search_result.results)} rows)",
                 raw_search_json,
-                json.dumps(_to_payload(search_result)),
+                dump_payload(_to_payload(search_result)),
             )
 
             # --- Confirmed single update: update_work_package vs. PATCH /work_packages/{id} ---
@@ -443,7 +446,7 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
                 json={"lockVersion": lock_version, "percentageDone": 40},
             )
             resp.raise_for_status()
-            raw_update_json = json.dumps(resp.json())
+            raw_update_json = dump_payload(resp.json())
 
             update_result = await client.work_package.update(
                 work_package_id=detail.display_id if has_semantic_display_id(detail.display_id) else single_id,
@@ -455,7 +458,7 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
                 raw_update_json,
                 # update_work_package has no `select` param, so its real registered
                 # wrapper uses elide_none=False -- match that here.
-                json.dumps(_to_payload(update_result, elide_none=False)),
+                dump_payload(_to_payload(update_result, elide_none=False)),
             )
 
             # --- Bulk create ×5: bulk_create_work_packages vs. 5x POST /work_packages ---
@@ -483,13 +486,13 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
             to_delete.extend(bulk_created_ids)
             _report(
                 f"bulk_create_work_packages (x{len(bulk_items)}, vs. {len(bulk_items)} individual raw POSTs)",
-                json.dumps(raw_bulk_create_parts),
-                json.dumps(_to_payload(bulk_create_result)),
+                dump_payload(raw_bulk_create_parts),
+                dump_payload(_to_payload(bulk_create_result)),
             )
             _report(
                 "bulk_create_work_packages with select (work_package_id, result.subject)",
-                json.dumps(raw_bulk_create_parts),
-                json.dumps(_to_payload(bulk_create_result, select=frozenset({"work_package_id", "result.subject"}))),
+                dump_payload(raw_bulk_create_parts),
+                dump_payload(_to_payload(bulk_create_result, select=frozenset({"work_package_id", "result.subject"}))),
             )
 
             # --- Bulk update ×5: bulk_update_work_packages vs. 5x PATCH /work_packages/{id} ---
@@ -512,13 +515,13 @@ async def measure_response_sizes(*, keep: bool = False) -> list | None:
             bulk_update_result = await client.work_package.bulk_update(items=bulk_update_items, confirm=True)
             _report(
                 f"bulk_update_work_packages (x{len(bulk_target_ids)}, vs. {len(bulk_target_ids)} individual raw PATCHes)",
-                json.dumps(raw_bulk_update_parts),
-                json.dumps(_to_payload(bulk_update_result)),
+                dump_payload(raw_bulk_update_parts),
+                dump_payload(_to_payload(bulk_update_result)),
             )
             _report(
                 "bulk_update_work_packages with select (work_package_id, result.percentage_done)",
-                json.dumps(raw_bulk_update_parts),
-                json.dumps(
+                dump_payload(raw_bulk_update_parts),
+                dump_payload(
                     _to_payload(bulk_update_result, select=frozenset({"work_package_id", "result.percentage_done"}))
                 ),
             )
@@ -572,8 +575,8 @@ def measure_null_distinguishability_cost(rows: list) -> None:
     # (a) elide_none=True (hypothetical maximal-elision policy) vs. False (the
     # real registered policy for a select-less tool) on the SAME rows, full
     # field set.
-    elided_json = json.dumps({"results": [_to_payload(r, elide_none=True) for r in rows]})
-    explicit_json = json.dumps({"results": [_to_payload(r, elide_none=False) for r in rows]})
+    elided_json = dump_payload({"results": [_to_payload(r, elide_none=True) for r in rows]})
+    explicit_json = dump_payload({"results": [_to_payload(r, elide_none=False) for r in rows]})
     elided_tokens, explicit_tokens = _tokens(elided_json), _tokens(explicit_json)
     delta_pct = round((explicit_tokens / elided_tokens - 1) * 100) if elided_tokens else 0
     print(f"Full rows, simulating a select-less tool (e.g. list_statuses's Rule 1, {len(rows)} rows):")
@@ -584,8 +587,8 @@ def measure_null_distinguishability_cost(rows: list) -> None:
     # real rows (responsible is unset on most seeded work packages here).
     select_fields = frozenset({"id", "subject", "responsible"})
     selected = [_select_row(r, select_fields) for r in rows]
-    dropped_json = json.dumps({"results": [{k: v for k, v in row.items() if v is not None} for row in selected]})
-    kept_json = json.dumps({"results": selected})
+    dropped_json = dump_payload({"results": [{k: v for k, v in row.items() if v is not None} for row in selected]})
+    kept_json = dump_payload({"results": selected})
     dropped_tokens, kept_tokens = _tokens(dropped_json), _tokens(kept_json)
     delta_pct = round((kept_tokens / dropped_tokens - 1) * 100) if dropped_tokens else 0
     none_count = sum(1 for row in selected if row.get("responsible") is None)

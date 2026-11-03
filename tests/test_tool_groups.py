@@ -11,6 +11,7 @@ the selection logic could compare itself to itself and stay green.
 """
 
 import inspect
+from dataclasses import dataclass
 
 import pytest
 from mcp.server.mcpserver import MCPServer
@@ -155,9 +156,14 @@ def test_every_write_tool_requires_confirm() -> None:
         assert sig.parameters["confirm"].default is False, f"{name}'s confirm must default to False"
 
 
+@dataclass
+class _SyntheticResult:
+    value: str
+
+
 def test_registration_normalizes_runtime_dependent_docstring_indentation(monkeypatch) -> None:
-    async def synthetic_tool() -> str:
-        return "ok"
+    async def synthetic_tool() -> _SyntheticResult:
+        return _SyntheticResult(value="ok")
 
     synthetic_tool.__doc__ = "Summary.\n\n    Detail line one.\n    Detail line two.\n"
     monkeypatch.setitem(_tools_runtime._TOOL_FUNCTIONS, synthetic_tool.__name__, synthetic_tool)
@@ -166,7 +172,6 @@ def test_registration_normalizes_runtime_dependent_docstring_indentation(monkeyp
     _tools_runtime.register_selected_tools(
         mcp,
         names=[synthetic_tool.__name__],
-        hide_active=False,
         annotations={synthetic_tool.__name__: tools.TOOL_ANNOTATIONS["list_projects"]},
     )
 

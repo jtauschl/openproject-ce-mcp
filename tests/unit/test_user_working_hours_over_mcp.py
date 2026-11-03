@@ -80,7 +80,6 @@ def call_tool(recorder: _Recorder) -> CallTool:
             tools_user_schedule.create_user_working_hours.__name__,
             tools_user_schedule.update_user_working_hours.__name__,
         ],
-        hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
 

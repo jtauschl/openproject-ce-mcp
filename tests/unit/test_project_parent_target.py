@@ -268,7 +268,6 @@ def mcp_call() -> Callable[[str, dict], Awaitable[types.CallToolResult]]:
             tools_projects.update_project.__name__,
             tools_projects.copy_project.__name__,
         ],
-        hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
 

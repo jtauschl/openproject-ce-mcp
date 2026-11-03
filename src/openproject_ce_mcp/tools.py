@@ -719,6 +719,5 @@ def register_tools(mcp: MCPServer, settings: Settings) -> None:
     register_selected_tools(
         mcp,
         names=enabled_tool_names(settings),
-        hide_active=bool(settings.hidden_fields),
         annotations=TOOL_ANNOTATIONS,
     )

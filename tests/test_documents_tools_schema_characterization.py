@@ -3,8 +3,7 @@
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
 order/types, descriptions, required fields, and whether the tool carries an
-output_schema (trimmed tools register with structured_output=False and have
-none, see test_trimming.py). A future relocation of any of these functions to
+output_schema (no tool carries one, see test_compact_result_seam.py). A future relocation of any of these functions to
 a different module must leave this file completely unmodified; a diff to it
 would mean the move changed the public tool contract, not just its location.
 """
@@ -93,99 +92,7 @@ def test_get_document_schema() -> None:
         tool.description
         == "Get a single document by id.\n\nThe description is returned in full by default (single documents are not\ntruncated). Pass ``text_limit`` to cap it at that many characters; when the\ntext is cut, ``description_truncated`` is true and ``description_length``\nreports the real length.\n"
     )
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "title": {
-                "title": "Title",
-                "type": "string",
-            },
-            "project_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project Id",
-            },
-            "project": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project",
-            },
-            "description": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Description",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created At",
-            },
-            "attachment_count": {
-                "title": "Attachment Count",
-                "type": "integer",
-            },
-            "can_update": {
-                "title": "Can Update",
-                "type": "boolean",
-            },
-            "description_truncated": {
-                "default": False,
-                "title": "Description Truncated",
-                "type": "boolean",
-            },
-            "description_length": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Description Length",
-            },
-        },
-        "required": [
-            "id",
-            "title",
-            "project_id",
-            "project",
-            "description",
-            "created_at",
-            "attachment_count",
-            "can_update",
-        ],
-        "title": "DocumentDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "document_id": {
@@ -303,123 +210,7 @@ def test_get_news_schema() -> None:
         tool.description
         == "Get a single news entry by id.\n\nThe description is returned in full by default (single news entries are\nnot truncated). Pass ``text_limit`` to cap it at that many characters;\nwhen the text is cut, ``description_truncated`` is true and\n``description_length`` reports the real length.\n"
     )
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "title": {
-                "title": "Title",
-                "type": "string",
-            },
-            "summary": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Summary",
-            },
-            "description": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Description",
-            },
-            "project_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project Id",
-            },
-            "project": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project",
-            },
-            "author": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Author",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created At",
-            },
-            "can_update": {
-                "title": "Can Update",
-                "type": "boolean",
-            },
-            "can_delete": {
-                "title": "Can Delete",
-                "type": "boolean",
-            },
-            "description_truncated": {
-                "default": False,
-                "title": "Description Truncated",
-                "type": "boolean",
-            },
-            "description_length": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Description Length",
-            },
-        },
-        "required": [
-            "id",
-            "title",
-            "summary",
-            "description",
-            "project_id",
-            "project",
-            "author",
-            "created_at",
-            "can_update",
-            "can_delete",
-        ],
-        "title": "NewsDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "news_id": {
@@ -566,43 +357,7 @@ def test_get_wiki_page_schema() -> None:
         tool.description
         == "Get a single wiki page's metadata (id, title, project) by id.\n\nOpenProject's REST API v3 does not expose a wiki page's body text at\nall -- GET /api/v3/wiki_pages/{id} returns only id/title/project, and\nthere is no other route that returns the page content. This tool\ntherefore cannot return wiki page text; use the OpenProject web UI to\nread a page's content.\n"
     )
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "title": {
-                "title": "Title",
-                "type": "string",
-            },
-            "project_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project Id",
-            },
-            "project": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project",
-            },
-        },
-        "required": ["id", "title", "project_id", "project"],
-        "title": "WikiPageDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "wiki_page_id": {
@@ -625,43 +380,7 @@ def test_get_post_schema() -> None:
         tool.description
         == "Get a single forum post by id.\n\nOpenProject's API exposes exactly one route for posts:\nGET /api/v3/posts/{id}. There is no collection/list endpoint for posts or\nforums at all in OpenProject's REST API -- a post's id must therefore\ncome from elsewhere (e.g. a work package's activity/journal referencing\na forum post, or a link copied from the OpenProject web UI). This MCP\ndoes not and cannot provide a list_posts or list_forums tool.\n"
     )
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "subject": {
-                "title": "Subject",
-                "type": "string",
-            },
-            "project_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project Id",
-            },
-            "project": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project",
-            },
-        },
-        "required": ["id", "subject", "project_id", "project"],
-        "title": "PostDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "post_id": {

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from openproject_ce_mcp.tools_runtime import _return_model, _returns_dataclass
+from openproject_ce_mcp.tools_runtime import _return_model
 
 
 @dataclass
@@ -43,9 +43,5 @@ def test_return_model_resolves_against_the_function_s_own_module() -> None:
     assert _return_model(example_tool) is ExampleModel
 
 
-def test_returns_dataclass_true_for_cross_module_dataclass_return() -> None:
-    assert _returns_dataclass(example_tool) is True
-
-
-def test_returns_dataclass_false_for_non_dataclass_return() -> None:
-    assert _returns_dataclass(not_a_dataclass) is False
+def test_return_model_is_none_for_a_non_dataclass_return() -> None:
+    assert _return_model(not_a_dataclass) is None

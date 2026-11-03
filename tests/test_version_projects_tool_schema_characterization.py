@@ -3,8 +3,7 @@
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
 order/types, descriptions, required fields, and whether the tool carries an
-output_schema (trimmed tools register with structured_output=False and have
-none, see test_trimming.py). A future relocation of any of these functions to
+output_schema (no tool carries one, see test_compact_result_seam.py). A future relocation of any of these functions to
 a different module must leave this file completely unmodified; a diff to it
 would mean the move changed the public tool contract, not just its location.
 """

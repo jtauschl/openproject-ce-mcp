@@ -22,11 +22,9 @@ from __future__ import annotations
 
 import functools
 import inspect
-import json
 import logging
 import time
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from typing import Any, Literal, TypeVar, cast
 
@@ -41,7 +39,7 @@ from .client import (
     tool_call,
 )
 from .logging_support import ToolCallLogRecord
-from .presentation import ContentBundle, _to_payload
+from .presentation import ContentBundle, _to_payload, dump_payload
 from .tool_errors import ToolCallError, ToolInputError
 
 LOGGER = logging.getLogger(__name__)
@@ -70,7 +68,6 @@ def register_selected_tools(
     mcp: MCPServer,
     *,
     names: Iterable[str],
-    hide_active: bool,
     annotations: Mapping[str, ToolAnnotations],
 ) -> None:
     """Register exactly the given (already policy-selected) tool names with `mcp`.
@@ -80,19 +77,16 @@ def register_selected_tools(
     resolves each name to its registered function and applies the
     error-categorization/trimming wrapping shared by every tool.
 
-    Tools that return a list/write/bulk result are routed through _to_payload for
-    context reduction: payload is dropped on confirmed writes,
-    count/truncated on lists, and `select` trims rows. Those tools are registered
-    with structured_output=False so the SDK does not build a fixed dataclass
-    output schema — it serializes the trimmed dict we return verbatim, letting us
-    omit keys. Detection is by the result model's fields, so no per-tool tagging
-    is needed and it cannot drift. Tool bodies are unchanged; they still return
-    their dataclass, which the wrapper trims.
-
-    When `hide_active` is set (i.e. any hide-field config is active), every
-    dataclass-returning tool is trimmed too, so single-entity reads (get_*) can
-    drop hidden keys entirely rather than emit them as null. This only widens
-    schema loss when the operator opted into hiding.
+    Every tool result is routed through _to_payload for context reduction (payload
+    dropped on confirmed writes, count/truncated on lists, `select` trimming rows,
+    hidden keys removed) and leaves the server as one compact JSON text block, built
+    by `dump_payload`. The tools are registered with structured_output=False, so the
+    SDK neither builds a fixed dataclass output schema nor emits a second
+    `structuredContent` copy of the payload; the trimmed dict is serialised here and
+    the SDK passes the text through. A tool must return a result dataclass or a
+    ContentBundle, and registration fails for any other return type: that is what
+    keeps "every tool goes through this seam" a property of the code. Tool bodies
+    still return their dataclass, which the wrapper trims.
 
     `annotations` carries the MCP tool annotations the Catalog/Policy layer
     derived for each name.
@@ -107,10 +101,12 @@ def register_selected_tools(
         trailing_newline = "\n" if description.rstrip(" \t").endswith("\n") else ""
         normalized_doc = inspect.cleandoc(description) + trailing_newline
 
-        if not (_returns_trimmable(fn) or (hide_active and _returns_dataclass(fn))):
-            wrapped = _categorize_tool_errors(fn)
-            wrapped.__doc__ = normalized_doc
-            return mcp.tool(annotations=tool_annotations)(wrapped)
+        if _return_model(fn) is None and not _returns_content_bundle(fn):
+            raise RuntimeError(
+                f"Tool {fn.__name__} must return a result dataclass or a ContentBundle, not "
+                f"{fn.__annotations__.get('return')!r}: every tool result is trimmed and serialised by "
+                "register_selected_tools"
+            )
 
         # Whether this tool's own signature accepts `select` -- NOT whether its
         # return model happens to carry a `results`/`items` field. Some list
@@ -121,7 +117,7 @@ def register_selected_tools(
         elide_none = "select" in inspect.signature(fn).parameters
 
         # _categorize_tool_errors wraps THIS function (trimming), not `fn`
-        # directly -- trimming's own _to_payload/json.dumps calls run inside
+        # directly -- trimming's own _to_payload/dump_payload calls run inside
         # the protected/logged operation, not after it. Wrapping `fn` alone
         # (the old shape) let the inner call log "success" and return before
         # trimming/serialization ever ran; a failure in that step then raised
@@ -139,10 +135,10 @@ def register_selected_tools(
                 # carry them (see presentation.ContentBundle).
                 payload = _to_payload(result.body, select=select, elide_none=elide_none)
                 return [
-                    TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, default=str)),
+                    TextContent(type="text", text=dump_payload(payload)),
                     *result.blocks,
                 ]
-            return _to_payload(result, select=select, elide_none=elide_none)
+            return dump_payload(_to_payload(result, select=select, elide_none=elide_none))
 
         wrapped = _categorize_tool_errors(trimming)
         wrapped.__doc__ = normalized_doc
@@ -256,40 +252,6 @@ def _return_model(fn: Any) -> type | None:
     return model if isinstance(model, type) and is_dataclass(model) else None
 
 
-def _returns_dataclass(fn: Any) -> bool:
-    """True if the tool returns a dataclass result (so it can be serialized/trimmed)."""
-    return _return_model(fn) is not None
-
-
-def _returns_trimmable(fn: Any) -> bool:
-    """True if a tool returns a result the context-reduction seam should trim.
-
-    A result is trimmable when its model carries a field the seam acts on:
-    ``results`` (list results → count/truncated drop + select), ``payload`` (write
-    results → payload drop on confirm), or ``items`` (bulk results, whose nested
-    per-item write results carry their own payload to drop). Detection inspects the
-    model's fields, so it cannot drift from suffix conventions (e.g.
-    RelationUpdateResult, ProjectCopyResult carry payload but are not *WriteResult).
-
-    Also trimmable when the tool's own signature accepts ``select`` directly,
-    even if its return model has none of those three fields -- this is the
-    bare single-entity case (e.g. get_work_package → WorkPackageDetail): the
-    model itself has no results/items for select to act on, but
-    _to_payload's top-level-select branch (see presentation.py) still needs
-    the trimming wrapper to run at all in order to reach select in the first
-    place.
-    """
-    if "select" in inspect.signature(fn).parameters:
-        return True
-    if _returns_content_bundle(fn):
-        return True
-    model = _return_model(fn)
-    if model is None:
-        return False
-    names = {f.name for f in dataclass_fields(model)}
-    return bool(names & {"results", "payload", "items"})
-
-
 def _returns_content_bundle(fn: Any) -> bool:
     """True if the tool can return a ContentBundle (native MCP content blocks
     alongside a normal result).
@@ -299,7 +261,8 @@ def _returns_content_bundle(fn: Any) -> bool:
     (``AttachmentListResult | ContentBundle`` — the bundle only comes back
     when the caller asked for inlined content), which resolves to no single
     dataclass. The wrapper's own ``isinstance`` check is what actually decides
-    per call; this only has to be right about whether the wrapper must run.
+    per call; this only has to be right about whether registration may accept
+    the annotation.
     """
     ann = fn.__annotations__.get("return")
     if isinstance(ann, str):

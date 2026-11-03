@@ -90,7 +90,6 @@ def server(recorder: _Recorder) -> StrictMCPServer:
             *GUARDING_A_REFERENCE,
             "create_work_package_relation",
         ],
-        hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
     return server

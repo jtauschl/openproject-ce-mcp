@@ -301,6 +301,7 @@ async def test_get_attachment_content_returns_json_block_then_image_block() -> N
         # (the same elide_none rule every select-less tool follows).
         "reason": None,
     }
+    assert result[0].text == json.dumps(metadata, separators=(",", ":"), ensure_ascii=False)
     assert result[1].mime_type == "image/png"
     assert base64.b64decode(result[1].data) == b"PNG"
 
@@ -385,6 +386,8 @@ def _summary(attachment_id: int, content_type: str):
 
 
 async def test_list_work_package_attachments_without_include_images_is_unchanged() -> None:
+    import json
+
     async def list_for_work_package(work_package_id, *, offset, limit, include_total_size):
         return _listing(_summary(1, "image/png"))
 
@@ -399,7 +402,8 @@ async def test_list_work_package_attachments_without_include_images_is_unchanged
         work_package_id=9,
     )
 
-    assert isinstance(result, dict)
+    assert isinstance(result, str)  # the registered wrapper emits the compact JSON text
+    result = json.loads(result)
     assert [row["id"] for row in result["results"]] == [1]
     assert "count" not in result and "truncated" not in result
     assert "images" not in result  # None -> elided, exactly as before

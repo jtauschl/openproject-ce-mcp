@@ -46,16 +46,7 @@ def test_render_text_schema() -> None:
         "documents, meetings, posts, users, groups, principals or views is hidden: OpenProject expands macros such as\n"
         "#123 or version#4 into the name or display id of any record, whatever its project."
     )
-    assert tool.output_schema == {
-        "properties": {
-            "format": {"title": "Format", "type": "string"},
-            "raw": {"title": "Raw", "type": "string"},
-            "html": {"title": "Html", "type": "string"},
-        },
-        "required": ["format", "raw", "html"],
-        "title": "RenderedText",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "text": {"title": "Text", "type": "string"},
@@ -87,26 +78,7 @@ def test_list_help_texts_schema() -> None:
 def test_get_help_text_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_help_text"]
     assert tool.description == "Get a single help text by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "attribute_name": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Attribute Name",
-            },
-            "attribute_caption": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Attribute Caption",
-            },
-            "help_text": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Help Text",
-            },
-        },
-        "required": ["id", "attribute_name", "attribute_caption", "help_text"],
-        "title": "HelpTextSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "help_text_id": {"title": "Help Text Id", "type": "integer"},
@@ -161,18 +133,7 @@ def test_list_non_working_days_schema() -> None:
 def test_get_custom_option_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_custom_option"]
     assert tool.description == "Fetch the label/value of a single custom field option by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "value": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Value",
-            },
-        },
-        "required": ["id", "value"],
-        "title": "CustomOptionSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "custom_option_id": {"title": "Custom Option Id", "type": "integer"},

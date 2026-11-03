@@ -121,8 +121,11 @@ src/openproject_ce_mcp/
   same in every tool that takes them (see [Descriptions](#descriptions)).
 - Every tool result is a `models.py` dataclass trimmed by the presentation seam
   (`presentation._to_payload`: `select`, hidden-field masking, confirmed-payload
-  drop). The one thing JSON cannot carry -- an attachment's image or text as a
-  native MCP content block -- goes through `presentation.ContentBundle`: the
+  drop) and emitted as one compact JSON text block (`presentation.dump_payload`).
+  `register_selected_tools` refuses a tool that returns anything else, so no tool
+  reaches the SDK's own serialisation and none publishes an `outputSchema` or a
+  second `structuredContent` copy. The one thing JSON cannot carry -- an attachment's
+  image or text as a native MCP content block -- goes through `presentation.ContentBundle`: the
   bundle's `body` still takes the normal trimmed path and becomes the leading
   JSON block, and only the extra blocks travel outside it. Blocks are built in
   the tool layer, since nothing under `app/` may import the `mcp` SDK.

@@ -1026,9 +1026,9 @@ async def test_get_project_tool_reads_a_renamed_project_by_its_former_identifier
     tool = create_app(settings)._tool_manager.get_tool("get_project")
     assert tool is not None
 
-    result = await tool.run({"project": "FIDOLD"}, context=FakeContext(client))
+    result = json.loads(await tool.run({"project": "FIDOLD"}, context=FakeContext(client)))
 
-    assert (result.id, result.identifier) == (42, "FIDNEW")
+    assert (result["id"], result["identifier"]) == (42, "FIDNEW")
     await client.aclose()
 
 
@@ -1109,7 +1109,7 @@ async def _run_tool(settings, handler, tool_name: str, arguments: dict):
     tool = create_app(settings)._tool_manager.get_tool(tool_name)
     assert tool is not None
     try:
-        return await tool.run(arguments, context=FakeContext(client))
+        return json.loads(await tool.run(arguments, context=FakeContext(client)))
     finally:
         await client.aclose()
 
@@ -1180,7 +1180,7 @@ async def test_a_failed_re_read_denies_by_the_recorded_identifier_and_the_next_l
 
     with pytest.raises(ToolError, match=r"\[PROJECT_SCOPE_DENIED\].*OPENPROJECT_READ_PROJECTS"):
         await tool.run({"work_package_id": 7}, context=FakeContext(client))
-    result = await tool.run({"work_package_id": 7}, context=FakeContext(client))
+    result = json.loads(await tool.run({"work_package_id": 7}, context=FakeContext(client)))
 
     assert result["id"] == 7
     assert seen == ["GET /api/v3/work_packages/7", _FID_READ, "GET /api/v3/work_packages/7", "GET /api/v3/projects/42"]
@@ -1262,7 +1262,7 @@ async def _list_after_a_rename(
     tool = create_app(settings)._tool_manager.get_tool("list_work_packages")
     assert tool is not None
     try:
-        return await tool.run(arguments, context=FakeContext(client))
+        return json.loads(await tool.run(arguments, context=FakeContext(client)))
     finally:
         await client.aclose()
 

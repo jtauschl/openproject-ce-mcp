@@ -73,7 +73,6 @@ def call_tool(recorder: _Recorder) -> CallTool:
             tools_work_packages.bulk_update_work_packages.__name__,
             tools_work_packages.bulk_create_work_packages.__name__,
         ],
-        hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
 

@@ -119,50 +119,7 @@ def test_list_users_schema() -> None:
 def test_get_user_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_user"]
     assert tool.description == "Get a user by id, login, or `me` when supported by OpenProject."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "login": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Login"},
-            "email": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Email"},
-            "status": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Status"},
-            "admin": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "title": "Admin"},
-            "locked": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "title": "Locked"},
-            "avatar_url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Avatar Url"},
-            "created_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Created At"},
-            "updated_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Updated At"},
-            "language": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Language"},
-            "identity_url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Identity Url"},
-            "auth_source": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Auth Source"},
-            "firstname": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "default": None,
-                "title": "Firstname",
-            },
-            "lastname": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "default": None,
-                "title": "Lastname",
-            },
-        },
-        "required": [
-            "id",
-            "name",
-            "login",
-            "email",
-            "status",
-            "admin",
-            "locked",
-            "avatar_url",
-            "created_at",
-            "updated_at",
-            "language",
-            "identity_url",
-            "auth_source",
-        ],
-        "title": "UserDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {"user": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "User"}},
         "required": ["user"],
@@ -217,30 +174,7 @@ def test_list_groups_schema() -> None:
 def test_get_group_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_group"]
     assert tool.description == "Get a single group by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "member_count": {"title": "Member Count", "type": "integer"},
-            "members": {"items": {"type": "string"}, "title": "Members", "type": "array"},
-            "created_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Created At"},
-            "updated_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Updated At"},
-            "can_update": {"title": "Can Update", "type": "boolean"},
-            "can_delete": {"title": "Can Delete", "type": "boolean"},
-        },
-        "required": [
-            "id",
-            "name",
-            "member_count",
-            "members",
-            "created_at",
-            "updated_at",
-            "can_update",
-            "can_delete",
-        ],
-        "title": "GroupDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "group_id": {"description": "Group id, from list_groups.", "title": "Group Id", "type": "integer"}
@@ -292,58 +226,7 @@ def test_list_storages_schema() -> None:
 def test_get_storage_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_storage"]
     assert tool.description == "Get a single OpenProject external file storage connection by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "name": {"title": "Name", "type": "string"},
-            "provider_type": {"title": "Provider Type", "type": "string"},
-            "host": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Host"},
-            "configured": {"title": "Configured", "type": "boolean"},
-            "authorization_state": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Authorization State",
-            },
-            "authentication_method": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Authentication Method",
-            },
-            "created_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Created At"},
-            "updated_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Updated At"},
-            "has_application_password": {
-                "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                "default": None,
-                "title": "Has Application Password",
-            },
-            "forbidden_file_name_characters": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "default": None,
-                "title": "Forbidden File Name Characters",
-            },
-            "tenant_id": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "default": None,
-                "title": "Tenant Id",
-            },
-            "drive_id": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "default": None,
-                "title": "Drive Id",
-            },
-        },
-        "required": [
-            "id",
-            "name",
-            "provider_type",
-            "host",
-            "configured",
-            "authorization_state",
-            "authentication_method",
-            "created_at",
-            "updated_at",
-        ],
-        "title": "StorageDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {"storage_id": {"title": "Storage Id", "type": "integer"}},
         "required": ["storage_id"],

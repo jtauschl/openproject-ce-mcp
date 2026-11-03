@@ -785,8 +785,8 @@ async def test_get_project_tolerates_ancestor_without_display_id() -> None:
     ProjectDetail.ancestors rejected that None at the MCP structured-output
     validation boundary (a real 'Input should be a valid string' crash on any
     project with a parent), even though client.py and its unit tests already
-    treated None as the normal shape. Exercise the real call_tool path
-    (not just output_schema shape) so a regression here fails loudly again.
+    treated None as the normal shape. Exercise the real call_tool path so a
+    result the client cannot read fails loudly.
     """
     mcp = MCPServer("shape-test")
 

@@ -90,16 +90,16 @@ A core reason to use this MCP instead of calling the OpenProject REST API
 directly: it returns context-frugal responses instead of raw HAL payloads —
 and not just for listing. The numbers below are measured against the same
 three representative work packages (real tiktoken counts, not a bytes/4
-approximation); read/search/write/batch calls all land in the same **−85% to
+approximation); read/search/write/batch calls all land in the same **−83% to
 −98%** range. For the full per-call-type breakdown, the tool-catalog size
 numbers, and how to reproduce them, see
 [Context efficiency](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/context-efficiency.md).
 
 | Response | Tokens | vs. raw API |
 |---|---:|---:|
-| Raw OpenProject REST API v3 (HAL) | ~9,992 | baseline |
-| `list_work_packages` (MCP) | ~861 | **−91%** |
-| `list_work_packages` with `select` (5 fields) | ~174 | **−98%** |
+| Raw OpenProject REST API v3 (HAL) | ~8,992 | baseline |
+| `list_work_packages` (MCP) | ~781 | **−91%** |
+| `list_work_packages` with `select` (5 fields) | ~151 | **−98%** |
 
 ---
 

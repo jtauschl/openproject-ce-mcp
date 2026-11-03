@@ -92,25 +92,7 @@ def test_mark_notifications_read_schema() -> None:
         "project outside it is refused (in the preview too), and omitting\n"
         "notification_id marks only notifications about the projects it covers.\n"
     )
-    assert tool.output_schema == {
-        "properties": {
-            "action": {"title": "Action", "type": "string"},
-            "state": {
-                "enum": ["rejected", "invalid", "preview", "confirmed"],
-                "title": "State",
-                "type": "string",
-            },
-            "ready": {"title": "Ready", "type": "boolean"},
-            "message": {"title": "Message", "type": "string"},
-            "notification_id": {
-                "anyOf": [{"type": "integer"}, {"type": "null"}],
-                "title": "Notification Id",
-            },
-        },
-        "required": ["action", "state", "ready", "message", "notification_id"],
-        "title": "NotificationMarkResult",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "notification_id": {
@@ -140,34 +122,7 @@ def test_get_my_preferences_schema() -> None:
         "Note: language is a User attribute, not a preference -- use update_user's\n"
         '"language" field to change it.\n'
     )
-    assert tool.output_schema == {
-        "properties": {
-            "time_zone": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Time Zone",
-            },
-            "comment_sort_descending": {
-                "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                "title": "Comment Sort Descending",
-            },
-            "warn_on_leaving_unsaved": {
-                "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                "title": "Warn On Leaving Unsaved",
-            },
-            "auto_hide_popups": {
-                "anyOf": [{"type": "boolean"}, {"type": "null"}],
-                "title": "Auto Hide Popups",
-            },
-        },
-        "required": [
-            "time_zone",
-            "comment_sort_descending",
-            "warn_on_leaving_unsaved",
-            "auto_hide_popups",
-        ],
-        "title": "UserPreferences",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {},
         "title": "get_my_preferencesArguments",
@@ -245,7 +200,7 @@ def test_mark_notifications_unread_schema() -> None:
         "project outside it is refused (in the preview too), and omitting\n"
         "notification_id marks only notifications about the projects it covers.\n"
     )
-    assert tool.output_schema["title"] == "NotificationMarkResult"
+    assert tool.output_schema is None
     assert list(tool.parameters["properties"]) == ["notification_id", "confirm"]
     assert tool.parameters["properties"]["confirm"]["default"] is False
     assert tool.parameters["additionalProperties"] is False
@@ -260,7 +215,7 @@ def test_get_notification_schema() -> None:
         "Under a restricted OPENPROJECT_READ_PROJECTS, a notification about a project outside it, or one that names no\n"
         "project at all, is refused. A reminder note is user text and is delimited as untrusted content."
     )
-    assert tool.output_schema["title"] == "NotificationDetail"
+    assert tool.output_schema is None
     assert list(tool.parameters["properties"]) == ["notification_id"]
     assert tool.parameters["required"] == ["notification_id"]
     assert tool.parameters["additionalProperties"] is False

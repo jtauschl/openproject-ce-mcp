@@ -3,8 +3,7 @@
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
 order/types, descriptions, required fields, and whether the tool carries an
-output_schema (trimmed tools register with structured_output=False and have
-none, see test_trimming.py). A future relocation of any of these functions to
+output_schema (no tool carries one, see test_compact_result_seam.py). A future relocation of any of these functions to
 a different module must leave this file completely unmodified; a diff to it
 would mean the move changed the public tool contract, not just its location.
 """
@@ -89,108 +88,7 @@ def test_list_sprints_schema() -> None:
 def test_get_sprint_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_sprint"]
     assert tool.description == "Get a Backlogs sprint by id. Requires OpenProject 17.3 or newer."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "name": {
-                "title": "Name",
-                "type": "string",
-            },
-            "status": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Status",
-            },
-            "start_date": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Start Date",
-            },
-            "finish_date": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Finish Date",
-            },
-            "defining_workspace_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Defining Workspace Id",
-            },
-            "defining_workspace": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Defining Workspace",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created At",
-            },
-            "updated_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Updated At",
-            },
-        },
-        "required": [
-            "id",
-            "name",
-            "status",
-            "start_date",
-            "finish_date",
-            "defining_workspace_id",
-            "defining_workspace",
-            "created_at",
-            "updated_at",
-        ],
-        "title": "SprintDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "sprint_id": {
@@ -253,65 +151,7 @@ def test_list_backlog_buckets_schema() -> None:
 def test_get_backlog_bucket_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_backlog_bucket"]
     assert tool.description == "Get a Backlogs backlog bucket by id. Requires OpenProject 17.6 or newer."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "name": {
-                "title": "Name",
-                "type": "string",
-            },
-            "defining_workspace_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Defining Workspace Id",
-            },
-            "defining_workspace": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Defining Workspace",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created At",
-            },
-            "updated_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Updated At",
-            },
-        },
-        "required": ["id", "name", "defining_workspace_id", "defining_workspace", "created_at", "updated_at"],
-        "title": "BacklogBucketDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "backlog_bucket_id": {

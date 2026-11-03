@@ -3,8 +3,7 @@
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
 order/types, descriptions, required fields, and whether the tool carries an
-output_schema (trimmed tools register with structured_output=False and have
-none, see test_trimming.py). A future relocation of any of these functions to
+output_schema (no tool carries one, see test_compact_result_seam.py). A future relocation of any of these functions to
 a different module must leave this file completely unmodified; a diff to it
 would mean the move changed the public tool contract, not just its location.
 """
@@ -83,72 +82,7 @@ def test_list_grids_schema() -> None:
 def test_get_grid_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_grid"]
     assert tool.description == "Get a single dashboard grid by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "row_count": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Row Count",
-            },
-            "column_count": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Column Count",
-            },
-            "scope": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Scope",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created At",
-            },
-            "updated_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Updated At",
-            },
-        },
-        "required": ["id", "row_count", "column_count", "scope", "created_at", "updated_at"],
-        "title": "GridSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "grid_id": {

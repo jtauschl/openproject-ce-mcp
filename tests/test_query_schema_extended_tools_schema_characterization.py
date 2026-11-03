@@ -41,16 +41,7 @@ def _tools(mcp) -> dict:
 def test_get_query_filter_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_query_filter"]
     assert tool.description == "Get a single query filter by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "string"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Url"},
-        },
-        "required": ["id", "name", "url"],
-        "title": "QueryFilterSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "filter_id": {
@@ -71,18 +62,7 @@ def test_get_query_filter_schema() -> None:
 def test_get_query_column_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_query_column"]
     assert tool.description == "Get a single query column by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "string"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "type": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Type"},
-            "relation_type": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Relation Type"},
-            "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Url"},
-        },
-        "required": ["id", "name", "type", "relation_type", "url"],
-        "title": "QueryColumnSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {"column_id": {"title": "Column Id", "type": "string"}},
         "required": ["column_id"],
@@ -97,16 +77,7 @@ def test_get_query_column_schema() -> None:
 def test_get_query_operator_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_query_operator"]
     assert tool.description == "Get a single query operator by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "string"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Url"},
-        },
-        "required": ["id", "name", "url"],
-        "title": "QueryOperatorSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {"operator_id": {"title": "Operator Id", "type": "string"}},
         "required": ["operator_id"],
@@ -121,18 +92,7 @@ def test_get_query_operator_schema() -> None:
 def test_get_query_sort_by_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_query_sort_by"]
     assert tool.description == ("Get a single query sort-by definition by id.")
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "string"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "column": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Column"},
-            "direction": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Direction"},
-            "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Url"},
-        },
-        "required": ["id", "name", "column", "direction", "url"],
-        "title": "QuerySortBySummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "sort_by_id": {
@@ -174,18 +134,7 @@ def test_list_query_filter_instance_schemas_schema() -> None:
 def test_get_query_filter_instance_schema_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_query_filter_instance_schema"]
     assert tool.description == "Get a single query filter instance schema by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "string"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "filter": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Filter"},
-            "operator_count": {"title": "Operator Count", "type": "integer"},
-            "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Url"},
-        },
-        "required": ["id", "name", "filter", "operator_count", "url"],
-        "title": "QueryFilterInstanceSchemaSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {"schema_id": {"title": "Schema Id", "type": "string"}},
         "required": ["schema_id"],

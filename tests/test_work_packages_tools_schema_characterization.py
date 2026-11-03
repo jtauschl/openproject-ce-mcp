@@ -3,8 +3,7 @@
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
 order/types, descriptions, required fields, and whether the tool carries an
-output_schema (trimmed tools register with structured_output=False and have
-none, see test_trimming.py). A future relocation of any of these functions to
+output_schema (no tool carries one, see test_compact_result_seam.py). A future relocation of any of these functions to
 a different module must leave this file completely unmodified; a diff to it
 would mean the move changed the public tool contract, not just its location.
 """
@@ -1231,101 +1230,7 @@ def test_toggle_activity_emoji_reaction_schema() -> None:
         tool.description
         == "Toggle an emoji reaction on a work package comment activity.\n\nAdds the reaction if absent, removes it if already present. `reaction` is\none of: thumbs_up, thumbs_down, grinning_face_with_smiling_eyes,\nconfused_face, heart, party_popper, rocket, eyes.\n"
     )
-    assert tool.output_schema == {
-        "$defs": {
-            "EmojiReactionListResult": {
-                "properties": {
-                    "count": {
-                        "title": "Count",
-                        "type": "integer",
-                    },
-                    "results": {
-                        "items": {
-                            "$ref": "#/$defs/EmojiReactionSummary",
-                        },
-                        "title": "Results",
-                        "type": "array",
-                    },
-                },
-                "required": ["count", "results"],
-                "title": "EmojiReactionListResult",
-                "type": "object",
-            },
-            "EmojiReactionSummary": {
-                "properties": {
-                    "reaction": {
-                        "title": "Reaction",
-                        "type": "string",
-                    },
-                    "emoji": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Emoji",
-                    },
-                    "count": {
-                        "title": "Count",
-                        "type": "integer",
-                    },
-                    "users": {
-                        "items": {
-                            "type": "string",
-                        },
-                        "title": "Users",
-                        "type": "array",
-                    },
-                },
-                "required": ["reaction", "emoji", "count", "users"],
-                "title": "EmojiReactionSummary",
-                "type": "object",
-            },
-        },
-        "properties": {
-            "action": {
-                "title": "Action",
-                "type": "string",
-            },
-            "state": {
-                "enum": ["rejected", "invalid", "preview", "confirmed"],
-                "title": "State",
-                "type": "string",
-            },
-            "ready": {
-                "title": "Ready",
-                "type": "boolean",
-            },
-            "message": {
-                "title": "Message",
-                "type": "string",
-            },
-            "activity_id": {
-                "title": "Activity Id",
-                "type": "integer",
-            },
-            "reaction": {
-                "title": "Reaction",
-                "type": "string",
-            },
-            "result": {
-                "anyOf": [
-                    {
-                        "$ref": "#/$defs/EmojiReactionListResult",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-            },
-        },
-        "required": ["action", "state", "ready", "message", "activity_id", "reaction", "result"],
-        "title": "EmojiReactionWriteResult",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "activity_id": {"title": "Activity Id", "type": "integer"},

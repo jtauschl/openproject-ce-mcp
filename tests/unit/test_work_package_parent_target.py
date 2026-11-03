@@ -222,7 +222,6 @@ def mcp_call() -> Callable[[str, dict], Awaitable[types.CallToolResult]]:
             tools_work_packages.update_work_package.__name__,
             tools_work_packages.bulk_update_work_packages.__name__,
         ],
-        hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
 

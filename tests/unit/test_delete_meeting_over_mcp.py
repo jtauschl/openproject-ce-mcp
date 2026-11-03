@@ -69,7 +69,7 @@ async def _call(recorder: _Recorder, arguments: dict) -> types.CallToolResult:
 
     server = StrictMCPServer("test", lifespan=lifespan)
     tools_runtime.register_selected_tools(
-        server, names=[tools_meetings.delete_meeting.__name__], hide_active=False, annotations=tools.TOOL_ANNOTATIONS
+        server, names=[tools_meetings.delete_meeting.__name__], annotations=tools.TOOL_ANNOTATIONS
     )
     async with Client(server, mode="legacy") as client:
         return await client.call_tool("delete_meeting", arguments)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -26,21 +27,26 @@ from openproject_ce_mcp.strict_mcpserver import StrictMCPServer
 CallTool = Callable[[str, dict], Awaitable[types.CallToolResult]]
 
 
-async def probe_rejects_input(ctx: Context, value: int) -> str:
+@dataclass
+class ProbeResult:
+    value: str
+
+
+async def probe_rejects_input(ctx: Context, value: int) -> ProbeResult:
     """Probe: a tool-body validator rejecting the input."""
     raise ValueError("value must be positive")
 
 
-async def probe_openproject_denies(ctx: Context) -> str:
+async def probe_openproject_denies(ctx: Context) -> ProbeResult:
     """Probe: OpenProject refusing the call."""
 
-    async def call() -> str:
+    async def call() -> ProbeResult:
         raise OpenProjectPermissionDeniedError("denied by OpenProject")
 
     return await tools_runtime._run_tool(call())
 
 
-async def probe_crashes(ctx: Context) -> str:
+async def probe_crashes(ctx: Context) -> ProbeResult:
     """Probe: a bug inside the tool whose own text must not reach the agent."""
     raise KeyError("internal detail")
 
@@ -75,7 +81,6 @@ def call_tool(request, monkeypatch) -> CallTool:
     tools_runtime.register_selected_tools(
         server,
         names=tools_runtime._TOOL_FUNCTIONS,
-        hide_active=False,
         annotations={
             **tools.TOOL_ANNOTATIONS,
             "probe_rejects_input": probe_annotations,

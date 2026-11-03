@@ -8,9 +8,9 @@ applies ``select`` to result rows. ``next_offset`` is never dropped. Whether
 on ``elide_none``, derived by the ``tool()`` wrapper from whether the tool's
 own signature accepts ``select`` -- select-capable tools keep eliding None
 when a field isn't requested, select-incapable tools keep None explicit as
-``null`` since there's no way to ask for it back. Tools that return such
-results are registered with ``structured_output=False`` so the trimmed dict
-is emitted verbatim.
+``null`` since there's no way to ask for it back. Every tool is
+registered with ``structured_output=False`` and emits the trimmed dict as one
+compact JSON text block.
 """
 
 from __future__ import annotations
@@ -28,21 +28,11 @@ from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.presentation import _to_payload
 from openproject_ce_mcp.server import create_app
 from openproject_ce_mcp.tools import (
-    bulk_create_work_packages,
-    bulk_update_work_packages,
-    create_work_package,
-    get_status,
-    get_work_package,
-    get_work_packages,
-    list_actions,
-    list_capabilities,
     list_meeting_agenda_items,
     list_meeting_outcomes,
     list_work_package_meeting_agenda_items,
-    list_work_packages,
-    update_relation,
 )
-from openproject_ce_mcp.tools_runtime import _normalize_select, _returns_trimmable
+from openproject_ce_mcp.tools_runtime import _normalize_select
 from openproject_ce_mcp.tools_validation import _validate_select
 
 
@@ -144,23 +134,6 @@ def _wp_write(*, state: m.WriteResultState) -> m.WorkPackageWriteResult:
         # server just returned it); preview writes have no detail yet.
         result=_wp_detail(id=9, display_id="DEMO-9") if confirmed else None,
     )
-
-
-# ── _returns_trimmable ────────────────────────────────────────────────────────
-
-
-def test_returns_trimmable_detects_list_write_bulk() -> None:
-    assert _returns_trimmable(list_work_packages) is True  # has results
-    assert _returns_trimmable(create_work_package) is True  # has payload
-    assert _returns_trimmable(bulk_create_work_packages) is True  # has items
-    assert _returns_trimmable(update_relation) is True  # RelationUpdateResult carries payload
-
-
-def test_returns_trimmable_false_for_single_entity_reads() -> None:
-    # get_work_package is NOT here: it now has `select`,
-    # so _returns_trimmable is True for it -- see
-    # test_returns_trimmable_true_for_select_capable_single_entity_and_list_tools.
-    assert _returns_trimmable(get_status) is False
 
 
 # ── count / truncated dropped from list results ───────────────────────────────
@@ -349,7 +322,6 @@ def test_meeting_list_tools_accept_select_in_their_signature() -> None:
 
     for fn in (list_meeting_agenda_items, list_work_package_meeting_agenda_items, list_meeting_outcomes):
         assert "select" in inspect.signature(fn).parameters
-        assert _returns_trimmable(fn) is True
 
 
 def test_normalize_select_shapes_kwarg() -> None:
@@ -438,10 +410,6 @@ def test_select_custom_fields_round_trips_through_batch_nested_work_package() ->
     row = out["results"][0]["work_package"]
     assert sorted(row) == ["custom_fields", "id"]
     assert row["custom_fields"] == {"customField1": "Acme Corp"}
-
-
-def test_returns_trimmable_true_for_batch_read() -> None:
-    assert _returns_trimmable(get_work_packages) is True
 
 
 # ── select trims the nested result on bulk writes ────────────────────────────
@@ -593,10 +561,6 @@ def test_validate_select_rejects_unknown_field_for_work_package_write_result() -
         _validate_select(["bogus"], row_type=m.WorkPackageWriteResult)
 
 
-def test_returns_trimmable_true_for_bulk_update() -> None:
-    assert _returns_trimmable(bulk_update_work_packages) is True
-
-
 # ── forward-compat: _hidden_keys removed entirely ─────────────────────────────
 
 
@@ -663,14 +627,6 @@ def test_trimmed_tools_have_no_output_schema() -> None:
         assert tools[name].output_schema is None, name
 
 
-def test_untrimmed_tools_keep_output_schema() -> None:
-    tools = _tools(create_app(_make_settings()))
-    # get_work_package moved to test_trimmed_tools_have_no_output_schema above
-    # (it now has `select`, so it's trimmed unconditionally).
-    for name in ["get_status", "get_project"]:
-        assert tools[name].output_schema is not None, name
-
-
 def test_list_tools_expose_select_param() -> None:
     tools = _tools(create_app(_make_settings()))
     for name in [
@@ -697,7 +653,7 @@ def test_list_tools_expose_select_param() -> None:
 # isolation, not that it's really wired up for these two tools. This test
 # calls the real registered callable (`Tool.fn`, confirmed by inspection to be
 # the `trimming` wrapper from register_selected_tools, not the raw tool
-# function -- it returns a plain dict, not a dataclass) through a real
+# function -- it returns the compact JSON text, not a dataclass) through a real
 # OpenProjectClient, so
 # it's the one assertion that proves the full path end-to-end. One bulk tool
 # is enough: both share the same return type and the same generic wrapper
@@ -713,6 +669,14 @@ class _FakeAppContext:
 class _FakeContext:
     def __init__(self, client: OpenProjectClient) -> None:
         self.request_context = SimpleNamespace(lifespan_context=_FakeAppContext(client=client))
+
+
+async def _emitted(fn, *args, **kwargs):
+    """Call a registered tool and parse what it emits: the wrapper hands the SDK one compact JSON string."""
+    text = await fn(*args, **kwargs)
+    assert isinstance(text, str)  # proves the trimming seam ran, not a raw dataclass or a dict for the SDK
+    assert "\n" not in text
+    return json.loads(text)
 
 
 @pytest.mark.asyncio
@@ -739,14 +703,14 @@ async def test_bulk_create_work_packages_select_is_threaded_through_the_register
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     fn = _tools(create_app(settings))["bulk_create_work_packages"].fn
 
-    result = await fn(
+    result = await _emitted(
+        fn,
         _FakeContext(client),
         items=[{"project": "demo", "type": "Task", "subject": "WP 1"}],
         select=["ready", "work_package_id"],
         confirm=False,
     )
 
-    assert isinstance(result, dict)  # proves _to_payload ran, not a raw dataclass
     row = result["items"][0]
     # This is a confirm=False preview, so work_package_id is None (not yet
     # created), but selecting it now guarantees its presence as an explicit
@@ -758,7 +722,8 @@ async def test_bulk_create_work_packages_select_is_threaded_through_the_register
     # are never select-targetable.
     assert sorted(k for k in row if k != "result") == ["index", "success"]
 
-    path_result = await fn(
+    path_result = await _emitted(
+        fn,
         _FakeContext(client),
         items=[{"project": "demo", "type": "Task", "subject": "WP 1"}],
         select=["ready", "result.status"],
@@ -813,8 +778,10 @@ async def test_a_confirmed_bulk_create_returns_lean_items_through_the_registered
     fn = _tools(create_app(settings))["bulk_create_work_packages"].fn
     items = [{"project": "demo", "type": "Task", "subject": "WP 1"} for _ in range(40)]
 
-    lean = await fn(_FakeContext(client), items=items, confirm=True)
-    selected = await fn(_FakeContext(client), items=items, select=["work_package_id", "state", "result"], confirm=True)
+    lean = await _emitted(fn, _FakeContext(client), items=items, confirm=True)
+    selected = await _emitted(
+        fn, _FakeContext(client), items=items, select=["work_package_id", "state", "result"], confirm=True
+    )
 
     assert max(len(json.dumps(item, separators=(",", ":"))) for item in lean["items"]) < 300
     assert lean["items"][0] == {
@@ -873,9 +840,8 @@ async def test_select_less_list_tool_keeps_null_fields_through_registered_wrappe
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     fn = _tools(create_app(settings))["list_statuses"].fn
 
-    result = await fn(_FakeContext(client))
+    result = await _emitted(fn, _FakeContext(client))
 
-    assert isinstance(result, dict)  # proves _to_payload ran (has a results field)
     assert "select" not in json.dumps(_tools(create_app(settings))["list_statuses"].parameters)
     assert result["results"][0]["color"] is None
     await client.aclose()
@@ -917,9 +883,8 @@ async def test_select_capable_list_tool_still_elides_none_without_select_through
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     fn = _tools(create_app(settings))["list_work_packages"].fn
 
-    result = await fn(_FakeContext(client))
+    result = await _emitted(fn, _FakeContext(client))
 
-    assert isinstance(result, dict)
     # Contrast: list_work_packages DOES expose select, so its baseline
     # (no select passed) elide_none policy is True -- next_offset is still
     # always present regardless.
@@ -994,12 +959,6 @@ def test_validate_select_rejects_unknown_field_for_capability_summary() -> None:
         _validate_select(["bogus"], row_type=m.CapabilitySummary)
 
 
-def test_returns_trimmable_true_for_select_capable_single_entity_and_list_tools() -> None:
-    assert _returns_trimmable(get_work_package) is True  # select in signature, no results/items/payload
-    assert _returns_trimmable(list_actions) is True
-    assert _returns_trimmable(list_capabilities) is True
-
-
 @pytest.mark.asyncio
 async def test_get_work_package_select_is_threaded_through_the_registered_wrapper() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -1028,35 +987,20 @@ async def test_get_work_package_select_is_threaded_through_the_registered_wrappe
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     fn = _tools(create_app(settings))["get_work_package"].fn
 
-    result = await fn(_FakeContext(client), work_package_id=5, select=["id", "subject"])
+    result = await _emitted(fn, _FakeContext(client), work_package_id=5, select=["id", "subject"])
 
-    assert isinstance(result, dict)  # proves _to_payload ran, not a raw dataclass
     assert sorted(result) == ["id", "subject"]
 
     await client.aclose()
 
 
-# ── single-entity reads are trimmed only when hide-fields are active ─────────
-
-
-def test_single_entity_read_keeps_schema_without_hide_config() -> None:
-    # get_work_package is no longer a valid example here (it's now
-    # select-capable, hence trimmed unconditionally) -- get_status
-    # remains genuinely select-less and untrimmed absent hide-config.
-    tools = _tools(create_app(_make_settings()))
-    assert tools["get_status"].output_schema is not None
-
-
-def test_single_entity_read_trimmed_when_hide_config_active() -> None:
-    tools = _tools(create_app(_make_settings(hidden_fields={"status": ("name",)})))
-    # With hiding on, get_* results must be trimmable (dict output) to drop keys.
-    assert tools["get_status"].output_schema is None
+# ── single-entity reads keep their other null fields when a field is hidden ──
 
 
 def test_single_entity_read_keeps_other_null_fields_when_hide_config_active() -> None:
     # A select-less single-entity read (e.g. get_status) is registered with
-    # elide_none=False, so under hide_active it is routed through
-    # _to_payload with elide_none=False (Rule 1 applies) purely to drop the
+    # elide_none=False, so it is routed through
+    # _to_payload with elide_none=False (Rule 1 applies) purely to drop a
     # hidden key -- its other None fields must stay explicit, not newly
     # start being elided as a side effect of field-hiding being on.
     # WorkPackageDetail is just this test's fixture type here -- it exercises
@@ -1072,13 +1016,6 @@ def test_single_entity_read_keeps_other_null_fields_when_hide_config_active() ->
 
 
 # ── ContentBundle: native content blocks alongside a trimmed body ─────────────
-
-
-def test_returns_trimmable_true_for_content_bundle_tools() -> None:
-    from openproject_ce_mcp.tools import get_attachment_content, list_work_package_attachments
-
-    assert _returns_trimmable(get_attachment_content) is True  # -> ContentBundle
-    assert _returns_trimmable(list_work_package_attachments) is True  # -> AttachmentListResult | ContentBundle
 
 
 def test_returns_content_bundle_reads_string_and_union_annotations() -> None:

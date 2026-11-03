@@ -19,7 +19,7 @@ target that auto-syncs.
 
 ## Response size
 
-Measured on the 0.4.0 release against a local OpenProject 17.8 test
+Measured on the 0.5.0 development line against a local OpenProject 17.8 test
 instance. Token counts use
 [tiktoken](https://github.com/openai/tiktoken)'s `o200k_base` encoding as a
 stable, reproducible BPE proxy; they are not the exact billed count for every
@@ -29,17 +29,19 @@ populated fields, and accumulated test rows. Reproduce them with
 [`tools/measure-context.py`](../tools/measure-context.py) after installing the
 `measure` extra. The script covers list, single-read, search, a confirmed
 write, and batch operations, each compared with the equivalent raw OpenProject
-REST API v3 (HAL) call or calls:
+REST API v3 (HAL) call or calls. Both sides are serialised as compact JSON, the form
+the server emits (`presentation.dump_payload`), so the percentages compare content,
+not indentation:
 
 | Call | Raw API tokens | MCP tokens | vs. raw |
 | --- | ---: | ---: | ---: |
-| `list_work_packages` (3 rows) | ~9,992 | ~861 | **−91%** |
-| `list_work_packages` with `select` (5 fields) | ~9,992 | ~174 | **−98%** |
-| `get_work_package` (single read) | ~3,378 | ~461 | **−86%** |
-| `search_work_packages` (1 row) | ~6,946 | ~329 | **−95%** |
-| `update_work_package` (confirmed write) | ~3,379 | ~512 | **−85%** |
-| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,197 | ~304 | **−98%** |
-| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,202 | ~529 | **−97%** |
+| `list_work_packages` (3 rows) | ~8,992 | ~781 | **−91%** |
+| `list_work_packages` with `select` (5 fields) | ~8,992 | ~151 | **−98%** |
+| `get_work_package` (single read) | ~3,040 | ~415 | **−86%** |
+| `search_work_packages` (1 row) | ~6,343 | ~302 | **−95%** |
+| `update_work_package` (confirmed write) | ~3,040 | ~517 | **−83%** |
+| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~13,187 | ~228 | **−98%** |
+| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~13,187 | ~403 | **−97%** |
 
 The bulk rows measure the lean item a confirmed bulk write returns without
 `select` (see `docs/tools.md`); a preview or a failed item keeps its full write
@@ -74,8 +76,8 @@ misrepresent the actual cost):
 
 | Scenario | Maximal elision (hypothetical) | Explicit `null` (real behavior) | Cost |
 | --- | ---: | ---: | ---: |
-| Full rows, simulating a select-less tool (20 rows) | ~3,968 tokens | ~6,669 tokens | **+68%** |
-| `select=[id,subject,responsible]` (20 rows, all with `responsible=None`) | ~356 tokens | ~475 tokens | **+33%** |
+| Full rows, simulating a select-less tool (20 rows) | ~3,453 tokens | ~5,711 tokens | **+65%** |
+| `select=[id,subject,responsible]` (20 rows, all with `responsible=None`) | ~300 tokens | ~400 tokens | **+33%** |
 
 Reproducible with the same `tools/measure-context.py` script (its "Cost of
 null-vs-absent distinguishability" section) — it needs the same Docker test
@@ -97,8 +99,9 @@ data).
 ## Tool catalog size
 
 The tool set itself is trimmed too, mainly by not emitting redundant output
-schemas. A fresh, unconfigured install registers only project-independent read
-tools. Project-scoped reads require a non-empty `OPENPROJECT_READ_PROJECTS`;
+schemas: no tool publishes an `outputSchema`, and no result repeats its payload as
+`structuredContent` next to the text block. A fresh, unconfigured install registers
+only project-independent read tools. Project-scoped reads require a non-empty `OPENPROJECT_READ_PROJECTS`;
 writes require the corresponding feature flag and a non-empty
 `OPENPROJECT_WRITE_PROJECTS`. This avoids advertising tools that can only
 return an empty result or a permission error.
@@ -110,12 +113,12 @@ provider may transform or cache the catalog before billing it.
 
 | Configuration | Tools | Catalog tokens |
 | --- | ---: | ---: |
-| Fresh install, no project scope | 14 | ~4,188 |
-| Project reads, no writes | 88 | ~43,295 |
-| Work-package writes only | 114 | ~59,194 |
-| Every project readable and writable, other settings default (Glama build) | 153 | ~74,940 |
-| Every write scope | 187 | ~87,924 |
-| Every write scope plus extended tools | 204 | ~91,995 |
+| Fresh install, no project scope | 14 | ~1,960 |
+| Project reads, no writes | 88 | ~28,910 |
+| Work-package writes only | 114 | ~45,444 |
+| Every project readable and writable, other settings default (Glama build) | 153 | ~61,503 |
+| Every write scope | 187 | ~72,218 |
+| Every write scope plus extended tools | 204 | ~75,323 |
 
 The figures include each tool's MCP annotations (read-only, destructive,
 idempotent and open-world hints) and the parameter descriptions in its input

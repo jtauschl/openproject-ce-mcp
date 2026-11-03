@@ -14,7 +14,35 @@ from dataclasses import dataclass, is_dataclass
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
+from pydantic import TypeAdapter
+from pydantic_core import PydanticSerializationError
+
 from .models import BatchWorkPackageReadItemResult, BulkWorkPackageItemResult, WorkPackageWriteResult
+
+# One adapter for every tool result: building it once keeps serialisation a call into pydantic's Rust encoder.
+_RESULT_ENCODER: TypeAdapter[Any] = TypeAdapter(Any)
+
+
+class ResultSerializationError(Exception):
+    """A tool result holds a value the encoder cannot render.
+
+    Deliberately not a ``ValueError``: pydantic's own error is one, and the tool-call wrapper would pass its message,
+    which can carry the failing value's text, to the client as a validation failure instead of sanitising it.
+    """
+
+
+def dump_payload(payload: Any) -> str:
+    """Serialise a trimmed tool result as compact JSON text.
+
+    Compact on purpose: indentation and the space after ``,`` and ``:`` are tokens a model pays for and no reader
+    benefits from. The encoder and ``fallback=str`` are what the MCP SDK applied to a dict result, so values the
+    trimming leaves untouched (datetimes, decimals, enums, sets) serialise as before; the one difference is that
+    ``NaN`` and ``Infinity`` become ``null`` instead of the tokens that are not valid JSON.
+    """
+    try:
+        return _RESULT_ENCODER.dump_json(payload, fallback=str).decode()
+    except PydanticSerializationError as exc:
+        raise ResultSerializationError("tool result is not serialisable") from exc
 
 
 @dataclass

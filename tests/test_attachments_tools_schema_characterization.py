@@ -3,8 +3,7 @@
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
 order/types, descriptions, required fields, and whether the tool carries an
-output_schema (trimmed tools register with structured_output=False and have
-none, see test_trimming.py). A future relocation of any of these functions to
+output_schema (no tool carries one, see test_compact_result_seam.py). A future relocation of any of these functions to
 a different module must leave this file completely unmodified; a diff to it
 would mean the move changed the public tool contract, not just its location.
 """
@@ -101,9 +100,8 @@ def test_get_attachment_content_schema() -> None:
         tool.description
         == 'Read an attachment\'s actual content, not just its metadata.\n\nReturns a JSON block describing the outcome, followed by the content\nitself as a native block when it can be inlined:\n\n- PNG/JPEG/GIF/WebP come back as an image the model can see\n- text-like content (text/*, JSON, XML) comes back as text, cut at the\n  byte limit if it is long (outcome "text", truncated=true)\n- an image over the byte limit is refused whole rather than returned\n  partially (outcome "too_large")\n- anything else returns metadata only (outcome "not_inline_supported");\n  no bytes, since no MCP client could display them; content_type there is\n  the attachment\'s stored type, which names the file where the served\n  header only says "not inlineable"\n\nmax_bytes may only LOWER the server\'s configured limit\n(OPENPROJECT_ATTACHMENT_CONTENT_MAX_BYTES, 5 MB by default), never raise it.\n\nsize_bytes is the size of the returned content block, and is null if\nfile_size_bytes is hidden by server configuration, rather than leaking it\nindirectly under another name.\n\nNothing is written to disk. Use get_attachment for metadata alone.\n'
     )
-    # Returns a ContentBundle (native content blocks after a JSON block), so it
-    # is registered through the trimming wrapper with structured_output=False
-    # and carries no output schema -- see presentation.ContentBundle.
+    # Returns a ContentBundle (native content blocks after a JSON block); like
+    # every tool it carries no output schema -- see presentation.ContentBundle.
     assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
@@ -121,144 +119,7 @@ def test_get_attachment_content_schema() -> None:
 def test_get_attachment_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_attachment"]
     assert tool.description == "Get a single attachment by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "title": {
-                "title": "Title",
-                "type": "string",
-            },
-            "file_name": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "File Name",
-            },
-            "file_size_bytes": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "File Size Bytes",
-            },
-            "description": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Description",
-            },
-            "content_type": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Content Type",
-            },
-            "status": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Status",
-            },
-            "author": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Author",
-            },
-            "container_type": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Container Type",
-            },
-            "container_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Container Id",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created At",
-            },
-            "download_url": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Download Url",
-            },
-        },
-        "required": [
-            "id",
-            "title",
-            "file_name",
-            "file_size_bytes",
-            "description",
-            "content_type",
-            "status",
-            "author",
-            "container_type",
-            "container_id",
-            "created_at",
-            "download_url",
-        ],
-        "title": "AttachmentSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "attachment_id": {
@@ -502,137 +363,7 @@ def test_delete_file_link_schema() -> None:
         tool.description
         == "Delete a file link; this cannot be undone, but the file itself stays in the external storage."
     )
-    assert tool.output_schema == {
-        "$defs": {
-            "FileLinkSummary": {
-                "properties": {
-                    "id": {
-                        "title": "Id",
-                        "type": "integer",
-                    },
-                    "title": {
-                        "title": "Title",
-                        "type": "string",
-                    },
-                    "storage_id": {
-                        "anyOf": [
-                            {
-                                "type": "integer",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Storage Id",
-                    },
-                    "storage_name": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Storage Name",
-                    },
-                    "created_at": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Created At",
-                    },
-                    "updated_at": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Updated At",
-                    },
-                },
-                "required": ["id", "title", "storage_id", "storage_name", "created_at", "updated_at"],
-                "title": "FileLinkSummary",
-                "type": "object",
-            },
-        },
-        "properties": {
-            "action": {
-                "title": "Action",
-                "type": "string",
-            },
-            "state": {
-                "enum": ["rejected", "invalid", "preview", "confirmed"],
-                "title": "State",
-                "type": "string",
-            },
-            "ready": {
-                "title": "Ready",
-                "type": "boolean",
-            },
-            "message": {
-                "title": "Message",
-                "type": "string",
-            },
-            "file_link_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "File Link Id",
-            },
-            "work_package_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Work Package Id",
-            },
-            "validation_errors": {
-                "additionalProperties": True,
-                "title": "Validation Errors",
-                "type": "object",
-            },
-            "result": {
-                "anyOf": [
-                    {
-                        "$ref": "#/$defs/FileLinkSummary",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-            },
-        },
-        "required": [
-            "action",
-            "state",
-            "ready",
-            "message",
-            "file_link_id",
-            "work_package_id",
-            "validation_errors",
-            "result",
-        ],
-        "title": "FileLinkWriteResult",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "file_link_id": {

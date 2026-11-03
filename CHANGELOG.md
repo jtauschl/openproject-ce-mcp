@@ -108,6 +108,17 @@ to install and discover.
   failed or rejected item and a preview keep their full write result. Select
   `["work_package_id", "state", "result"]` for the whole written work package.
   A `select` that names `id` now points to `work_package_id`.
+- **Breaking:** every tool returns its result as one compact JSON text block.
+  No tool publishes an `outputSchema` or repeats its result as
+  `structuredContent` any more, and the indentation is gone. The tool catalog
+  shrinks by about 13,400 to 16,700 tokens once project reads or writes are
+  enabled (2,200 on a fresh install); see `docs/context-efficiency.md`. A client
+  that reads `structuredContent` or validates results against the output schema
+  must parse the text block instead. The tools that returned their dataclass
+  untrimmed (49 with every write scope enabled) now apply the trimming rules too: a nested collection drops its
+  derivable `count`, as `toggle_activity_emoji_reaction` does for its reaction
+  list. Setting an `OPENPROJECT_HIDE_*` variable no longer changes how any
+  other tool serialises its result.
 - **Breaking:** Python 3.11 or later is required; Python 3.10 is no longer
   supported. Install or upgrade under Python 3.11+ (for example
   `pipx install --python python3.11 openproject-ce-mcp`).

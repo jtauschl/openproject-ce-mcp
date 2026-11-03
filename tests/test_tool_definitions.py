@@ -394,7 +394,6 @@ def test_no_tracker_id_reaches_the_wire(catalog: dict[str, dict]) -> None:
         for text in (
             tool.get("description", ""),
             *_schema_descriptions(tool["inputSchema"]),
-            *_schema_descriptions(tool.get("outputSchema", {})),
         )
         if _TRACKER_ID.search(text)
     )

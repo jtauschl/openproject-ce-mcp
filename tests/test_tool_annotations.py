@@ -206,7 +206,7 @@ def test_registration_refuses_a_tool_without_annotations(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="synthetic_tool"):
         _tools_runtime.register_selected_tools(
-            MCPServer("annotations-test"), names=[synthetic_tool.__name__], hide_active=False, annotations={}
+            MCPServer("annotations-test"), names=[synthetic_tool.__name__], annotations={}
         )
 
 

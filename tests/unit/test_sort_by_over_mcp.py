@@ -97,7 +97,6 @@ def call_tool(request, recorder: _Recorder) -> CallTool:
             tools_work_packages.search_work_packages.__name__,
             tools_query_schema.get_query_sort_by.__name__,
         ],
-        hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
 

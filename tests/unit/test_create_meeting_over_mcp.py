@@ -44,7 +44,6 @@ async def _call(recorder: _Recorder, arguments: dict, tool: str = "create_meetin
     tools_runtime.register_selected_tools(
         server,
         names=[tools_meetings.create_meeting.__name__, tools_meetings.update_meeting.__name__],
-        hide_active=False,
         annotations=tools.TOOL_ANNOTATIONS,
     )
     async with Client(server, mode="legacy") as client:

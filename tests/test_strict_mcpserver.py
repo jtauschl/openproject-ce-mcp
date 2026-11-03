@@ -608,11 +608,7 @@ def _catalog_tools() -> list[Any]:
 
 
 # Every group the catalog can enable; the default settings leave the optional groups out.
-_ALL_ENABLE_FLAGS = [
-    field
-    for field in Settings.__dataclass_fields__
-    if field.startswith("enable_") and field not in {"enable_hide_active"}
-]
+_ALL_ENABLE_FLAGS = [field for field in Settings.__dataclass_fields__ if field.startswith("enable_")]
 
 
 def test_every_tool_of_the_catalog_validates_its_arguments_strictly() -> None:

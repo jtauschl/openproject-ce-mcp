@@ -3,8 +3,7 @@
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
 order/types, descriptions, required fields, and whether the tool carries an
-output_schema (trimmed tools register with structured_output=False and have
-none, see test_trimming.py). A future relocation of any of these functions to
+output_schema (no tool carries one, see test_compact_result_seam.py). A future relocation of any of these functions to
 a different module must leave this file completely unmodified; a diff to it
 would mean the move changed the public tool contract, not just its location.
 """
@@ -90,126 +89,7 @@ def test_list_views_schema() -> None:
 def test_get_view_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_view"]
     assert tool.description == "Get a single OpenProject view by id."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "type": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Type",
-            },
-            "name": {
-                "title": "Name",
-                "type": "string",
-            },
-            "project_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project Id",
-            },
-            "project": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Project",
-            },
-            "query_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Query Id",
-            },
-            "query": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Query",
-            },
-            "public": {
-                "title": "Public",
-                "type": "boolean",
-            },
-            "starred": {
-                "title": "Starred",
-                "type": "boolean",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created At",
-            },
-            "updated_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Updated At",
-            },
-            "links": {
-                "items": {
-                    "type": "string",
-                },
-                "title": "Links",
-                "type": "array",
-            },
-        },
-        "required": [
-            "id",
-            "type",
-            "name",
-            "project_id",
-            "project",
-            "query_id",
-            "query",
-            "public",
-            "starred",
-            "created_at",
-            "updated_at",
-            "links",
-        ],
-        "title": "ViewDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "view_id": {

@@ -84,71 +84,7 @@ def test_list_boards_schema() -> None:
 def test_get_board_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_board"]
     assert tool.description == "Get a saved OpenProject board/query by id."
-    assert tool.output_schema == {
-        "$defs": {
-            "BoardFilter": {
-                "properties": {
-                    "key": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Key"},
-                    "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-                    "operator": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Operator"},
-                    "values": {"items": {"type": "string"}, "title": "Values", "type": "array"},
-                },
-                "required": ["key", "name", "operator", "values"],
-                "title": "BoardFilter",
-                "type": "object",
-            }
-        },
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "name": {"title": "Name", "type": "string"},
-            "project_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Project Id"},
-            "project": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Project"},
-            "public": {"title": "Public", "type": "boolean"},
-            "hidden": {"title": "Hidden", "type": "boolean"},
-            "starred": {"title": "Starred", "type": "boolean"},
-            "include_subprojects": {"title": "Include Subprojects", "type": "boolean"},
-            "show_hierarchies": {"title": "Show Hierarchies", "type": "boolean"},
-            "timeline_visible": {"title": "Timeline Visible", "type": "boolean"},
-            "timeline_zoom_level": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Timeline Zoom Level"},
-            "highlighting_mode": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Highlighting Mode"},
-            "group_by": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Group By"},
-            "columns": {"items": {"type": "string"}, "title": "Columns", "type": "array"},
-            "sort_by": {"items": {"type": "string"}, "title": "Sort By", "type": "array"},
-            "highlighted_attributes": {"items": {"type": "string"}, "title": "Highlighted Attributes", "type": "array"},
-            "timestamps": {"items": {"type": "string"}, "title": "Timestamps", "type": "array"},
-            "filters": {"items": {"$ref": "#/$defs/BoardFilter"}, "title": "Filters", "type": "array"},
-            "created_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Created At"},
-            "updated_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Updated At"},
-            "can_update": {"title": "Can Update", "type": "boolean"},
-            "can_delete": {"title": "Can Delete", "type": "boolean"},
-        },
-        "required": [
-            "id",
-            "name",
-            "project_id",
-            "project",
-            "public",
-            "hidden",
-            "starred",
-            "include_subprojects",
-            "show_hierarchies",
-            "timeline_visible",
-            "timeline_zoom_level",
-            "highlighting_mode",
-            "group_by",
-            "columns",
-            "sort_by",
-            "highlighted_attributes",
-            "timestamps",
-            "filters",
-            "created_at",
-            "updated_at",
-            "can_update",
-            "can_delete",
-        ],
-        "title": "BoardDetail",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {"board_id": {"title": "Board Id", "type": "integer"}},
         "required": ["board_id"],

@@ -198,54 +198,7 @@ def test_get_membership_schema() -> None:
         tool.description
         == "Get one project membership by id: the user or group, the project and the role names.\n\nTo list a project's members use list_project_memberships.\n"
     )
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "principal_id": {
-                "anyOf": [{"type": "integer"}, {"type": "null"}],
-                "title": "Principal Id",
-            },
-            "principal_name": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Principal Name",
-            },
-            "project_id": {
-                "anyOf": [{"type": "integer"}, {"type": "null"}],
-                "title": "Project Id",
-            },
-            "project_name": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "title": "Project Name",
-            },
-            "role_ids": {"items": {"type": "integer"}, "title": "Role Ids", "type": "array"},
-            "role_names": {"items": {"type": "string"}, "title": "Role Names", "type": "array"},
-            "can_update": {"title": "Can Update", "type": "boolean"},
-            "can_update_immediately": {"title": "Can Update Immediately", "type": "boolean"},
-            "created_at": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "default": None,
-                "title": "Created At",
-            },
-            "updated_at": {
-                "anyOf": [{"type": "string"}, {"type": "null"}],
-                "default": None,
-                "title": "Updated At",
-            },
-        },
-        "required": [
-            "id",
-            "principal_id",
-            "principal_name",
-            "project_id",
-            "project_name",
-            "role_ids",
-            "role_names",
-            "can_update",
-            "can_update_immediately",
-        ],
-        "title": "MembershipSummary",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
             "membership_id": {
@@ -396,16 +349,7 @@ def test_delete_membership_schema() -> None:
 def test_get_current_user_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_current_user"]
     assert tool.description == "Return the currently authenticated user's profile."
-    assert tool.output_schema == {
-        "properties": {
-            "id": {"title": "Id", "type": "integer"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "login": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Login"},
-        },
-        "required": ["id", "name", "login"],
-        "title": "CurrentUser",
-        "type": "object",
-    }
+    assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {},
         "title": "get_current_userArguments",
