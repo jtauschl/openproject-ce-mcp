@@ -32,15 +32,19 @@ shell_lint() {
     done
 }
 
-# pip-licenses is pinned because tools/check_licenses.py allow-lists the exact strings it prints.
+# pip-licenses is pinned because tools/check_licenses.py allow-lists the exact strings it prints. The gate builds its own
+# environment from the lock file, so it checks every extra and group on every run, whatever .venv holds. The EXIT trap
+# removes that environment (about 130 MB) when the run is interrupted.
 licenses() {
-    local report status=0
-    report="$(mktemp)"
+    local status=0
+    licenses_dir="$(mktemp -d)"
+    trap 'rm -rf "${licenses_dir:-}"' EXIT
     {
-        uvx pip-licenses@5.5.5 --python .venv/bin/python3 --from=mixed --format=json --output-file "$report" >/dev/null &&
-            uv run --frozen python tools/check_licenses.py "$report"
+        UV_PROJECT_ENVIRONMENT="$licenses_dir/venv" uv sync --locked --all-extras --all-groups --quiet &&
+            uvx pip-licenses@5.5.5 --python "$licenses_dir/venv/bin/python3" --from=mixed --format=json --output-file "$licenses_dir/licenses.json" >/dev/null &&
+            "$licenses_dir/venv/bin/python3" tools/check_licenses.py "$licenses_dir/licenses.json"
     } || status=$?
-    rm -f "$report"
+    rm -rf "$licenses_dir"
     return "$status"
 }
 
