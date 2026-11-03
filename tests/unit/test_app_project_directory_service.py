@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from _client_test_helpers import _base_settings
 
+from openproject_ce_mcp import http_request_counter
 from openproject_ce_mcp.app.call_scope import tool_call
 from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError, TransportError
 from openproject_ce_mcp.app.ports.project_api import ProjectPage, ProjectRecord
@@ -1066,3 +1067,87 @@ async def test_a_response_linking_several_known_projects_reads_them_in_one_reque
     assert api.listed_ids == [[7, 8, 9]]
     assert api.get_calls == []
     assert directory.positives == {7: "demo-a", 8: "demo-b", 9: "demo-c"}
+
+
+class _CountingProjectApi(_FakeProjectApi):
+    """Counts a request per call like the counting transport does for a real one."""
+
+    async def list(self, **kwargs: Any) -> ProjectPage:
+        http_request_counter.increment()
+        return await super().list(**kwargs)
+
+    async def get(self, project_ref: str) -> ProjectRecord:
+        http_request_counter.increment()
+        return await super().get(project_ref)
+
+
+@pytest.mark.asyncio
+async def test_the_call_that_starts_a_scan_counts_its_requests() -> None:
+    api = _CountingProjectApi([(project_id, f"demo-{project_id}", "Demo") for project_id in range(1, 5)])
+    directory = _directory(api, settings=_base_settings(read_projects=("demo*",), max_page_size=2))
+    http_request_counter.reset()
+
+    await directory.refresh()
+
+    assert api.list_calls == [1, 2]
+    assert http_request_counter.current() == 2
+
+
+@pytest.mark.asyncio
+async def test_a_call_that_waits_for_a_scan_it_did_not_start_counts_nothing() -> None:
+    api = _CountingProjectApi([(1, "demo", "Demo")])
+    api.gate = asyncio.Event()
+    directory = _directory(api)
+    waiter_counts: list[int] = []
+
+    async def starter() -> int:
+        http_request_counter.reset()
+        await directory.refresh()
+        return http_request_counter.current()
+
+    async def waiter() -> None:
+        http_request_counter.reset()
+        await directory.refresh()
+        waiter_counts.append(http_request_counter.current())
+
+    starting = asyncio.create_task(starter())
+    await asyncio.sleep(0)
+    waiting = asyncio.create_task(waiter())
+    await asyncio.sleep(0)
+    api.gate.set()
+
+    assert await starting == 1
+    await waiting
+    assert waiter_counts == [0]
+
+
+@pytest.mark.asyncio
+async def test_the_call_that_starts_a_lookup_counts_its_request() -> None:
+    api = _CountingProjectApi([(7, "demo-a", "Demo a")])
+    directory = _directory(api)
+    http_request_counter.reset()
+
+    await _learn(directory, _work_package_in(7))
+
+    assert api.get_calls == ["7"]
+    assert http_request_counter.current() == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_calls_count_only_the_lookups_they_started() -> None:
+    api = _CountingProjectApi([(project_id, f"demo-{project_id}", "Demo") for project_id in (7, 8, 9)])
+    api.gate = asyncio.Event()
+    directory = _directory(api)
+
+    async def call(*project_ids: int) -> int:
+        http_request_counter.reset()
+        for project_id in project_ids:
+            await _learn(directory, _work_package_in(project_id))
+        return http_request_counter.current()
+
+    calls = [asyncio.create_task(call(7)), asyncio.create_task(call(8, 9)), asyncio.create_task(call())]
+    while len(api.get_calls) < 1:
+        await asyncio.sleep(0)
+    api.gate.set()
+
+    assert await asyncio.gather(*calls) == [1, 2, 0]

@@ -26,6 +26,7 @@ from collections.abc import Callable, Iterator, Sequence
 from functools import partial
 from typing import Any, NamedTuple
 
+from ... import http_request_counter
 from ...config import Settings
 from ...context_gather import gather_in_current_context
 from ...models import ProjectSummary
@@ -165,9 +166,14 @@ class ProjectDirectoryService:
         """Rescan all visible projects; at most one scan runs at a time."""
         if not self._active:
             return
-        if self._scan_task is None or self._scan_task.done():
-            self._scan_task = asyncio.create_task(self._scan())
-        await asyncio.shield(self._scan_task)
+        if self._scan_task is not None and not self._scan_task.done():
+            await asyncio.shield(self._scan_task)
+            return
+        self._scan_task, adopt_requests = http_request_counter.start_owned(self._scan())
+        try:
+            await asyncio.shield(self._scan_task)
+        finally:
+            adopt_requests()
 
     async def ensure_fresh(self) -> None:
         if not self._active:
@@ -323,12 +329,18 @@ class ProjectDirectoryService:
 
     async def _look_up(self, project_id: int, *, received: int) -> None:
         lookup = self._lookups.get(project_id)
-        if lookup is None or lookup.started < received:
-            started = self._tick()
-            lookup = _Lookup(asyncio.create_task(self._fetch(project_id, started)), started)
-            self._lookups[project_id] = lookup
-            lookup.task.add_done_callback(partial(self._lookup_done, project_id, lookup))
-        await asyncio.shield(lookup.task)
+        if lookup is not None and lookup.started >= received:
+            await asyncio.shield(lookup.task)
+            return
+        started = self._tick()
+        task, adopt_requests = http_request_counter.start_owned(self._fetch(project_id, started))
+        lookup = _Lookup(task, started)
+        self._lookups[project_id] = lookup
+        lookup.task.add_done_callback(partial(self._lookup_done, project_id, lookup))
+        try:
+            await asyncio.shield(lookup.task)
+        finally:
+            adopt_requests()
 
     def _lookup_done(self, project_id: int, lookup: _Lookup, _task: asyncio.Task[None]) -> None:
         if self._lookups.get(project_id) is lookup:

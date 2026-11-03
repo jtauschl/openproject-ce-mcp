@@ -9,7 +9,6 @@ remembered; a load that finds nothing is, when the loader returns `None` for it.
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
@@ -79,17 +78,13 @@ class LoadingCache(Generic[K, V]):
         task = self._in_flight.get(key)
         if task is not None:
             return await asyncio.shield(task)
-        # The caller that starts a load owns its requests: the load counts them in a copy of the
-        # caller's context and the caller takes the count over once it has its value.
-        context = contextvars.copy_context()
-        counted_before = http_request_counter.current()
-        task = asyncio.create_task(self._load(key, load), context=context)
+        task, adopt_requests = http_request_counter.start_owned(self._load(key, load))
         self._in_flight[key] = task
         task.add_done_callback(partial(self._settled, key))
         try:
             return await asyncio.shield(task)
         finally:
-            http_request_counter.adopt(context, since=counted_before)
+            adopt_requests()
 
     async def _load(self, key: K, load: Callable[[], Awaitable[V]]) -> V:
         if self._slots is None:

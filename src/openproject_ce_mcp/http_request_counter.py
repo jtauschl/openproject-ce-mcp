@@ -25,11 +25,26 @@ that awaited it. Any code path that increments this counter (or writes
 `context_gather.gather_in_current_context` instead of `asyncio.gather`
 directly, or the count silently comes back wrong (typically too low, never
 an error) for that tool call. See `context_gather.py`'s own docstring.
+
+Work that outlives or is shared between tool calls (a cache load, the project
+directory's scan and lookups) runs in a task that other calls may wait for.
+The call that starts such a task owns its requests: `start_owned` runs it in a
+copy of the starter's context and hands back the function that takes the
+count over, which the starter runs once it stops waiting. A call that only
+waits for a task it did not start counts nothing for it, so a request is
+counted by exactly one call and never leaks into a concurrent one.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
+from collections.abc import Callable, Coroutine
 from contextvars import Context, ContextVar
+from functools import partial
+from typing import Any, TypeVar
+
+_T = TypeVar("_T")
 
 _count: ContextVar[int] = ContextVar("http_request_count", default=0)
 
@@ -52,3 +67,14 @@ def adopt(context: Context, *, since: int) -> None:
     The copy was taken when the caller's count was `since`; only what the task added is taken over,
     so siblings sharing the caller's context keep what they counted."""
     _count.set(_count.get() + context.get(_count, since) - since)
+
+
+def start_owned(coroutine: Coroutine[Any, Any, _T]) -> tuple[asyncio.Task[_T], Callable[[], None]]:
+    """Start a task whose requests belong to the caller that starts it, even when others wait for it.
+
+    The task counts in a copy of the caller's context; the returned callable, run by the caller once it
+    has its value (or stopped waiting), takes the count over. A caller that only joins a task somebody
+    else started counts nothing for it."""
+    context = contextvars.copy_context()
+    since = current()
+    return asyncio.create_task(coroutine, context=context), partial(adopt, context, since=since)
