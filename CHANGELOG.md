@@ -171,8 +171,8 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 ### Security
 
-- The API token no longer appears in the printed form of the server's settings, so a traceback, debug
-  output or error report that formats the settings cannot expose it.
+- The API token no longer appears in the printed form of the settings, so tracebacks and error reports
+  cannot expose it.
 
 ## [0.4.4] - 2026-10-28
 
