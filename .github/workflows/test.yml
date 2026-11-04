@@ -5,6 +5,12 @@
 #   public repo, and main's ruleset requires the lint, build and Python 3.12
 #   test-linux results before a merge. macOS and Windows stay release-time
 #   only.
+# - Those four jobs spell the checks out as separate steps instead of
+#   calling ./dev ci, so main's ruleset can require each result by name and
+#   test-linux can sweep the Python versions.
+# - test-lowest-deps, test-newest-deps and install-smoke run only in CI: they
+#   need a clean resolver or the built artifact on a fresh runner, which a
+#   synced developer environment does not give.
 # - The integration tests (tests/integration) need live OpenProject
 #   instances, one per supported version (docker/test), and run at release
 #   time, not before every push. Any API or payload behavior the unit tests'

@@ -13,12 +13,16 @@ updates:
     target-branch: release/0.5.0
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
 
   - package-ecosystem: uv
     directory: /
     target-branch: release/0.5.0
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       python-dependencies:
         patterns:

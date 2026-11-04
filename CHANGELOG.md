@@ -153,25 +153,15 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 ### Fixed
 
-- A write that takes a work package reference now names the work package it resolved to in `target` (id,
-  display id, project, subject, status), in the preview and in the result, so a bare number read as an
-  internal id is visible before `confirm`. This covers comments, updates, deletes, subtasks and parents,
-  relations (`target` and `related_target`), reminders, watchers, time entries, wiki links, attachments, and
-  meeting agenda items and outcomes. For the create tools `target` is the referenced parent.
-- `update_work_package` and `bulk_update_work_packages` name the work package a given `parent` resolved to in
-  `parent_target`, in the preview and in the result, so a bare number read as an internal id is visible
-  before `confirm`.
-- `create_project`, `update_project` and `copy_project` name the project a given `parent` resolved to in
-  `parent_target` (id, identifier, name), in the preview and in the result. A project identifier wins over a
-  project name, so a name that is also another project's identifier moved the project under the other one
-  without showing it.
+- Writes that take a work package reference show the resolved work package in `target`, so a misread bare number is visible before `confirm`.
+- `update_work_package` and `bulk_update_work_packages` show the work package a given `parent` resolved to in `parent_target`, before and after `confirm`.
+- `create_project`, `update_project` and `copy_project` show the project a given `parent` resolved to in `parent_target`.
+- A `parent` name that equals another project's identifier no longer moves the project under that one unseen.
 
 - `get_project_phase` now reports the phase definition, which was always empty.
 - `update_meeting` can clear the location: `location=""` empties it instead of being dropped
   without a message.
-- The descriptions of `update_work_package`, `bulk_update_work_packages` and `update_membership` now
-  say what an empty text does: `description=""` clears a work package description, and a blank
-  `notification_message` is the same as none.
+- Descriptions of `update_work_package`, `bulk_update_work_packages` and `update_membership` now state what an empty text does.
 
 ### Security
 
