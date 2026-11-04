@@ -125,7 +125,7 @@ See the README's configuration and security sections for the full flag reference
 ## Prompt injection risk
 
 This server returns user-authored text (work-package descriptions, comments, news,
-wiki content, and the content of text-like attachments read by
+documents, and the content of text-like attachments read by
 `get_attachment_content`) from the OpenProject instance. **Malicious users could
 embed prompt injection payloads** in this content to manipulate an agent
 connected via MCP.
@@ -135,8 +135,20 @@ connected via MCP.
 1. **Server instructions** explicitly warn connecting agents that returned content
    is untrusted and should be treated as data, not instructions.
 2. **Content delimiting**: Long-form user-provided text (descriptions, comments,
-   news, wiki content, inlined attachment text) is wrapped in `<user-content>`
-   tags to mark clear boundaries.
+   news, documents, inlined attachment text) is wrapped in `<user-content>`
+   tags to mark clear boundaries. The server replaces the `<` of a
+   delimiter-like tag inside the text with `&lt;`, so such a tag cannot close or
+   reopen that boundary, within the limits listed here. A tag is recognised
+   after folding each character (Unicode NFKC, case folding, then everything
+   except `<`, `/`, letters and digits is dropped), so a different case,
+   zero-width characters, full-width brackets, other hyphens, `_`, spaces and
+   look-alike `<` characters do not hide it. The fold also
+   escapes harmless text that reads like the tag, such as `a < user content`.
+   The tags are a convention for the reader, not a parser boundary. A homoglyph
+   letter, a letter or digit placed inside the tag name, a `<` look-alike outside
+   the covered set and the entity form `&lt;/user-content>` itself are not
+   caught, and OpenProject's error messages and job status messages are not
+   delimited.
    Short fields (subject lines, titles, names) are NOT delimited as they are
    typically visible in listings and easier to inspect manually.
 3. **Fail-closed project scope by default**: a fresh, unconfigured install has

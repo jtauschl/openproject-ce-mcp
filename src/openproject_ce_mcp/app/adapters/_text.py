@@ -3,7 +3,9 @@
 `origin_from_url` is re-exported here unchanged from the package-root
 `app/origin.py` so existing `from ._text import origin_from_url` imports
 keep working; it lives at the package root because `services` needs the same
-same-origin check but cannot import from `adapters`.
+same-origin check but cannot import from `adapters`. `delimit_user_content` is
+re-exported the same way from the package-root `user_content.py`, which the tool
+layer also imports.
 
 Every adapter reads a form's `validationErrors` through `normalize_form_validation_errors`
 below; a structural test keeps a second copy from reappearing.
@@ -14,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
+from ...user_content import delimit_user_content as delimit_user_content
 from ..errors import InvalidInputError
 from ..origin import origin_from_url
 
@@ -93,12 +96,6 @@ def link_title(link: Any) -> str | None:
         return None
     title = link.get("title")
     return trim_text(title, limit=SUBJECT_LIMIT)
-
-
-def delimit_user_content(text: str | None) -> str | None:
-    if text is None or not text.strip():
-        return text
-    return f"<user-content>{text}</user-content>"
 
 
 def can_update_from_links(links: dict[str, Any]) -> bool:

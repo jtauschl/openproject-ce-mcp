@@ -26,6 +26,7 @@ and 0.2.0 the first one published to PyPI.
 
 ### Security
 
+- Stored text can no longer close or open the `<user-content>` delimiter: look-alike tags inside returned text are escaped.
 - The API token no longer appears in the printed form of the settings, so tracebacks and error reports
   cannot expose it.
 
