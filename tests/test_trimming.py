@@ -994,6 +994,55 @@ async def test_get_work_package_select_is_threaded_through_the_registered_wrappe
     await client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_get_work_package_include_allowed_statuses_is_threaded_through_the_registered_wrapper() -> None:
+    posted: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v3/work_packages/5":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "_type": "WorkPackage",
+                    "subject": "Subject",
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo Project"}},
+                },
+                request=request,
+            )
+        if request.method == "POST" and request.url.path == "/api/v3/work_packages/5/form":
+            posted.append(request.url.path)
+            statuses = [{"name": "New", "_links": {"self": {"href": "/api/v3/statuses/1", "title": "New"}}}]
+            form = {
+                "_embedded": {
+                    "payload": {},
+                    "validationErrors": {},
+                    "schema": {"status": {"_embedded": {"allowedValues": statuses}}},
+                }
+            }
+            return httpx.Response(200, json=form, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    fn = _tools(create_app(settings))["get_work_package"].fn
+
+    without = await _emitted(fn, _FakeContext(client), work_package_id=5, select=["id", "allowed_statuses"])
+    with_statuses = await _emitted(
+        fn, _FakeContext(client), work_package_id=5, include_allowed_statuses=True, select=["id", "allowed_statuses"]
+    )
+
+    assert without == {"id": 5, "allowed_statuses": None}
+    assert with_statuses == {
+        "id": 5,
+        "allowed_statuses": [{"id": 1, "title": "New", "href": "/api/v3/statuses/1"}],
+    }
+    assert posted == ["/api/v3/work_packages/5/form"]
+
+    await client.aclose()
+
+
 # ── single-entity reads keep their other null fields when a field is hidden ──
 
 

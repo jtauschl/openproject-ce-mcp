@@ -325,7 +325,7 @@ def test_get_work_package_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_work_package"]
     assert (
         tool.description
-        == 'Get a work package by id, including its full description.\n\nThe description is returned in full by default (single work packages are not\ntruncated). Pass ``text_limit`` to cap it at that many characters; when the\ntext is cut, ``description_truncated`` is true and ``description_length``\nreports the real length. This same ``text_limit`` also caps any\n"text"-format custom field value in ``custom_fields`` (see\nlist_work_packages\'s docstring for the full custom_fields/custom_comments\nshape and hide-matching rules) -- but a scalar string/link/date-format\ncustom field value is capped independently at ~255 characters regardless\nof ``text_limit``, including when ``text_limit=None`` (the default here):\n"single work packages are not truncated" applies to description and CF\ntext-format values, not to that separate, always-on scalar cap.\n\nselect restricts the response to the given fields (e.g. ["id", "subject",\n"status"]); an invalid name returns the allowed set.\n'
+        == 'Get a work package by id, including its full description.\n\nThe description is returned in full by default (single work packages are not\ntruncated). Pass ``text_limit`` to cap it at that many characters; when the\ntext is cut, ``description_truncated`` is true and ``description_length``\nreports the real length. This same ``text_limit`` also caps any\n"text"-format custom field value in ``custom_fields`` (see\nlist_work_packages\'s docstring for the full custom_fields/custom_comments\nshape and hide-matching rules) -- but a scalar string/link/date-format\ncustom field value is capped independently at ~255 characters regardless\nof ``text_limit``, including when ``text_limit=None`` (the default here):\n"single work packages are not truncated" applies to description and CF\ntext-format values, not to that separate, always-on scalar cap.\n\ninclude_allowed_statuses adds ``allowed_statuses``: the statuses OpenProject\noffers this user for this work package (id, title, href), as its update form\nanswers, always including the current status; a user without a granted\ntransition gets only that. One extra request. The list depends on the type\'s\nworkflow for the user\'s roles; a closed status in a closed version offers\nonly itself, and a blocked work package is offered no closed status. An\noffered status is not a promise this server may write it (write access is\nconfigured separately). Fails when the user may not edit the work package or\nwhen the status field is hidden.\n\nselect restricts the response to the given fields (e.g. ["id", "subject",\n"status"]); an invalid name returns the allowed set.\n'
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -336,10 +336,11 @@ def test_get_work_package_schema() -> None:
                 "title": "Work Package Id",
             },
             "text_limit": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Text Limit"},
+            "include_allowed_statuses": {"default": False, "title": "Include Allowed Statuses", "type": "boolean"},
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                 "title": "Select",
             },
         },
@@ -349,7 +350,12 @@ def test_get_work_package_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["work_package_id", "text_limit", "select"]
+    assert list(tool.parameters["properties"]) == [
+        "work_package_id",
+        "text_limit",
+        "include_allowed_statuses",
+        "select",
+    ]
 
 
 def test_get_work_packages_schema() -> None:
@@ -366,7 +372,7 @@ def test_get_work_packages_schema() -> None:
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
                 "title": "Select",
             },
         },
@@ -758,7 +764,7 @@ def test_bulk_create_work_packages_schema() -> None:
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                 "title": "Select",
             },
             "confirm": {
@@ -875,7 +881,7 @@ def test_bulk_update_work_packages_schema() -> None:
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                 "title": "Select",
             },
             "confirm": {

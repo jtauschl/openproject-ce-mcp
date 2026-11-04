@@ -20,6 +20,8 @@ to install and discover.
   irreversible text replacement.
 - List and upload attachments on wiki pages, forum posts, meetings and comments.
 - List available assignees and relation candidates for work packages.
+- `get_work_package` lists the statuses OpenProject offers the current user for
+  a work package when `include_allowed_statuses` is set.
 - Opt-in `extended` tools list a project's budgets, the projects a version is
   shared with, the users that can watch a work package, the projects it can
   move to and its repository revisions, limited to

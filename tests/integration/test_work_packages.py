@@ -274,6 +274,75 @@ async def test_update_work_package_rejected_status_names_the_offered_statuses(
     )
 
 
+async def _form_status_titles(client: OpenProjectClient, work_package_id: int) -> list[str]:
+    wp = await client.work_package.get(work_package_id)
+    form = await client._transport.post_json(
+        f"work_packages/{work_package_id}/form", json_body={"lockVersion": wp.lock_version}
+    )
+    allowed = form["_embedded"]["schema"]["status"]["_embedded"]["allowedValues"]
+    return [value["name"] for value in allowed]
+
+
+async def test_get_work_package_allowed_statuses_match_the_update_form(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    created = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} allowed statuses", confirm=True
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
+    detail = await client.work_package.get(created.work_package_id, include_allowed_statuses=True)
+
+    assert detail.allowed_statuses is not None
+    assert [option.title for option in detail.allowed_statuses] == await _form_status_titles(
+        client, created.work_package_id
+    )
+    assert detail.status in [option.title for option in detail.allowed_statuses]
+    assert all(option.id is not None and option.href for option in detail.allowed_statuses)
+
+
+async def test_get_work_package_allowed_statuses_follow_the_roles_workflow(
+    client: OpenProjectClient, workflow_limited_editor_client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    task = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} limited task", confirm=True
+    )
+    bug = await client.work_package.create(
+        project=test_project, type="Bug", subject=f"{_SUBJECT} limited bug", confirm=True
+    )
+    assert task.ready and bug.ready
+    wp_ids.extend([task.work_package_id, bug.work_package_id])
+    admin_task = await client.work_package.get(task.work_package_id, include_allowed_statuses=True)
+    assert admin_task.status == "New"
+
+    limited_task = await workflow_limited_editor_client.work_package.get(
+        task.work_package_id, include_allowed_statuses=True
+    )
+    limited_bug = await workflow_limited_editor_client.work_package.get(
+        bug.work_package_id, include_allowed_statuses=True
+    )
+
+    assert limited_task.allowed_statuses is not None and limited_bug.allowed_statuses is not None
+    assert [option.title for option in limited_task.allowed_statuses] == ["New", "In progress"]
+    assert [option.title for option in limited_bug.allowed_statuses] == ["New"]
+    assert len(admin_task.allowed_statuses or []) > len(limited_task.allowed_statuses)
+
+
+async def test_get_work_package_allowed_statuses_are_refused_for_a_user_who_may_not_edit(
+    client: OpenProjectClient, restricted_client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    created = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} not editable", confirm=True
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+    assert (await restricted_client.work_package.get(created.work_package_id)).id == created.work_package_id
+
+    with pytest.raises(PermissionDeniedError, match="may not edit work package"):
+        await restricted_client.work_package.get(created.work_package_id, include_allowed_statuses=True)
+
+
 async def test_get_work_package_ancestors_tolerate_missing_display_id(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:

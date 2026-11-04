@@ -554,6 +554,64 @@ async def second_user_client(client: OpenProjectClient, user_ids: list[int], ope
 
 
 @pytest.fixture
+async def workflow_limited_editor_client(
+    client: OpenProjectClient, test_project: str, user_ids: list[int], open_client
+):
+    """A client for a disposable member who may edit work packages but whose
+    role grants one transition only: a Task may move from "New" to "In
+    progress", a Bug none. The role, its workflow rows and the membership are
+    provisioned through a Rails runner (OpenProject's REST API has no endpoint
+    for workflows or roles), idempotently by role name.
+
+    OpenProject 17.9 keys a workflow row to the type's default `TypeVariant`,
+    earlier versions to the type itself; the script handles both.
+    """
+    if not os.environ.get("OPENPROJECT_DOCKER_SERVICE"):
+        pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to provision a workflow-limited role)")
+
+    suffix = uuid.uuid4().hex[:8]
+    login = f"integration-test-{suffix}"
+    create_result = await client.user.create(
+        login=login,
+        email=f"{login}@example.invalid",
+        firstname="Integration",
+        lastname=f"Limited {suffix}",
+        password=f"Aa1!{uuid.uuid4().hex}",
+        confirm=True,
+    )
+    assert create_result.ready, create_result.validation_errors
+    user_id = create_result.user_id
+    assert user_id is not None
+    user_ids.append(user_id)
+
+    script = """
+        permissions = [:view_work_packages, :view_project, :edit_work_packages]
+        role = ProjectRole.find_or_create_by!(name: "Integration Test Workflow Limited")
+        role.update!(permissions: permissions)
+        project = Project.where("LOWER(identifier) = ?", ENV.fetch("PROJECT_IDENTIFIER").downcase).first
+        user = User.find(ENV.fetch("USER_ID"))
+        member = Member.find_or_initialize_by(project: project, principal: user)
+        member.roles = [role]
+        member.save!
+        task = Type.find_by!(name: "Task")
+        from_status = Status.find_by!(name: "New")
+        to_status = Status.find_by!(name: "In progress")
+        Workflow.where(role_id: role.id).delete_all
+        if Workflow.column_names.include?("type_variant_id")
+          variant = TypeVariant.find_by!(type_id: task.id, is_default_variant: true)
+          Workflow.create!(role: role, type_variant: variant, old_status: from_status, new_status: to_status)
+        else
+          Workflow.create!(role_id: role.id, type_id: task.id, old_status_id: from_status.id, new_status_id: to_status.id)
+        end
+        puts "TOKEN=#{Token::API.create!(user: user).plain_value}"
+    """
+    token = _run_rails_script(
+        script, result_key="TOKEN", env={"PROJECT_IDENTIFIER": test_project.strip(), "USER_ID": str(user_id)}
+    )
+    return await open_client(dataclasses.replace(client.settings, api_token=token))
+
+
+@pytest.fixture
 async def user_non_working_time_ids(client: OpenProjectClient):
     """Yields a list to append (user_ref, non_working_time_id) pairs; deletes
     them all after the test.

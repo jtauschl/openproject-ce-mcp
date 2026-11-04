@@ -12,6 +12,7 @@ from openproject_ce_mcp import policy_observation
 from openproject_ce_mcp.app.errors import (
     InvalidInputError,
     NotFoundError,
+    OpenProjectPermissionDeniedError,
     OpenProjectServerError,
     PermissionDeniedError,
     ProjectLinkPrefixError,
@@ -35,6 +36,7 @@ from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION, 
 from openproject_ce_mcp.models import (
     ActivitySummary,
     CurrentUser,
+    OptionValue,
     SortCriterion,
     StatusSummary,
     WorkPackageDetail,
@@ -4575,3 +4577,213 @@ async def test_update_rejected_version_offering_only_non_version_links_keeps_the
     result = await service.update(work_package_id=6, target_versions=["Own"], confirm=False)
 
     assert result.validation_errors == {"targetVersions": _VERSION_REJECTED}
+
+
+# ----------------------------------------------------------------------
+# get(include_allowed_statuses=True)
+# ----------------------------------------------------------------------
+
+
+def _record_with_lock_version(wp_id: int = 6, lock_version: int = 3) -> WorkPackageRecord:
+    return _record(wp_id, payload={**_payload(wp_id), "lockVersion": lock_version})
+
+
+def _api_with_statuses(*names: str, wp_id: int = 6) -> _FakeWorkPackageApi:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[wp_id] = _record_with_lock_version(wp_id)
+    api.next_schema = _status_schema(*names)
+    return api
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_returns_the_offered_statuses_in_form_order() -> None:
+    api = _api_with_statuses("New", "In progress", "Closed")
+    service, _ = _service(api)
+
+    detail = await service.get(6, include_allowed_statuses=True)
+
+    assert detail.allowed_statuses == [
+        OptionValue(id=1, title="New", href="/api/v3/statuses/1"),
+        OptionValue(id=2, title="In progress", href="/api/v3/statuses/2"),
+        OptionValue(id=3, title="Closed", href="/api/v3/statuses/3"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_returns_a_list_of_one_for_an_editor_without_a_transition() -> None:
+    api = _api_with_statuses("New")
+    service, _ = _service(api)
+
+    detail = await service.get(6, include_allowed_statuses=True)
+
+    assert detail.allowed_statuses == [OptionValue(id=1, title="New", href="/api/v3/statuses/1")]
+
+
+class _ResolvesAnyReferenceApi(_FakeWorkPackageApi):
+    async def get(self, work_package_ref: str, *, text_limit: int | None = None) -> WorkPackageRecord:
+        self.get_calls.append(work_package_ref)
+        return self._records_by_id[6]
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_posts_the_form_once_with_the_numeric_id_and_the_lock_version() -> None:
+    api = _ResolvesAnyReferenceApi()
+    api._records_by_id[6] = _record_with_lock_version()
+    api.next_schema = _status_schema("New", "Closed")
+    service, _ = _service(api)
+
+    await service.get("OPM-12", include_allowed_statuses=True)
+
+    assert api.validate_update_calls == [("6", {"lockVersion": 3})]
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_sends_no_lock_version_the_work_package_does_not_carry() -> None:
+    api = _api_with_statuses("New")
+    api._records_by_id[6] = _record(6)
+    service, _ = _service(api)
+
+    await service.get(6, include_allowed_statuses=True)
+
+    assert api.validate_update_calls == [("6", {})]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text_limit", [None, 10])
+async def test_get_without_the_flag_makes_no_form_request(text_limit: int | None) -> None:
+    api = _api_with_statuses("New", "Closed")
+    service, _ = _service(api)
+
+    detail = await service.get(6, text_limit=text_limit)
+
+    assert detail.allowed_statuses is None
+    assert api.validate_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_is_not_shortened_by_the_text_limit() -> None:
+    api = _api_with_statuses("New", "In progress", "Closed")
+    service, _ = _service(api)
+
+    detail = await service.get(6, text_limit=1, include_allowed_statuses=True)
+
+    assert detail.allowed_statuses is not None
+    assert [option.title for option in detail.allowed_statuses] == ["New", "In progress", "Closed"]
+
+
+@pytest.mark.asyncio
+async def test_get_batch_makes_no_form_request() -> None:
+    api = _api_with_statuses("New", "Closed")
+    service, _ = _service(api)
+
+    result = await service.get_batch(ids=[6])
+
+    assert result.succeeded == 1
+    assert api.validate_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_refuses_a_work_package_outside_the_read_scope_before_the_form() -> None:
+    api = _api_with_statuses("New")
+    api._records_by_id[6] = _record(
+        6, payload={**_payload(6, project_href="/api/v3/projects/99", project_title="Other Project"), "lockVersion": 3}
+    )
+    service, _ = _service(
+        api,
+        settings=dataclasses.replace(make_settings(), read_projects=("demo",)),
+        project_id_to_identifier={1: "demo"},
+    )
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get(6, include_allowed_statuses=True)
+
+    assert api.validate_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_needs_neither_the_write_flag_nor_a_write_project() -> None:
+    api = _api_with_statuses("New", "Closed")
+    settings = dataclasses.replace(
+        make_settings(), read_projects=("demo",), write_projects=(), enable_work_package_write=False
+    )
+    service, _ = _service(api, settings=settings, project_id_to_identifier={1: "demo"})
+
+    detail = await service.get(6, include_allowed_statuses=True)
+
+    assert detail.allowed_statuses == [
+        OptionValue(id=1, title="New", href="/api/v3/statuses/1"),
+        OptionValue(id=2, title="Closed", href="/api/v3/statuses/2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_reports_a_scope_denial_before_a_hidden_status() -> None:
+    api = _api_with_statuses("New")
+    api._records_by_id[6] = _record(
+        6, payload={**_payload(6, project_href="/api/v3/projects/99", project_title="Other Project"), "lockVersion": 3}
+    )
+    settings = dataclasses.replace(
+        make_settings(), read_projects=("demo",), hidden_fields={"work_package": ("status",)}
+    )
+    service, _ = _service(api, settings=settings, project_id_to_identifier={1: "demo"})
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get(6, include_allowed_statuses=True)
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_refuses_when_status_is_hidden_before_the_form() -> None:
+    api = _api_with_statuses("New", "Closed")
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("status",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS"):
+        await service.get(6, include_allowed_statuses=True)
+
+    assert api.validate_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_names_the_missing_edit_right_when_the_form_is_refused() -> None:
+    api = _api_with_statuses("New")
+
+    async def refuse(work_package_ref: str, payload: dict) -> dict:
+        raise OpenProjectPermissionDeniedError("You are not authorized to access this resource.")
+
+    api.validate_update = refuse  # type: ignore[method-assign]
+    service, _ = _service(api)
+
+    with pytest.raises(OpenProjectPermissionDeniedError, match="may not edit work package 6"):
+        await service.get(6, include_allowed_statuses=True)
+
+
+@pytest.mark.asyncio
+async def test_get_with_allowed_statuses_lets_a_missing_form_route_surface_as_not_found() -> None:
+    api = _api_with_statuses("New")
+
+    async def missing(work_package_ref: str, payload: dict) -> dict:
+        raise NotFoundError("OpenProject resource was not found.")
+
+    api.validate_update = missing  # type: ignore[method-assign]
+    service, _ = _service(api)
+
+    with pytest.raises(NotFoundError):
+        await service.get(6, include_allowed_statuses=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schema",
+    [
+        pytest.param({}, id="no-status-field"),
+        pytest.param({"status": {}}, id="no-allowed-values"),
+        pytest.param({"status": {"_embedded": {"allowedValues": "New"}}}, id="allowed-values-not-a-list"),
+    ],
+)
+async def test_get_with_allowed_statuses_fails_loudly_on_a_form_without_status_options(schema: dict) -> None:
+    api = _api_with_statuses("New")
+    api.next_schema = schema
+    service, _ = _service(api)
+
+    with pytest.raises(OpenProjectServerError, match="status"):
+        await service.get(6, include_allowed_statuses=True)

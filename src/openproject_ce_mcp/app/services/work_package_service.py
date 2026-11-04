@@ -107,6 +107,7 @@ from ...models import (
     BatchWorkPackageReadResult,
     BulkWorkPackageItemResult,
     BulkWorkPackageWriteResult,
+    OptionValue,
     ResolvedWorkPackage,
     SortCriterion,
     WorkPackageDetail,
@@ -168,6 +169,7 @@ from ._work_package_references import (
     hidden_references_replaced,
     visible_references,
 )
+from ._work_package_status_options import allowed_status_options
 from ._work_package_target import resolved_target, write_target
 from ._work_package_write_helpers import (
     VERSION_ERROR_KEYS,
@@ -1366,7 +1368,9 @@ class WorkPackageService:
             ancestors_truncated=detail.ancestors_truncated and ancestors_count == original_ancestors_count,
         )
 
-    async def get(self, work_package_ref: int | str, *, text_limit: int | None = None) -> WorkPackageDetail:
+    async def get(
+        self, work_package_ref: int | str, *, text_limit: int | None = None, include_allowed_statuses: bool = False
+    ) -> WorkPackageDetail:
         access.ensure_read_enabled("work_package", settings=self._settings)
         record = await self._api.get(str(work_package_ref), text_limit=text_limit)
         ensure_project_link_allowed(
@@ -1374,7 +1378,10 @@ class WorkPackageService:
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
-        detail = await self._filter_hierarchy_allowlist(await self._detail_of(record))
+        detail = await self._detail_of(record)
+        if include_allowed_statuses:
+            detail = dataclasses.replace(detail, allowed_statuses=await self._allowed_statuses(record))
+        detail = await self._filter_hierarchy_allowlist(detail)
         # Hidden-field stamping MUST run after _filter_hierarchy_allowlist,
         # never before: apply_hidden_fields sets `_hidden_keys` as a dynamic
         # (non-dataclass-field) attribute, and dataclasses.replace() -- which
@@ -1387,6 +1394,21 @@ class WorkPackageService:
         # children/ancestors were even present on that particular work
         # package.
         return stamp_detail(detail, settings=self._settings)
+
+    async def _allowed_statuses(self, record: WorkPackageRecord) -> builtins.list[OptionValue]:
+        hidden_fields.ensure_field_options_readable("work_package", "status", settings=self._settings)
+        body: dict[str, Any] = {}
+        lock_version = record.payload.get("lockVersion")
+        if lock_version is not None:
+            body["lockVersion"] = lock_version
+        try:
+            form = await self._api.validate_update(str(record.id), body)
+        except OpenProjectPermissionDeniedError as exc:
+            raise OpenProjectPermissionDeniedError(
+                f"OpenProject says the configured user may not edit work package {record.id}, "
+                "so it offers no status transitions for it."
+            ) from exc
+        return allowed_status_options((await self._api.parse_form(form)).schema)
 
     async def get_batch(
         self, *, ids: builtins.list[int | str], text_limit: int | None = None

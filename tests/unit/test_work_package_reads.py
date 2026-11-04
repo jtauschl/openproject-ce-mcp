@@ -1488,3 +1488,71 @@ async def test_list_work_packages_type_filter_uses_correct_key() -> None:
     assert len(type_filter["type_id"]["values"]) == 1
 
     await client.aclose()
+
+
+def _status_form_response(*names: str) -> dict:
+    return {
+        "_embedded": {
+            "payload": {},
+            "validationErrors": {},
+            "schema": {
+                "status": {
+                    "_embedded": {
+                        "allowedValues": [
+                            {"name": name, "_links": {"self": {"href": f"/api/v3/statuses/{i}", "title": name}}}
+                            for i, name in enumerate(names, start=1)
+                        ]
+                    }
+                }
+            },
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_with_allowed_statuses_reads_the_form_of_the_numeric_id() -> None:
+    requests: list[tuple[str, str, dict | None]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, body))
+        if request.method == "GET" and request.url.path == "/api/v3/work_packages/DEMO-412":
+            return httpx.Response(200, json={**_wp_detail_payload(412, "DEMO-412"), "lockVersion": 7}, request=request)
+        if request.method == "POST" and request.url.path == "/api/v3/work_packages/412/form":
+            return httpx.Response(200, json=_status_form_response("New", "Closed"), request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    detail = await client.work_package.get("DEMO-412", include_allowed_statuses=True)
+
+    assert [(option.id, option.title) for option in detail.allowed_statuses or []] == [(1, "New"), (2, "Closed")]
+    assert requests == [
+        ("GET", "/api/v3/work_packages/DEMO-412", None),
+        ("POST", "/api/v3/work_packages/412/form", {"lockVersion": 7}),
+    ]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_with_allowed_statuses_names_the_missing_edit_right() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json=_wp_detail_payload(42, "42"), request=request)
+        return httpx.Response(
+            403,
+            json={
+                "_type": "Error",
+                "errorIdentifier": "urn:openproject-org:api:v3:errors:MissingPermission",
+                "message": "You are not authorized to access this resource.",
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="may not edit work package 42"):
+        await client.work_package.get("42", include_allowed_statuses=True)
+
+    await client.aclose()

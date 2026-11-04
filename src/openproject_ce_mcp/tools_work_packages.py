@@ -464,6 +464,7 @@ async def get_work_package(
     ctx: Context,
     work_package_id: WorkPackageRef,
     text_limit: int | None = None,
+    include_allowed_statuses: bool = False,
     select: Annotated[list[str] | None, select_field(WorkPackageDetail)] = None,
 ) -> WorkPackageDetail:
     """Get a work package by id, including its full description.
@@ -480,6 +481,16 @@ async def get_work_package(
     "single work packages are not truncated" applies to description and CF
     text-format values, not to that separate, always-on scalar cap.
 
+    include_allowed_statuses adds ``allowed_statuses``: the statuses OpenProject
+    offers this user for this work package (id, title, href), as its update form
+    answers, always including the current status; a user without a granted
+    transition gets only that. One extra request. The list depends on the type's
+    workflow for the user's roles; a closed status in a closed version offers
+    only itself, and a blocked work package is offered no closed status. An
+    offered status is not a promise this server may write it (write access is
+    configured separately). Fails when the user may not edit the work package or
+    when the status field is hidden.
+
     select restricts the response to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set.
     """
@@ -487,7 +498,9 @@ async def get_work_package(
     safe_id = _validate_work_package_ref(work_package_id)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     _validate_select(select, row_type=WorkPackageDetail)
-    return await _run_tool(client.work_package.get(safe_id, text_limit=safe_text_limit))
+    return await _run_tool(
+        client.work_package.get(safe_id, text_limit=safe_text_limit, include_allowed_statuses=include_allowed_statuses)
+    )
 
 
 @register_tool

@@ -39,6 +39,30 @@ def test_ensure_field_writable_raises_with_env_var_hint_for_hidden_field() -> No
         hidden_fields.ensure_field_writable("version", "name", settings=settings)
 
 
+def test_ensure_field_writable_message_is_exact() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"version": ("name",)})
+    with pytest.raises(InvalidInputError) as raised:
+        hidden_fields.ensure_field_writable("version", "name", settings=settings)
+    assert (
+        str(raised.value)
+        == "OpenProject field 'name' is hidden by OPENPROJECT_HIDE_VERSION_FIELDS and cannot be written."
+    )
+
+
+def test_ensure_field_options_readable_names_the_setting_and_the_consequence() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("status",)})
+    with pytest.raises(InvalidInputError) as raised:
+        hidden_fields.ensure_field_options_readable("work_package", "status", settings=settings)
+    assert str(raised.value) == (
+        "OpenProject field 'status' is hidden by OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS "
+        "and its allowed values are not available."
+    )
+
+
+def test_ensure_field_options_readable_noop_for_visible_field() -> None:
+    hidden_fields.ensure_field_options_readable("work_package", "status", settings=make_settings())
+
+
 def test_ensure_field_writable_noop_for_visible_field() -> None:
     settings = make_settings()
     hidden_fields.ensure_field_writable("version", "name", settings=settings)  # must not raise

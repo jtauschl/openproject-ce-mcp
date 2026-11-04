@@ -521,6 +521,7 @@ class WorkPackageDetail:
     custom_fields_truncated: bool = False
     custom_comments: dict[str, str] | None = None
     custom_comments_truncated: bool = False
+    allowed_statuses: list[OptionValue] | None = None
 
 
 # Not frozen: hiding a field stamps `_hidden_keys` onto the instance. A comment,

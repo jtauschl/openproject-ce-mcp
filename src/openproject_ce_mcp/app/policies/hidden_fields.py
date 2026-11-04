@@ -45,12 +45,20 @@ def field_hidden(entity: str, field_name: str, *, settings: Settings) -> bool:
     )
 
 
-def ensure_field_writable(entity: str, field_name: str, *, settings: Settings) -> None:
-    if not field_hidden(entity, field_name, settings=settings):
-        return
+def _hidden_field_error(entity: str, field_name: str, consequence: str) -> InvalidInputError:
     env_name = HIDE_FIELD_ENV_BY_ENTITY.get(entity)
     source = env_name if env_name else "the configured hidden-field settings"
-    raise InvalidInputError(f"OpenProject field '{field_name}' is hidden by {source} and cannot be written.")
+    return InvalidInputError(f"OpenProject field '{field_name}' is hidden by {source} and {consequence}.")
+
+
+def ensure_field_writable(entity: str, field_name: str, *, settings: Settings) -> None:
+    if field_hidden(entity, field_name, settings=settings):
+        raise _hidden_field_error(entity, field_name, "cannot be written")
+
+
+def ensure_field_options_readable(entity: str, field_name: str, *, settings: Settings) -> None:
+    if field_hidden(entity, field_name, settings=settings):
+        raise _hidden_field_error(entity, field_name, "its allowed values are not available")
 
 
 def custom_field_hidden(field_name: str, key: str, *, settings: Settings) -> bool:
