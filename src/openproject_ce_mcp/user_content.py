@@ -76,3 +76,20 @@ def delimit_user_content(text: str | None) -> str | None:
     if text is None or not text.strip():
         return text
     return f"{_OPEN}{_neutralize_delimiter_lookalikes(text)}{_CLOSE}"
+
+
+def strip_user_content_wrapper(text: str) -> str:
+    """The inside of a text that is exactly one wrapped value, otherwise the text unchanged.
+
+    A read returns long text wrapped by `delimit_user_content`, so a caller that feeds a read
+    result back into a write sends the marker along. Only a value that starts with the opening
+    tag and ends with the closing tag and holds neither inside is one such result: reads escape
+    every look-alike tag, so two joined results or a tag in the middle are not.
+    """
+    stripped = text.strip()
+    if not (stripped.startswith(_OPEN) and stripped.endswith(_CLOSE)):
+        return text
+    inner = stripped[len(_OPEN) : -len(_CLOSE)]
+    if _OPEN in inner or _CLOSE in inner:
+        return text
+    return inner

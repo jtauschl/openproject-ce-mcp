@@ -153,7 +153,9 @@ async def create_version(
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_name = _validate_required_query(name, field_name="name", max_length=60)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=None)
+    safe_description = _validate_optional_text(
+        description, field_name="description", max_length=None, wrapped_on_read=True
+    )
     common = _validate_version_schedule_fields(start_date=start_date, end_date=end_date, status=status, sharing=sharing)
     return await _run_tool(
         client.version.create(
@@ -190,7 +192,9 @@ async def update_version(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(version_id, field_name="version_id")
     safe_name = _validate_optional_query(name, field_name="name", max_length=60)
-    safe_description = _validate_optional_update_text(description, field_name="description", max_length=None)
+    safe_description = _validate_optional_update_text(
+        description, field_name="description", max_length=None, wrapped_on_read=True
+    )
     common = _validate_version_schedule_fields(start_date=start_date, end_date=end_date, status=status, sharing=sharing)
     _require_at_least_one(
         safe_name,

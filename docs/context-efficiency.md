@@ -114,11 +114,11 @@ provider may transform or cache the catalog before billing it.
 | Configuration | Tools | Catalog tokens |
 | --- | ---: | ---: |
 | Fresh install, no project scope | 14 | ~1,960 |
-| Project reads, no writes | 88 | ~28,910 |
-| Work-package writes only | 114 | ~45,444 |
-| Every project readable and writable, other settings default (Glama build) | 153 | ~61,503 |
-| Every write scope | 187 | ~72,218 |
-| Every write scope plus extended tools | 204 | ~75,323 |
+| Project reads, no writes | 88 | ~29,085 |
+| Work-package writes only | 114 | ~45,671 |
+| Every project readable and writable, other settings default (Glama build) | 153 | ~61,638 |
+| Every write scope | 187 | ~72,353 |
+| Every write scope plus extended tools | 204 | ~75,458 |
 
 The figures include each tool's MCP annotations (read-only, destructive,
 idempotent and open-world hints) and the parameter descriptions in its input

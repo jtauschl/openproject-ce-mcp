@@ -202,7 +202,7 @@ def live_catalog() -> dict[str, Any]:
 # change without confirming the new tool-contract shape is actually intended.
 TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
     "add_work_package_comment": {
-        "description_hash": "ceb2ce2d3b07bf81b526c09f96cfc347fa7663e10179e52444608f0593c12995",
+        "description_hash": "e370a37725953ce0e6b6e310b9dd336311df3dde88c8cce97dec2445fd1ae31d",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -1673,7 +1673,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "create_work_package": {
-        "description_hash": "46ca159d9e2ae599081dbd18a1291c919680dd4a154324092fe230420ae9af04",
+        "description_hash": "0a5e32f1e5e0626220a4c1bceacaca27639475f5702d301a53f9b7bcabdb4ba0",
         "input_schema": {
             "properties": {
                 "project": {
@@ -6833,7 +6833,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "7e9b51be8fe443eea6f11c2af385e07a5b9fcb39a19d69fd55de404c9c63516c",
+        "description_hash": "a3a5d3958ac12d338a0e05e8eee9468be87782b36242ced87365d205383945dc",
         "input_schema": {
             "properties": {
                 "work_package_id": {
@@ -6976,7 +6976,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "type": "integer",
                 },
                 "comment": {
-                    "description": "The new comment text in Markdown; replaces the whole text. Must not be blank.",
+                    "description": "The new comment text in Markdown; replaces the whole text. Must not be blank. Leave off the user-content tags a read adds.",
                     "title": "Comment",
                     "type": "string",
                 },

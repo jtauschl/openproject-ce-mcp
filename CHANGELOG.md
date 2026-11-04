@@ -77,6 +77,7 @@ to install and discover.
 - Project scope denials, disabled capabilities and OpenProject's own 403 carry separate codes; 409 and 429 no longer
   report as validation or unavailable.
 - An unexpected internal error is sanitized to `[INTERNAL_ERROR] An internal error occurred.`
+- Written text drops a `<user-content>` pair copied from a read result; only a value that is exactly one wrapped text loses it.
 
 ### Removed
 

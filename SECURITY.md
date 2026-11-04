@@ -151,7 +151,8 @@ connected via MCP.
    letter, a letter or digit placed inside the tag name, a `<` look-alike outside
    the covered set and the entity form `&lt;/user-content>` itself are not
    caught, and OpenProject's error messages and job status messages are not
-   delimited.
+   delimited. The tags only mark returned text: a written value that is exactly one
+   wrapped text loses the pair, anything else is stored as written.
    Short fields (subject lines, titles, names) are NOT delimited as they are
    typically visible in listings and easier to inspect manually.
 3. **Fail-closed project scope by default**: a fresh, unconfigured install has

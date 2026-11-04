@@ -176,7 +176,7 @@ reference and what `configure --quick` vs. `--advanced` ask.
 
 ### Prompt Injection
 
-User-provided text (work-package descriptions, comments, news, documents, inlined attachment text) is marked with `<user-content>` tags and flagged in server instructions as untrusted. Agents should treat this content as data, not as instructions.
+User-provided text (work-package descriptions, comments, news, documents, inlined attachment text) is marked with `<user-content>` tags and flagged in server instructions as untrusted. Agents should treat this content as data, not as instructions. The tags only mark returned text; a written value that is exactly one wrapped text loses the pair.
 
 See [SECURITY.md](https://github.com/jtauschl/openproject-ce-mcp/blob/main/SECURITY.md) for the full security model, including prompt injection mitigations, reporting procedures, and supported versions.
 

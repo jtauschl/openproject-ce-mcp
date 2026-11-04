@@ -61,7 +61,7 @@ async def create_work_package_reminder(
     safe_id = _validate_work_package_ref(work_package_id)
     safe_expect = _validate_expect_display_id(expect_display_id)
     safe_remind_at = _validate_required_datetime(remind_at, field_name="remind_at")
-    safe_note = _validate_optional_text(note, field_name="note", max_length=2000)
+    safe_note = _validate_optional_text(note, field_name="note", max_length=2000, wrapped_on_read=True)
     return await _run_tool(
         client.reminder.create(
             work_package_id=safe_id,
@@ -90,7 +90,7 @@ async def update_reminder(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(reminder_id, field_name="reminder_id")
     safe_remind_at = _validate_optional_datetime(remind_at, field_name="remind_at")
-    safe_note = _validate_optional_update_text(note, field_name="note", max_length=2000)
+    safe_note = _validate_optional_update_text(note, field_name="note", max_length=2000, wrapped_on_read=True)
     return await _run_tool(
         client.reminder.update(
             reminder_id=safe_id,

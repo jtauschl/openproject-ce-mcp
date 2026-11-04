@@ -18,6 +18,7 @@ from .config import TEXT_LIMIT_MAX
 from .models import SortCriterion
 from .sort_criteria import parse_sort_by
 from .tool_params import allowed_select_fields
+from .user_content import strip_user_content_wrapper
 from .work_package_columns import GROUPABLE_FIELDS, SORTABLE_FIELDS
 from .work_package_reference import canonical_display_id, canonical_work_package_ref, is_numeric_ref
 
@@ -119,17 +120,28 @@ def _check_text_length(normalized: str, *, field_name: str, max_length: int | No
         raise ValueError(f"{field_name} must be at most {max_length} characters.")
 
 
-def _validate_optional_text(value: str | None, *, field_name: str, max_length: int | None) -> str | None:
+def _normalized_text(value: str, *, wrapped_on_read: bool) -> str:
+    normalized = value.strip()
+    if wrapped_on_read:
+        normalized = strip_user_content_wrapper(normalized).strip()
+    return normalized
+
+
+def _validate_optional_text(
+    value: str | None, *, field_name: str, max_length: int | None, wrapped_on_read: bool = False
+) -> str | None:
     if value is None:
         return None
-    normalized = value.strip()
+    normalized = _normalized_text(value, wrapped_on_read=wrapped_on_read)
     if not normalized:
         return None
     _check_text_length(normalized, field_name=field_name, max_length=max_length)
     return normalized
 
 
-def _validate_optional_update_text(value: str | None, *, field_name: str, max_length: int | None) -> str | None:
+def _validate_optional_update_text(
+    value: str | None, *, field_name: str, max_length: int | None, wrapped_on_read: bool = False
+) -> str | None:
     """Like _validate_optional_text, but preserves an explicit empty string.
 
     None still means "not provided, leave unchanged"; an explicit "" means
@@ -140,13 +152,17 @@ def _validate_optional_update_text(value: str | None, *, field_name: str, max_le
     """
     if value is None:
         return None
-    normalized = value.strip()
+    normalized = _normalized_text(value, wrapped_on_read=wrapped_on_read)
     _check_text_length(normalized, field_name=field_name, max_length=max_length)
     return normalized
 
 
-def _validate_required_text(value: str, *, field_name: str, max_length: int | None) -> str:
-    normalized = _validate_optional_text(value, field_name=field_name, max_length=max_length)
+def _validate_required_text(
+    value: str, *, field_name: str, max_length: int | None, wrapped_on_read: bool = False
+) -> str:
+    normalized = _validate_optional_text(
+        value, field_name=field_name, max_length=max_length, wrapped_on_read=wrapped_on_read
+    )
     if not normalized:
         raise ValueError(f"{field_name} is required.")
     return normalized
@@ -166,6 +182,8 @@ def _validate_optional_custom_fields(value: dict[str, Any] | None) -> dict[str, 
             raise ValueError("custom_fields keys must not be empty.")
         if len(key) > 120:
             raise ValueError("custom_fields keys must be at most 120 characters.")
+        if isinstance(raw_value, str):
+            raw_value = strip_user_content_wrapper(raw_value)
         normalized[key] = _validate_custom_field_value(raw_value)
     return normalized
 

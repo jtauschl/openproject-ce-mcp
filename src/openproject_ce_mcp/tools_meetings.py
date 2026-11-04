@@ -417,7 +417,7 @@ async def create_meeting_agenda_item(
     client = _client_from_context(ctx)
     safe_meeting_id = _validate_positive_int(meeting_id, field_name="meeting_id")
     safe_title = _validate_required_text(title, field_name="title", max_length=255)
-    safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000)
+    safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000, wrapped_on_read=True)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_expect = _validate_expect_display_id(expect_display_id)
     safe_section_id = (
@@ -471,7 +471,7 @@ async def update_meeting_agenda_item(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
-    safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000)
+    safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000, wrapped_on_read=True)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_expect = _validate_expect_display_id(expect_display_id)
     safe_section_id = (
@@ -586,7 +586,7 @@ async def create_meeting_outcome(
     client = _client_from_context(ctx)
     safe_agenda_item_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
     safe_kind = _validate_choice(kind, field_name="kind", allowed_values=_MEETING_OUTCOME_KINDS)
-    safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000)
+    safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000, wrapped_on_read=True)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_expect = _validate_expect_display_id(expect_display_id)
     return await _run_tool(
@@ -625,7 +625,7 @@ async def update_meeting_outcome(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
     safe_kind = _validate_optional_choice(kind, field_name="kind", allowed_values=_MEETING_OUTCOME_KINDS)
-    safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000)
+    safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000, wrapped_on_read=True)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_expect = _validate_expect_display_id(expect_display_id)
     _require_at_least_one(

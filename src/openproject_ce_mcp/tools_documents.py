@@ -143,7 +143,9 @@ async def update_document(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
-    safe_description = _validate_optional_update_text(description, field_name="description", max_length=None)
+    safe_description = _validate_optional_update_text(
+        description, field_name="description", max_length=None, wrapped_on_read=True
+    )
     _require_at_least_one(safe_title, safe_description, message="At least one field to update is required.")
     return await _run_tool(
         client.document.update(
@@ -226,7 +228,9 @@ async def create_news(
     safe_project = _validate_project_ref(project)
     safe_title = _validate_required_query(title, field_name="title", max_length=255)
     safe_summary = _validate_optional_text(summary, field_name="summary", max_length=500)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=None)
+    safe_description = _validate_optional_text(
+        description, field_name="description", max_length=None, wrapped_on_read=True
+    )
     return await _run_tool(
         client.news.create(
             project=safe_project,
@@ -252,7 +256,9 @@ async def update_news(
     safe_id = _validate_positive_int(news_id, field_name="news_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
     safe_summary = _validate_optional_update_text(summary, field_name="summary", max_length=500)
-    safe_description = _validate_optional_update_text(description, field_name="description", max_length=None)
+    safe_description = _validate_optional_update_text(
+        description, field_name="description", max_length=None, wrapped_on_read=True
+    )
     _require_at_least_one(
         safe_title, safe_summary, safe_description, message="At least one field to update is required."
     )

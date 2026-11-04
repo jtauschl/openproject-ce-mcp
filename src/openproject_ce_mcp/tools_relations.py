@@ -89,7 +89,9 @@ async def create_work_package_relation(
     safe_expect = _validate_expect_display_id(expect_display_id)
     safe_expect_related = _validate_expect_display_id(expect_related_display_id, field_name="expect_related_display_id")
     safe_relation_type = _validate_relation_type(relation_type)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=255)
+    safe_description = _validate_optional_text(
+        description, field_name="description", max_length=255, wrapped_on_read=True
+    )
     safe_lag = _validate_optional_non_negative_int(lag, field_name="lag")
     return await _run_tool(
         client.relation.create(
@@ -207,7 +209,9 @@ async def update_relation(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(relation_id, field_name="relation_id")
     safe_type = _validate_relation_type(relation_type) if relation_type else None
-    safe_desc = _validate_optional_update_text(description, field_name="description", max_length=500)
+    safe_desc = _validate_optional_update_text(
+        description, field_name="description", max_length=500, wrapped_on_read=True
+    )
     return await _run_tool(
         client.relation.update(
             relation_id=safe_id,
