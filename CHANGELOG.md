@@ -22,85 +22,43 @@ to install and discover.
 - List available assignees and relation candidates for work packages.
 - `get_work_package` lists the statuses OpenProject offers the current user for
   a work package when `include_allowed_statuses` is set.
-- Opt-in `extended` tools list a project's budgets, the projects a version is
-  shared with, the users that can watch a work package, the projects it can
-  move to and its repository revisions, limited to
-  `OPENPROJECT_READ_PROJECTS`; `OPENPROJECT_HIDE_BUDGET_FIELDS` and
-  `OPENPROJECT_HIDE_REVISION_FIELDS` hide their fields.
+- Opt-in `extended` tools list a project's budgets, a version's shared projects, watchable users, movable-to projects
+  and repository revisions, within `OPENPROJECT_READ_PROJECTS`.
+- `OPENPROJECT_HIDE_BUDGET_FIELDS` and `OPENPROJECT_HIDE_REVISION_FIELDS` hide the fields of budgets and revisions.
 - `get_notification` reads one notification with its details and activity, and
   `mark_notifications_unread` marks one or all read notifications unread.
 - `set_query_starred` stars or unstars a saved query; a public query needs its
   project in `OPENPROJECT_WRITE_PROJECTS`, or the write scope `*` without one.
-- `select` on `bulk_create_work_packages` and `bulk_update_work_packages`
-  picks fields of each written work package as `result.<field>`, e.g.
-  `["work_package_id", "result.status"]`; a bare work package field name is
-  rejected with the path to use.
-- `doctor` now reports the Python version and executable in use, warns when a
-  client configuration file with an OpenProject entry has unsafe
-  group/other-readable permissions (POSIX only), and checks in-process, with a
-  time limit, that the server builds and dispatches tool calls. API
-  connectivity failures now distinguish TLS/certificate errors from a plain
-  connection failure and include actionable remediation hints.
-- Optional structured stderr logging of per-tool-call diagnostics
-  (`OPENPROJECT_LOG_FORMAT=json`), one JSON line per call carrying the tool
-  name, outcome, duration, error code/layer, HTTP request count (accurate
-  across retries), project scope, policy decision, and MCP request ID. A
-  successful call logs at `INFO`; set `OPENPROJECT_LOG_LEVEL=INFO` too (the
-  default is `WARNING`) to see those lines, not just failures. Written to
-  stderr only, never stdout, which stays reserved for MCP JSON-RPC traffic.
-  Off by default (`text` format, unchanged output); never logs the API
-  token, Authorization header, work-package bodies, attachments, or other
-  request/response payload content.
+- `select` on `bulk_create_work_packages` and `bulk_update_work_packages` picks fields of each written work package
+  as `result.<field>`.
+- `doctor` reports the Python version and executable and checks in-process that the server builds and dispatches
+  tool calls.
+- `doctor` warns when a client configuration file with an OpenProject entry is group- or other-readable (POSIX only).
+- `doctor` separates TLS and certificate errors from plain connection failures and adds remediation hints.
+- `OPENPROJECT_LOG_FORMAT=json` writes one structured JSON line per tool call to stderr, without payload content or
+  credentials; off by default.
 - `list_meetings` accepts a `title` filter (case-insensitive substring,
   also matching a recurring series' title) on OpenProject 17.9 and later.
 - `end_recurring_meeting` ends a recurring meeting series and deletes its
   already created future occurrences; the series and its past occurrences are
   kept (OpenProject 17.8 and later).
-- Work packages expose `observed_in_versions` (OpenProject 17.9+): read on
-  every work package, written through the create, update and bulk tools, and
-  filterable with `list_work_packages(observed_in_version=...)`. It follows the
-  rules of the other version fields: a version defined outside
-  `OPENPROJECT_READ_PROJECTS` is not named and an update that would remove one
-  is refused, and a hidden field cannot be used to filter, sort or group.
+- Work packages expose `observed_in_versions` (OpenProject 17.9+): readable, writable through the create, update and
+  bulk tools, and filterable in `list_work_packages`.
+- `observed_in_versions` follows the scope and hiding rules of the other version fields.
 
 ### Changed
 
-- `OPENPROJECT_VERIFY_SSL=false` on an `https://` base URL now logs a startup warning that
-  names the host and points to `SSL_CERT_FILE` for a private CA. The connection check
-  (`doctor`) names the same variable in its certificate-error hint.
-- **Breaking:** `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` match a
-  project's identifier or numeric id only, no longer its name. A pattern that
-  cannot match an identifier, such as a name with spaces, stops the server at
-  start; use the identifier.
-- **Breaking:** on an instance with semantic display ids, `update_work_package`,
-  `delete_work_package`, `add_work_package_comment`,
-  `create_work_package_attachment`, `set_work_package_watcher` and each item of
-  `bulk_update_work_packages` refuse a work package named by a bare number
-  unless the new `expect_display_id` names the ticket (for example `"PROJ-51"`),
-  in preview and in confirm. A bare number is the internal id and `PROJ-51` is
-  another ticket; the refusal names the one the number resolved to.
-  A parent named by a bare number follows the same rule through the new
-  `expect_parent_display_id` on `create_work_package`, `create_subtask`,
-  `update_work_package` and each item of `bulk_create_work_packages` and
-  `bulk_update_work_packages`.
-  The other writes that take a work package follow the same rule through
-  `expect_display_id`: `create_work_package_relation` (its related work
-  package has `expect_related_display_id`), `create_work_package_reminder`,
-  `create_work_package_wiki_link`, `delete_work_package_wiki_link`,
-  `create_time_entry`, `create_time_entry_until`, `create_meeting_agenda_item`,
-  `update_meeting_agenda_item`, `create_meeting_outcome` and
-  `update_meeting_outcome`. An expectation given without a work package to
-  check is refused.
-- A rejected status change on `update_work_package` and
-  `bulk_update_work_packages` now lists, in its `status` validation error, the
-  status values OpenProject's update form offers for that work package,
-  including its current status.
-- A work package write rejected for its `version` or `target_versions` now lists,
-  in the `version` or `targetVersions` validation error, the versions
-  OpenProject's form offers, limited to those the read scope covers, and says
-  that a closed or locked version cannot be assigned. This applies to
-  `create_work_package`, `create_subtask`, `update_work_package` and the bulk
-  tools.
+- `OPENPROJECT_VERIFY_SSL=false` on an `https://` base URL logs a startup warning naming the host and pointing to
+  `SSL_CERT_FILE`; `doctor` repeats the hint.
+- **Breaking:** `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` match a project's identifier or numeric id
+  only, not its name; a name that cannot match an identifier stops the server at start.
+- **Breaking:** on an instance with semantic display ids, writes that take a work package by bare number are refused
+  unless `expect_display_id` names the ticket, e.g. `"PROJ-51"`.
+- **Breaking:** a parent named by a bare number needs `expect_parent_display_id` on the create and update tools.
+- A rejected status change on `update_work_package` and `bulk_update_work_packages` lists the statuses OpenProject's
+  form offers, including the current one.
+- A write rejected for its `version` or `target_versions` lists the versions the form offers within the read scope;
+  closed or locked ones cannot be assigned.
 - A confirmed bulk write no longer returns an item's echoed `payload` when
   `select` names it; the normalized `result` carries the same data.
 - **Breaking:** a confirmed bulk write returns a lean item per success without
@@ -114,25 +72,11 @@ to install and discover.
 - **Breaking:** Python 3.11 or later is required; Python 3.10 is no longer
   supported. Install or upgrade under Python 3.11+ (for example
   `pipx install --python python3.11 openproject-ce-mcp`).
-- **Breaking:** tool error messages now carry a small, stable set of
-  uppercase agent-facing codes (`AUTHENTICATION_FAILED`, `PROJECT_SCOPE_DENIED`,
-  `CAPABILITY_DISABLED`, `OPENPROJECT_PERMISSION_DENIED`, `RESOURCE_NOT_FOUND`,
-  `VALIDATION_FAILED`, `CONFLICT`, `RATE_LIMITED`, `OPENPROJECT_UNAVAILABLE`,
-  `NETWORK_ERROR`, `CONFIGURATION_ERROR`, `INTERNAL_ERROR`) instead of the
-  previous lowercase categories (`validation_error`, `auth_error`,
-  `permission_denied`, `not_found`, `transport_error`, `server_error`,
-  `configuration_error`, `openproject_error`). A
-  caller matching on the old `[category]` prefixes must update to the new
-  codes. Three distinctions that were previously conflated are now separate:
-  a project outside `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`
-  (`PROJECT_SCOPE_DENIED`) is no longer the same code as an `OPENPROJECT_ENABLE_*`
-  capability flag being off (`CAPABILITY_DISABLED`) or OpenProject's own 403
-  (`OPENPROJECT_PERMISSION_DENIED`); OpenProject's `409 Conflict` (e.g. an
-  optimistic-locking version mismatch) no longer reports as `VALIDATION_FAILED`;
-  and `429 Too Many Requests` no longer reports as `OPENPROJECT_UNAVAILABLE`.
-  Any unexpected internal error is now sanitized to a generic
-  `[INTERNAL_ERROR] An internal error occurred.` rather than leaking the raw
-  exception message.
+- **Breaking:** tool errors carry stable uppercase codes, such as `VALIDATION_FAILED`, instead of lowercase `[category]`
+  prefixes; callers must match the codes listed in `docs/tools.md`.
+- Project scope denials, disabled capabilities and OpenProject's own 403 carry separate codes; 409 and 429 no longer
+  report as validation or unavailable.
+- An unexpected internal error is sanitized to `[INTERNAL_ERROR] An internal error occurred.`
 
 ### Removed
 
