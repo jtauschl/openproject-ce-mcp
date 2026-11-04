@@ -90,6 +90,14 @@ class BulkCreateWorkPackageItem(TypedDict, total=False):
 
 
 @with_config(ConfigDict(strict=True, extra="forbid", allow_inf_nan=False))
+class DescriptionReplace(TypedDict):
+    """The passage to replace and its replacement; `new` may be "" to delete the passage."""
+
+    old: str
+    new: str
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", allow_inf_nan=False))
 class BulkUpdateWorkPackageItem(TypedDict, total=False):
     """One change of `bulk_update_work_packages`; a key outside this list is rejected, and so is a
     value of the wrong JSON type."""
@@ -97,6 +105,8 @@ class BulkUpdateWorkPackageItem(TypedDict, total=False):
     work_package_id: Required[WorkPackageRef]
     subject: str | None
     description: str | None
+    description_append: str | None
+    description_replace: DescriptionReplace | None
     type: IdOrName | None
     version: IdOrName | None
     target_versions: list[IdOrName] | None

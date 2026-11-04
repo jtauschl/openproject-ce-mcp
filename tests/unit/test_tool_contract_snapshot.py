@@ -352,7 +352,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_update_work_packages": {
-        "description_hash": "bc2a94d02eb390a444b0a95c0548ce1990d165693aa0c7fa83b1a028cd5da9c1",
+        "description_hash": "7e866c3d329402339198356378f98a366d1dd793391ad4b3290fe54c48abd830",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
@@ -366,6 +366,11 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         },
                         "subject": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Subject"},
                         "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"},
+                        "description_append": {
+                            "anyOf": [{"type": "string"}, {"type": "null"}],
+                            "title": "Description Append",
+                        },
+                        "description_replace": {"anyOf": [{"$ref": "#/$defs/DescriptionReplace"}, {"type": "null"}]},
                         "type": {"anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}], "title": "Type"},
                         "version": {
                             "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
@@ -449,7 +454,18 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "required": ["work_package_id"],
                     "title": "BulkUpdateWorkPackageItem",
                     "type": "object",
-                }
+                },
+                "DescriptionReplace": {
+                    "additionalProperties": False,
+                    "description": 'The passage to replace and its replacement; `new` may be "" to delete the passage.',
+                    "properties": {
+                        "old": {"title": "Old", "type": "string"},
+                        "new": {"title": "New", "type": "string"},
+                    },
+                    "required": ["old", "new"],
+                    "title": "DescriptionReplace",
+                    "type": "object",
+                },
             },
             "properties": {
                 "items": {"items": {"$ref": "#/$defs/BulkUpdateWorkPackageItem"}, "title": "Items", "type": "array"},
@@ -6833,8 +6849,21 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "a3a5d3958ac12d338a0e05e8eee9468be87782b36242ced87365d205383945dc",
+        "description_hash": "f61bdb73ea8196d943fafed444982025dace9e967c50da4799a37f59f8a43817",
         "input_schema": {
+            "$defs": {
+                "DescriptionReplace": {
+                    "additionalProperties": False,
+                    "description": 'The passage to replace and its replacement; `new` may be "" to delete the passage.',
+                    "properties": {
+                        "old": {"title": "Old", "type": "string"},
+                        "new": {"title": "New", "type": "string"},
+                    },
+                    "required": ["old", "new"],
+                    "title": "DescriptionReplace",
+                    "type": "object",
+                }
+            },
             "properties": {
                 "work_package_id": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
@@ -6846,6 +6875,15 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
                     "title": "Description",
+                },
+                "description_append": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Description Append",
+                },
+                "description_replace": {
+                    "anyOf": [{"$ref": "#/$defs/DescriptionReplace"}, {"type": "null"}],
+                    "default": None,
                 },
                 "type": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],

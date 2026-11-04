@@ -168,6 +168,23 @@ def _validate_required_text(
     return normalized
 
 
+def _validate_description_replace(value: Mapping[str, Any] | None, *, field_name: str) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != {"old", "new"}:
+        raise ValueError(f"{field_name} takes exactly the string keys 'old' and 'new'.")
+    old, new = value["old"], value["new"]
+    if not isinstance(old, str) or not isinstance(new, str):
+        raise ValueError(f"{field_name} takes exactly the string keys 'old' and 'new'.")
+    return {
+        "old": _validate_required_text(old, field_name=f"{field_name}.old", max_length=None, wrapped_on_read=True),
+        "new": _validate_optional_update_text(
+            new, field_name=f"{field_name}.new", max_length=None, wrapped_on_read=True
+        )
+        or "",
+    }
+
+
 def _validate_optional_custom_fields(value: dict[str, Any] | None) -> dict[str, Any] | None:
     if value is None:
         return None

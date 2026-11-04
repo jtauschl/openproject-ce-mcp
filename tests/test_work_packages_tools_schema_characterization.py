@@ -519,10 +519,20 @@ def test_update_work_package_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_work_package"]
     assert (
         tool.description
-        == "Update a work package.\n\nThe tool validates the patch first.\ndescription is Markdown and replaces the whole text; pass \"\" to clear it. Leave off the user-content tags a read adds. assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.\ntarget_versions accepts a list of version names/ids to assign multiple target versions at once\n(OpenProject's multi-version feature); pass [] to clear all. target_versions and version write\nthe same underlying data and cannot be used together in one call. If this work package already\nhas more than one target version, version alone is rejected; use target_versions instead.\nobserved_in_versions accepts a list of version names/ids recording where a bug was observed\n(OpenProject 17.9+, types with the attribute enabled); pass [] to clear.\nA change of version, target_versions, sprint or a version custom field is refused while the work\npackage holds such an assignment in a project OPENPROJECT_READ_PROJECTS does not cover, because the\nchange would remove it.\nestimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day); omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.\nSetting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you\ndon't supply them explicitly and OpenProject's schema reports those fields as writable (on instances\nusing status-based progress calculation, OpenProject already derives them itself and this is skipped).\nOn such an instance, explicitly passing percentage_done together with a closing status is rejected\nwith a hard validation error (percentageDone is not writable there) rather than silently ignored;\nomit percentage_done and let OpenProject derive it instead.\ndue_date's non-working-day shift and the confirm/preview contract work exactly as documented\non create_work_package.\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\nWhen `parent` is given, `parent_target` names the work package it resolved to, and\nexpect_parent_display_id names the parent you mean and makes a mismatch an error.\n"
+        == "Update a work package.\n\nThe tool validates the patch first.\ndescription is Markdown and replaces the whole text; pass \"\" to clear it. Leave off the user-content tags a read adds. assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.\nTo add to or change part of a stored description, use description_append (a new paragraph at the end) or\ndescription_replace ({\"old\": ..., \"new\": ...}, \"old\" must name exactly one passage; whitespace runs may differ):\nboth edit the stored text and leave the rest untouched. Pass only one of description, description_append and\ndescription_replace.\ntarget_versions accepts a list of version names/ids to assign multiple target versions at once\n(OpenProject's multi-version feature); pass [] to clear all. target_versions and version write\nthe same underlying data and cannot be used together in one call. If this work package already\nhas more than one target version, version alone is rejected; use target_versions instead.\nobserved_in_versions accepts a list of version names/ids recording where a bug was observed\n(OpenProject 17.9+, types with the attribute enabled); pass [] to clear.\nA change of version, target_versions, sprint or a version custom field is refused while the work\npackage holds such an assignment in a project OPENPROJECT_READ_PROJECTS does not cover, because the\nchange would remove it.\nestimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day); omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.\nSetting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you\ndon't supply them explicitly and OpenProject's schema reports those fields as writable (on instances\nusing status-based progress calculation, OpenProject already derives them itself and this is skipped).\nOn such an instance, explicitly passing percentage_done together with a closing status is rejected\nwith a hard validation error (percentageDone is not writable there) rather than silently ignored;\nomit percentage_done and let OpenProject derive it instead.\ndue_date's non-working-day shift and the confirm/preview contract work exactly as documented\non create_work_package.\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\nWhen `parent` is given, `parent_target` names the work package it resolved to, and\nexpect_parent_display_id names the parent you mean and makes a mismatch an error.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
+        "$defs": {
+            "DescriptionReplace": {
+                "additionalProperties": False,
+                "description": 'The passage to replace and its replacement; `new` may be "" to delete the passage.',
+                "properties": {"old": {"title": "Old", "type": "string"}, "new": {"title": "New", "type": "string"}},
+                "required": ["old", "new"],
+                "title": "DescriptionReplace",
+                "type": "object",
+            }
+        },
         "properties": {
             "work_package_id": {
                 "anyOf": [{"type": "integer"}, {"type": "string"}],
@@ -531,6 +541,15 @@ def test_update_work_package_schema() -> None:
             },
             "subject": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Subject"},
             "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Description"},
+            "description_append": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "title": "Description Append",
+            },
+            "description_replace": {
+                "anyOf": [{"$ref": "#/$defs/DescriptionReplace"}, {"type": "null"}],
+                "default": None,
+            },
             "type": {
                 "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                 "default": None,
@@ -649,6 +668,8 @@ def test_update_work_package_schema() -> None:
         "work_package_id",
         "subject",
         "description",
+        "description_append",
+        "description_replace",
         "type",
         "version",
         "target_versions",
@@ -787,7 +808,7 @@ def test_bulk_update_work_packages_schema() -> None:
     tool = _tools(create_app(_make_settings()))["bulk_update_work_packages"]
     assert (
         tool.description
-        == "Update multiple work packages in one call.\n\nEach item's identifier field is `work_package_id`, not `id`, e.g.\n{\"work_package_id\": 952, \"status\": \"Closed\"}.\n\nEach item in `items` must contain `work_package_id`. At least one other field must be present per item.\nOptional fields per item: `subject`, `description` (\"\" clears it), `type`, `version`, `target_versions`, `observed_in_versions` (each a list\nof version names/ids for OpenProject's multi-version feature; observed_in_versions needs OpenProject 17.9+;\npass [] to clear all; cannot be\ncombined with `version` on the same item; rejected if the item's work package already has more\nthan one target version assigned), `sprint` (Backlogs sprint\nname/id, requires the Backlogs module and OpenProject 17.3+), `project_phase`, `status`,\n`assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id` (or\n`parent`, an alias for the same field, matching `update_work_package`'s naming; do not specify\nboth on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,\n`remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear\none of these), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean, see\nthe server instructions; a refused item is reported in its `error`), `expect_parent_display_id` (the parent\nyou mean, same rules). Pass 'none' to `version`, `sprint`,\n`project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to\nclear that field on the item, same as `update_work_package`. An item containing any other key is\nrejected with an indexed validation error rather than silently dropping the unrecognized field.\nSetting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H\nwhen that item doesn't supply them explicitly and OpenProject's schema reports those fields as\nwritable. On an instance using status-based progress calculation, explicitly passing\npercentage_done together with a closing status on the same item is rejected with a hard,\nindexed validation error (percentageDone is not writable there) rather than silently ignored;\nomit percentage_done on that item and let OpenProject derive it instead.\n\ndue_date's non-working-day shift, the confirm/preview contract, select's item-trimming\nbehavior, and cancellation/atomicity semantics all work exactly as documented on\nbulk_create_work_packages; only the affected result field differs\n(`result.result.due_date` here too, selected as `result.due_date`). The lean confirmed item and\nselect work as there: select names write-result fields (work_package_id, ready, state, ...); fields\nof the written work package are selected as result.<field> (e.g. \"result.display_id\").\nEach item's result names the work package its reference resolved to in `target`.\nWhen an item gives a `parent`, its result also carries `parent_target`, the work package the parent\nreference resolved to.\n"
+        == "Update multiple work packages in one call.\n\nEach item's identifier field is `work_package_id`, not `id`, e.g.\n{\"work_package_id\": 952, \"status\": \"Closed\"}.\n\nEach item in `items` must contain `work_package_id`. At least one other field must be present per item.\nOptional fields per item: `subject`, `description` (\"\" clears it), `description_append` and `description_replace`\n(as on update_work_package; one of the three per item), `type`, `version`, `target_versions`, `observed_in_versions` (each a list\nof version names/ids for OpenProject's multi-version feature; observed_in_versions needs OpenProject 17.9+;\npass [] to clear all; cannot be\ncombined with `version` on the same item; rejected if the item's work package already has more\nthan one target version assigned), `sprint` (Backlogs sprint\nname/id, requires the Backlogs module and OpenProject 17.3+), `project_phase`, `status`,\n`assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id` (or\n`parent`, an alias for the same field, matching `update_work_package`'s naming; do not specify\nboth on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,\n`remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear\none of these), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean, see\nthe server instructions; a refused item is reported in its `error`), `expect_parent_display_id` (the parent\nyou mean, same rules). Pass 'none' to `version`, `sprint`,\n`project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to\nclear that field on the item, same as `update_work_package`. An item containing any other key is\nrejected with an indexed validation error rather than silently dropping the unrecognized field.\nSetting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H\nwhen that item doesn't supply them explicitly and OpenProject's schema reports those fields as\nwritable. On an instance using status-based progress calculation, explicitly passing\npercentage_done together with a closing status on the same item is rejected with a hard,\nindexed validation error (percentageDone is not writable there) rather than silently ignored;\nomit percentage_done on that item and let OpenProject derive it instead.\n\ndue_date's non-working-day shift, the confirm/preview contract, select's item-trimming\nbehavior, and cancellation/atomicity semantics all work exactly as documented on\nbulk_create_work_packages; only the affected result field differs\n(`result.result.due_date` here too, selected as `result.due_date`). The lean confirmed item and\nselect work as there: select names write-result fields (work_package_id, ready, state, ...); fields\nof the written work package are selected as result.<field> (e.g. \"result.display_id\").\nEach item's result names the work package its reference resolved to in `target`.\nWhen an item gives a `parent`, its result also carries `parent_target`, the work package the parent\nreference resolved to.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -803,6 +824,11 @@ def test_bulk_update_work_packages_schema() -> None:
                     },
                     "subject": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Subject"},
                     "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"},
+                    "description_append": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "title": "Description Append",
+                    },
+                    "description_replace": {"anyOf": [{"$ref": "#/$defs/DescriptionReplace"}, {"type": "null"}]},
                     "type": {"anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}], "title": "Type"},
                     "version": {
                         "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
@@ -874,7 +900,15 @@ def test_bulk_update_work_packages_schema() -> None:
                 "required": ["work_package_id"],
                 "title": "BulkUpdateWorkPackageItem",
                 "type": "object",
-            }
+            },
+            "DescriptionReplace": {
+                "additionalProperties": False,
+                "description": 'The passage to replace and its replacement; `new` may be "" to delete the passage.',
+                "properties": {"old": {"title": "Old", "type": "string"}, "new": {"title": "New", "type": "string"}},
+                "required": ["old", "new"],
+                "title": "DescriptionReplace",
+                "type": "object",
+            },
         },
         "properties": {
             "items": {"items": {"$ref": "#/$defs/BulkUpdateWorkPackageItem"}, "title": "Items", "type": "array"},

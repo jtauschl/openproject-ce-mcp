@@ -23,6 +23,9 @@ _RETIRED_LITERAL = 10_000
 # server-side caps and are deliberately not listed.
 _UNBOUNDED_LONG_TEXT_SITES = {
     ("tools_work_packages.py", "description"),
+    ("tools_work_packages.py", "description_append"),
+    ("tools_validation.py", ".old"),
+    ("tools_validation.py", ".new"),
     ("tools_work_packages.py", "comment"),
     ("tools_projects.py", "description"),
     ("tools_projects.py", "status_explanation"),

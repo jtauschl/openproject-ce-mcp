@@ -78,6 +78,16 @@ cannot be cleared. `target_versions` is the one exception to the `"none"`
 convention: it's a list, so it already disambiguates unchanged (omit it) from
 cleared (pass `[]`) without needing a sentinel string.
 
+Editing a description: `update_work_package` and each item of
+`bulk_update_work_packages` take `description_append` (a new paragraph after the
+stored text) and `description_replace` (`{"old": ..., "new": ...}`, where `old`
+names exactly one passage of the stored text and whitespace runs may differ).
+Both are computed against the stored description, not against a read of it, so
+everything outside the edit stays byte-identical. They cannot be combined with
+each other or with `description`. A full `description` that holds a cut copy of
+the stored text (a read ending in `…`) is refused. The preview and the result
+name the length before and after.
+
 `version`/`target_versions`: `target_versions` is the canonical field — a list
 of version names/ids, supporting OpenProject's multi-version assignment
 feature. `version` is a derived, backward-compatible single-value convenience:

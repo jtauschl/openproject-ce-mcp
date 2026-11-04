@@ -53,6 +53,7 @@ from .tool_params import (
     BulkCreateWorkPackageItem,
     BulkUpdateWorkPackageItem,
     Confirm,
+    DescriptionReplace,
     ExpectDisplayId,
     ExpectParentDisplayId,
     Limit,
@@ -71,6 +72,7 @@ from .tools_validation import (
     _clearable_ref,
     _require_at_least_one,
     _validate_custom_field_filters,
+    _validate_description_replace,
     _validate_expect_display_id,
     _validate_group_by,
     _validate_limit,
@@ -716,6 +718,8 @@ def _validate_work_package_update_fields(
     *,
     subject: str | None,
     description: str | None,
+    description_append: str | None,
+    description_replace: Mapping[str, Any] | None,
     type: int | str | None,
     version: int | str | None,
     target_versions: list[int | str] | None,
@@ -743,10 +747,19 @@ def _validate_work_package_update_fields(
     _clearable_duration -- 'none' (any case) clears the field, matching the
     single-call update_work_package tool's documented convention.
     """
+    description_append_text = _validate_optional_text(
+        description_append, field_name=f"{field_prefix}description_append", max_length=None, wrapped_on_read=True
+    )
+    if description_append is not None and description_append_text is None:
+        raise ValueError(f"{field_prefix}description_append must not be blank.")
     return {
         "subject": _validate_optional_query(subject, field_name=f"{field_prefix}subject", max_length=255),
         "description": _validate_optional_update_text(
             description, field_name=f"{field_prefix}description", max_length=None, wrapped_on_read=True
+        ),
+        "description_append": description_append_text,
+        "description_replace": _validate_description_replace(
+            description_replace, field_name=f"{field_prefix}description_replace"
         ),
         "type": _validate_optional_ref(type, field_name=f"{field_prefix}type", max_length=100),
         "version": _validate_optional_version(version, field_name=f"{field_prefix}version", sentinel=CLEAR_VERSION),
@@ -806,6 +819,8 @@ async def update_work_package(
     work_package_id: WorkPackageRef,
     subject: str | None = None,
     description: str | None = None,
+    description_append: str | None = None,
+    description_replace: DescriptionReplace | None = None,
     type: IdOrName | None = None,
     version: IdOrName | None = None,
     target_versions: list[IdOrName] | None = None,
@@ -833,6 +848,10 @@ async def update_work_package(
 
     The tool validates the patch first.
     description is Markdown and replaces the whole text; pass "" to clear it. Leave off the user-content tags a read adds. assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
+    To add to or change part of a stored description, use description_append (a new paragraph at the end) or
+    description_replace ({"old": ..., "new": ...}, "old" must name exactly one passage; whitespace runs may differ):
+    both edit the stored text and leave the rest untouched. Pass only one of description, description_append and
+    description_replace.
     target_versions accepts a list of version names/ids to assign multiple target versions at once
     (OpenProject's multi-version feature); pass [] to clear all. target_versions and version write
     the same underlying data and cannot be used together in one call. If this work package already
@@ -863,6 +882,8 @@ async def update_work_package(
     common = _validate_work_package_update_fields(
         subject=subject,
         description=description,
+        description_append=description_append,
+        description_replace=description_replace,
         type=type,
         version=version,
         target_versions=target_versions,
@@ -892,6 +913,8 @@ async def update_work_package(
             work_package_id=safe_id,
             subject=common["subject"],
             description=common["description"],
+            description_append=common["description_append"],
+            description_replace=common["description_replace"],
             type=common["type"],
             version=common["version"],
             target_versions=common["target_versions"],
@@ -1096,7 +1119,8 @@ async def bulk_update_work_packages(
     {"work_package_id": 952, "status": "Closed"}.
 
     Each item in `items` must contain `work_package_id`. At least one other field must be present per item.
-    Optional fields per item: `subject`, `description` ("" clears it), `type`, `version`, `target_versions`, `observed_in_versions` (each a list
+    Optional fields per item: `subject`, `description` ("" clears it), `description_append` and `description_replace`
+    (as on update_work_package; one of the three per item), `type`, `version`, `target_versions`, `observed_in_versions` (each a list
     of version names/ids for OpenProject's multi-version feature; observed_in_versions needs OpenProject 17.9+;
     pass [] to clear all; cannot be
     combined with `version` on the same item; rejected if the item's work package already has more
@@ -1159,6 +1183,8 @@ async def bulk_update_work_packages(
         common = _validate_work_package_update_fields(
             subject=item.get("subject"),
             description=item.get("description"),
+            description_append=item.get("description_append"),
+            description_replace=item.get("description_replace"),
             type=item.get("type"),
             version=item.get("version"),
             target_versions=item.get("target_versions"),
@@ -1190,6 +1216,8 @@ async def bulk_update_work_packages(
                 "work_package_id": safe_id,
                 "subject": common["subject"],
                 "description": common["description"],
+                "description_append": common["description_append"],
+                "description_replace": common["description_replace"],
                 "type": common["type"],
                 "version": common["version"],
                 "target_versions": common["target_versions"],

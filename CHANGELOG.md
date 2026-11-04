@@ -22,6 +22,8 @@ to install and discover.
 - List available assignees and relation candidates for work packages.
 - `get_work_package` lists the statuses OpenProject offers the current user for
   a work package when `include_allowed_statuses` is set.
+- `update_work_package` and `bulk_update_work_packages` edit a stored description in place with `description_append` and
+  `description_replace`.
 - Opt-in `extended` tools list a project's budgets, a version's shared projects, watchable users, movable-to projects
   and repository revisions, within `OPENPROJECT_READ_PROJECTS`.
 - `OPENPROJECT_HIDE_BUDGET_FIELDS` and `OPENPROJECT_HIDE_REVISION_FIELDS` hide the fields of budgets and revisions.
@@ -78,6 +80,8 @@ to install and discover.
   report as validation or unavailable.
 - An unexpected internal error is sanitized to `[INTERNAL_ERROR] An internal error occurred.`
 - Written text drops a `<user-content>` pair copied from a read result; only a value that is exactly one wrapped text loses it.
+- `update_work_package` refuses a full `description` that holds a truncated read copy ending in `…`.
+- The preview and result of a description change state its length before and after.
 
 ### Removed
 
