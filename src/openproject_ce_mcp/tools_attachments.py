@@ -62,6 +62,7 @@ from .tools_validation import (
     _validate_select,
     _validate_work_package_ref,
 )
+from .user_content import delimit_user_content
 
 #: container_type values of list_container_attachments/create_container_attachment.
 ATTACHMENT_CONTAINER_TYPES = {"wiki_page", "post", "meeting", "activity"}
@@ -91,13 +92,10 @@ def _content_blocks(outcome: AttachmentContentOutcome) -> tuple[ImageContent | T
             ),
         )
     if outcome.text is not None:
-        # Same <user-content> delimiting every long-form user-authored field
-        # (descriptions, comments, wiki text) gets: an attached .md or .json
-        # is user-authored text handed straight to the model, so it is the
-        # prompt-injection surface SECURITY.md describes. Inlined here rather
-        # than via app/adapters/_text.delimit_user_content because the tool
-        # layer may not import from app/.
-        return (TextContent(type="text", text=f"<user-content>{outcome.text}</user-content>"),)
+        # An attached .md or .json is user-authored text handed straight to the model, so it is
+        # the prompt-injection surface SECURITY.md describes and gets the same delimiter as a
+        # description or comment.
+        return (TextContent(type="text", text=delimit_user_content(outcome.text)),)
     return ()
 
 

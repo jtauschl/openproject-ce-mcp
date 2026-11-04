@@ -109,6 +109,7 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 ### Security
 
+- Stored text can no longer close or open the `<user-content>` delimiter: look-alike tags inside returned text are escaped.
 - The API token no longer appears in the printed form of the settings, so tracebacks and error reports
   cannot expose it.
 
