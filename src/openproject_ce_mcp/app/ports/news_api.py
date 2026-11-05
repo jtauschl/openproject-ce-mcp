@@ -31,6 +31,7 @@ class NewsRecord:
     summary: NewsSummary
     to_detail: Callable[[], NewsDetail]
     project_link: dict[str, Any] | None
+    payload: dict[str, Any]
 
 
 class NewsApi(Protocol):

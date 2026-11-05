@@ -53,7 +53,6 @@ from .tool_params import (
     BulkCreateWorkPackageItem,
     BulkUpdateWorkPackageItem,
     Confirm,
-    DescriptionReplace,
     ExpectDisplayId,
     ExpectParentDisplayId,
     Limit,
@@ -61,6 +60,8 @@ from .tool_params import (
     OptionalProjectRef,
     ParentRef,
     ProjectRef,
+    TextAppend,
+    TextReplaceParam,
     WorkPackageRef,
     WorkPackageRefs,
     select_field,
@@ -74,7 +75,6 @@ from .tools_validation import (
     _clearable_ref,
     _require_at_least_one,
     _validate_custom_field_filters,
-    _validate_description_replace,
     _validate_expect_display_id,
     _validate_group_by,
     _validate_limit,
@@ -104,6 +104,8 @@ from .tools_validation import (
     _validate_required_text,
     _validate_select,
     _validate_sort_by,
+    _validate_text_append,
+    _validate_text_replace,
     _validate_work_package_ref,
 )
 from .work_package_columns import group_by_description, sort_by_description
@@ -746,18 +748,14 @@ def _validate_work_package_update_fields(
     _clearable_duration -- 'none' (any case) clears the field, matching the
     single-call update_work_package tool's documented convention.
     """
-    description_append_text = _validate_optional_text(
-        description_append, field_name=f"{field_prefix}description_append", max_length=None, wrapped_on_read=True
-    )
-    if description_append is not None and description_append_text is None:
-        raise ValueError(f"{field_prefix}description_append must not be blank.")
+    description_append_text = _validate_text_append(description_append, field_name=f"{field_prefix}description_append")
     return {
         "subject": _validate_optional_query(subject, field_name=f"{field_prefix}subject", max_length=255),
         "description": _validate_optional_update_text(
             description, field_name=f"{field_prefix}description", max_length=None, wrapped_on_read=True
         ),
         "description_append": description_append_text,
-        "description_replace": _validate_description_replace(
+        "description_replace": _validate_text_replace(
             description_replace, field_name=f"{field_prefix}description_replace"
         ),
         "type": _validate_optional_ref(type, field_name=f"{field_prefix}type", max_length=100),
@@ -818,8 +816,8 @@ async def update_work_package(
     work_package_id: WorkPackageRef,
     subject: str | None = None,
     description: str | None = None,
-    description_append: str | None = None,
-    description_replace: DescriptionReplace | None = None,
+    description_append: TextAppend = None,
+    description_replace: TextReplaceParam = None,
     type: IdOrName | None = None,
     version: IdOrName | None = None,
     target_versions: list[IdOrName] | None = None,
@@ -1397,19 +1395,22 @@ async def update_work_package_comment(
         ),
     ],
     comment: Annotated[
-        str,
+        str | None,
         Field(
             description="The new comment text in Markdown; replaces the whole text. Must not be blank."
             " Leave off the user-content tags a read adds."
         ),
-    ],
+    ] = None,
+    comment_append: TextAppend = None,
+    comment_replace: TextReplaceParam = None,
     confirm: Confirm = False,
 ) -> ActivityWriteResult:
     """Replace the text of an existing work package comment.
 
-    comment replaces the whole text; it is not appended. A blank comment is rejected: OpenProject has no
-    delete for comments, and an empty text would only leave an empty entry in the history, so a comment
-    cannot be removed or emptied with this tool. Whether the comment
+    Pass one of comment, comment_append and comment_replace; the last two edit the stored text and leave the rest
+    untouched, and a read cuts a long comment, so prefer them to a full comment. A blank result is rejected:
+    OpenProject has no delete for comments, and an empty text would only leave an empty entry in the history,
+    so a comment cannot be removed or emptied with this tool. Whether the comment
     is internal stays as it was: OpenProject does not change that on edit.
     Editing may notify people; PATCH has no notify=false option. Repeating the
     call marks recipients' notifications for this comment unread again. The
@@ -1423,11 +1424,17 @@ async def update_work_package_comment(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(activity_id, field_name="activity_id")
-    safe_comment = _validate_required_text(comment, field_name="comment", max_length=None, wrapped_on_read=True)
+    safe_comment = (
+        None
+        if comment is None
+        else _validate_required_text(comment, field_name="comment", max_length=None, wrapped_on_read=True)
+    )
     return await _run_tool(
         client.work_package.update_comment(
             activity_id=safe_id,
             comment=safe_comment,
+            comment_append=_validate_text_append(comment_append, field_name="comment_append"),
+            comment_replace=_validate_text_replace(comment_replace, field_name="comment_replace"),
             confirm=confirm,
         )
     )

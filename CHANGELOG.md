@@ -25,6 +25,10 @@ to install and discover.
 - A rejected unknown argument names the closest allowed one, e.g. `id (did you mean work_package_id?)`.
 - `update_work_package` and `bulk_update_work_packages` edit a stored description in place with `description_append` and
   `description_replace`.
+- `update_work_package_comment` edits a stored comment in place with `comment_append` and `comment_replace`.
+- `update_project` edits a stored description and status explanation in place with `<field>_append` and `<field>_replace`.
+- `update_version`, `update_document` and `update_news` edit a stored description in place with `description_append`
+  and `description_replace`.
 - Opt-in `extended` tools list a project's budgets, a version's shared projects, watchable users, movable-to projects
   and repository revisions, within `OPENPROJECT_READ_PROJECTS`.
 - `OPENPROJECT_HIDE_BUDGET_FIELDS` and `OPENPROJECT_HIDE_REVISION_FIELDS` hide the fields of budgets and revisions.
@@ -85,8 +89,9 @@ to install and discover.
   report as validation or unavailable.
 - An unexpected internal error is sanitized to `[INTERNAL_ERROR] An internal error occurred.`
 - Written text drops a `<user-content>` pair copied from a read result; only a value that is exactly one wrapped text loses it.
-- `update_work_package` refuses a full `description` that holds a truncated read copy ending in `…`.
-- The preview and result of a description change state its length before and after.
+- `update_work_package`, `update_project`, `update_version`, `update_document`, `update_news` and
+  `update_work_package_comment` refuse a full text that holds a truncated read copy ending in `…`.
+- The preview and result of a change to a stored long text state its length before and after.
 
 ### Removed
 

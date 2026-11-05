@@ -166,3 +166,19 @@ async def test_commit_update_patches_and_returns_detail() -> None:
         detail = await api.commit_update(1, {"title": "Updated"})
 
     assert detail.id == 1
+
+
+@pytest.mark.asyncio
+async def test_get_record_carries_the_raw_payload_with_the_uncut_text_and_its_line_breaks() -> None:
+    stored = "First paragraph.\n\n- item one\n- item two\n" + "x" * 5000
+    payload = _document_payload()
+    payload["description"] = {"format": "markdown", "raw": stored}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxDocumentApi(HttpxTransport(http_client))
+        record = await api.get(1)
+
+    assert record.payload["description"]["raw"] == stored

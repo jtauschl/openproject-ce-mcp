@@ -23,7 +23,16 @@ from .models import (
     VersionSummary,
     VersionWriteResult,
 )
-from .tool_params import Confirm, Limit, Offset, OptionalProjectRef, ProjectRef, select_field
+from .tool_params import (
+    Confirm,
+    Limit,
+    Offset,
+    OptionalProjectRef,
+    ProjectRef,
+    TextAppend,
+    TextReplaceParam,
+    select_field,
+)
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _require_at_least_one,
@@ -39,6 +48,8 @@ from .tools_validation import (
     _validate_project_ref,
     _validate_required_query,
     _validate_select,
+    _validate_text_append,
+    _validate_text_replace,
 )
 
 _VERSION_ID = "Numeric version id, as returned by list_versions."
@@ -178,6 +189,8 @@ async def update_version(
     version_id: Annotated[int, Field(description=_VERSION_ID)],
     name: Annotated[str | None, Field(description=_NAME)] = None,
     description: Annotated[str | None, Field(description='Plain text, not Markdown; "" clears it.')] = None,
+    description_append: TextAppend = None,
+    description_replace: TextReplaceParam = None,
     start_date: Annotated[str | None, Field(description=_DATE)] = None,
     end_date: Annotated[str | None, Field(description=_DATE)] = None,
     status: Annotated[str | None, Field(description=_STATUS)] = None,
@@ -187,6 +200,8 @@ async def update_version(
     """Update a version.
 
     Omitted fields stay unchanged.
+    Prefer description_append and description_replace to a full description: they edit the stored text, while a
+    read cuts it and flattens its line breaks. Pass only one of the three.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
     and `error_codes` (OpenProject's error classes, the same in every language).
@@ -197,10 +212,14 @@ async def update_version(
     safe_description = _validate_optional_update_text(
         description, field_name="description", max_length=None, wrapped_on_read=True
     )
+    safe_description_append = _validate_text_append(description_append, field_name="description_append")
+    safe_description_replace = _validate_text_replace(description_replace, field_name="description_replace")
     common = _validate_version_schedule_fields(start_date=start_date, end_date=end_date, status=status, sharing=sharing)
     _require_at_least_one(
         safe_name,
         safe_description,
+        safe_description_append,
+        safe_description_replace,
         common["start_date"],
         common["end_date"],
         common["status"],
@@ -212,6 +231,8 @@ async def update_version(
             version_id=safe_id,
             name=safe_name,
             description=safe_description,
+            description_append=safe_description_append,
+            description_replace=safe_description_replace,
             start_date=common["start_date"],
             end_date=common["end_date"],
             status=common["status"],

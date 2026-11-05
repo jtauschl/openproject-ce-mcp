@@ -46,6 +46,7 @@ def _record(**kwargs: object) -> NewsRecord:
         summary=summary,
         to_detail=lambda: _detail(**kwargs),  # type: ignore[arg-type]
         project_link={"href": f"/api/v3/projects/{summary.project_id}"},
+        payload={},
     )
 
 

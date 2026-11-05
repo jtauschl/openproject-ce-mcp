@@ -24,6 +24,7 @@ from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.version_api import VersionApi
 from ..resolvers.project_query import fetch_allowed_project_page
 from ..resolvers.version_query import fetch_version_page
+from . import _stored_text_edit
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_service import _stamp_project
 
@@ -213,6 +214,8 @@ class VersionService:
         version_id: int,
         name: str | None = None,
         description: str | None = None,
+        description_append: str | None = None,
+        description_replace: Mapping[str, str] | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         status: str | None = None,
@@ -224,6 +227,15 @@ class VersionService:
             current.defining_project_link,
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+        description, sentence = _stored_text_edit.edit_stored_field(
+            "version",
+            "description",
+            (current.payload.get("description") or {}).get("raw"),
+            description,
+            description_append,
+            description_replace,
+            settings=self._settings,
         )
         payload = self._build_write_payload(
             project_id=None,
@@ -244,8 +256,11 @@ class VersionService:
             commit=lambda p: self._api.commit_update(version_id, p),
             committed_identity=lambda d: {"version_id": d.id, "project": d.defining_project},
             rejected_message="OpenProject rejected the proposed version changes. Fix the validation errors before confirming.",
-            preview_message="OpenProject validated the version change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message="Version updated successfully.",
+            preview_message=_stored_text_edit.with_sentence(
+                "OpenProject validated the version change. Ask for confirmation, then call again with confirm=true to write it.",
+                sentence,
+            ),
+            success_message=_stored_text_edit.with_sentence("Version updated successfully.", sentence),
         )
         return self._to_write_result("update", outcome)
 

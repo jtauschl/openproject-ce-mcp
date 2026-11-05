@@ -51,6 +51,7 @@ from ..ports.project_api import ProjectApi
 from ..resolvers.project_query import fetch_project_page
 from ..resolvers.project_resolver import ProjectResolver
 from ..version_gate import call_version_gated
+from . import _stored_text_edit
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 SUBJECT_LIMIT = 255
@@ -282,15 +283,38 @@ class ProjectService:
         name: str | None = None,
         identifier: str | None = None,
         description: str | None = None,
+        description_append: str | None = None,
+        description_replace: Mapping[str, str] | None = None,
         public: bool | None = None,
         active: bool | None = None,
         status: str | None = None,
         status_explanation: str | None = None,
+        status_explanation_append: str | None = None,
+        status_explanation_replace: Mapping[str, str] | None = None,
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
         record = await self._resolver.resolve_record(project_ref, write=True)
         project = record.summary
+        description, description_sentence = _stored_text_edit.edit_stored_field(
+            "project",
+            "description",
+            (record.payload.get("description") or {}).get("raw"),
+            description,
+            description_append,
+            description_replace,
+            settings=self._settings,
+        )
+        status_explanation, status_explanation_sentence = _stored_text_edit.edit_stored_field(
+            "project",
+            "status_explanation",
+            (record.payload.get("statusExplanation") or {}).get("raw"),
+            status_explanation,
+            status_explanation_append,
+            status_explanation_replace,
+            settings=self._settings,
+        )
+        sentence = _stored_text_edit.joined_sentences(description_sentence, status_explanation_sentence)
         built = await self._build_write_payload(
             name=name,
             identifier=identifier,
@@ -312,8 +336,11 @@ class ProjectService:
             commit=lambda p: self._api.commit_update(project.id, p),
             committed_identity=lambda d: {"project_id": d.id, "project": d.name},
             rejected_message="OpenProject rejected the proposed project changes. Fix the validation errors before confirming.",
-            preview_message="OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message="Project updated successfully.",
+            preview_message=_stored_text_edit.with_sentence(
+                "OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
+                sentence,
+            ),
+            success_message=_stored_text_edit.with_sentence("Project updated successfully.", sentence),
         )
         return self._to_write_result("update", outcome, built.parent_target)
 

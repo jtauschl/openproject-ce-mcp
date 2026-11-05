@@ -162,7 +162,7 @@ from ..ports.work_package_ref import (
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated
-from . import _description_edit
+from . import _stored_text_edit
 from ._work_package_parents import parent_href, without_parent_unless
 from ._work_package_presentation import present_detail, present_summaries, present_target, stamp_detail
 from ._work_package_references import (
@@ -279,32 +279,6 @@ CLEAR_VERSION = object()
 # unchanged" (None). parent/version keep their own dedicated sentinels above
 # instead of sharing this one, for historical reasons.
 CLEAR = object()
-
-
-def _ensure_one_description_input(
-    description: str | None, append: str | None, replace: Mapping[str, str] | None
-) -> None:
-    given = [
-        name
-        for name, value in (
-            ("description", description),
-            ("description_append", append),
-            ("description_replace", replace),
-        )
-        if value is not None
-    ]
-    if len(given) > 1:
-        raise InvalidInputError(f"{' and '.join(given)} cannot be combined in one call; pass only one.")
-    if append is not None and not append.strip():
-        raise InvalidInputError("description_append must not be blank.")
-    if replace is not None and (
-        set(replace) != {"old", "new"} or not all(isinstance(v, str) for v in replace.values())
-    ):
-        raise InvalidInputError("description_replace takes exactly the string keys 'old' and 'new'.")
-
-
-def _with_sentence(message: str, sentence: str | None) -> str:
-    return message if sentence is None else f"{message} {sentence}"
 
 
 def _narrow_cleared(value: Any, *, sentinel: object = None) -> Any:
@@ -596,29 +570,16 @@ class WorkPackageService:
         append: str | None,
         replace: Mapping[str, str] | None,
     ) -> tuple[str | None, str | None]:
-        """The description to write and the sentence on its length, computed against the stored text.
-
-        The hidden-field check comes first: a match error, a cut-copy refusal or a length would
-        otherwise tell a caller about a description the operator hid.
-        """
-        if description is None and append is None and replace is None:
-            return None, None
-        hidden_fields.ensure_field_writable("work_package", "description", settings=self._settings)
-        stored = (current.get("description") or {}).get("raw") or ""
-        if append is not None:
-            final = _description_edit.append_paragraph(stored, append)
-        elif replace is not None:
-            final = _description_edit.replace_passage(stored, replace["old"], replace["new"])
-        else:
-            assert description is not None
-            if _description_edit.contains_truncated_copy(description, stored):
-                raise InvalidInputError(
-                    "description looks like a truncated read of the stored description (it contains a cut copy "
-                    "ending in …). Writing it would drop the rest of the text. Use description_append to add "
-                    "text or description_replace to change a passage; to write this text as it is, change the …."
-                )
-            final = description
-        return final, _description_edit.change_sentence(len(stored), len(final))
+        """The description to write and the sentence on its length, computed against the stored text."""
+        return _stored_text_edit.edit_stored_field(
+            "work_package",
+            "description",
+            (current.get("description") or {}).get("raw"),
+            description,
+            append,
+            replace,
+            settings=self._settings,
+        )
 
     def _new_wp_context(self) -> WorkPackageResolutionContext:
         """Construct a fresh, per-call WorkPackageResolutionContext (never
@@ -2287,7 +2248,7 @@ class WorkPackageService:
         # status via self._status_api directly rather than
         # StatusPriorityTypeService, which WOULD gate on read-enablement.
         ref = work_package_ref(work_package_id)
-        _ensure_one_description_input(description, description_append, description_replace)
+        _stored_text_edit.ensure_one_text_input("description", description, description_append, description_replace)
         work_package_target_policy.ensure_expectation_usable(expect_display_id, settings=self._settings)
         parent_given = parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT
         self._ensure_parent_expectation(expect_parent_display_id, parent_given=parent_given)
@@ -2422,11 +2383,11 @@ class WorkPackageService:
                 "project": record.project,
             },
             rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
-            preview_message=_with_sentence(
+            preview_message=_stored_text_edit.with_sentence(
                 "OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
                 description_sentence,
             ),
-            success_message=_with_sentence("Work package updated successfully.", description_sentence),
+            success_message=_stored_text_edit.with_sentence("Work package updated successfully.", description_sentence),
         )
         return await self._to_write_result("update", outcome, target, parent_target)
 
@@ -2626,7 +2587,9 @@ class WorkPackageService:
         self,
         *,
         activity_id: int,
-        comment: str,
+        comment: str | None = None,
+        comment_append: str | None = None,
+        comment_replace: Mapping[str, str] | None = None,
         confirm: bool = False,
     ) -> ActivityWriteResult:
         """Replace the text of an existing comment (`PATCH activities/{id}`).
@@ -2640,6 +2603,7 @@ class WorkPackageService:
         it is reported before anything is sent rather than as a 403 after.
         """
         hidden_fields.ensure_field_writable("activity", "comment", settings=self._settings)
+        _stored_text_edit.ensure_one_text_input("comment", comment, comment_append, comment_replace, required=True)
         activity = await self._activity_api.get_raw(activity_id)
         links = activity.get("_links", {})
         work_package_id = _id_from_href((links.get("workPackage") or {}).get("href"))
@@ -2661,6 +2625,14 @@ class WorkPackageService:
         existing_comment = (activity.get("comment") or {}).get("raw") or ""
         if not existing_comment.strip():
             raise InvalidInputError(f"Activity {activity_id} has no existing comment to edit.")
+        comment, sentence = _stored_text_edit.edited_text(
+            "comment", existing_comment, comment, comment_append, comment_replace
+        )
+        if not comment.strip():
+            raise InvalidInputError(
+                "The edit would leave the comment blank. OpenProject has no delete for comments, so a comment "
+                "cannot be emptied."
+            )
         payload: dict[str, Any] = {"comment": comment}
 
         if not confirm:
@@ -2673,6 +2645,7 @@ class WorkPackageService:
                     "Editing may notify people; PATCH has no notify=false option. "
                     "The old text is overwritten, with no comment-version history or recovery through OpenProject/API. "
                     "Ask for confirmation, then call again with confirm=true."
+                    f" {sentence}"
                 ),
                 work_package_id=work_package_id,
                 payload=payload,
@@ -2690,7 +2663,7 @@ class WorkPackageService:
             action="update_comment",
             state="confirmed",
             ready=True,
-            message="Comment updated successfully.",
+            message=f"Comment updated successfully. {sentence}",
             work_package_id=work_package_id,
             payload=payload,
             validation_errors={},

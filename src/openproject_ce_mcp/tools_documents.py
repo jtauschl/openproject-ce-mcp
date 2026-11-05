@@ -53,6 +53,8 @@ from .tool_params import (
     Offset,
     OptionalProjectRef,
     ProjectRef,
+    TextAppend,
+    TextReplaceParam,
     WorkPackageRef,
     select_field,
 )
@@ -72,6 +74,8 @@ from .tools_validation import (
     _validate_project_ref,
     _validate_required_query,
     _validate_select,
+    _validate_text_append,
+    _validate_text_replace,
     _validate_work_package_ref,
 )
 
@@ -137,21 +141,37 @@ async def update_document(
     document_id: Annotated[int, Field(description="Numeric document id, as returned by list_documents.")],
     title: Annotated[str | None, Field(description=_TITLE)] = None,
     description: Annotated[str | None, Field(description='Document text; "" clears it.')] = None,
+    description_append: TextAppend = None,
+    description_replace: TextReplaceParam = None,
     confirm: Confirm = False,
 ) -> DocumentWriteResult:
-    """Update a document. Omitted fields stay unchanged."""
+    """Update a document. Omitted fields stay unchanged.
+
+    Prefer description_append and description_replace to a full description: they edit the stored text, while a
+    read cuts it and flattens its line breaks. Pass only one of the three.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
     safe_description = _validate_optional_update_text(
         description, field_name="description", max_length=None, wrapped_on_read=True
     )
-    _require_at_least_one(safe_title, safe_description, message="At least one field to update is required.")
+    safe_description_append = _validate_text_append(description_append, field_name="description_append")
+    safe_description_replace = _validate_text_replace(description_replace, field_name="description_replace")
+    _require_at_least_one(
+        safe_title,
+        safe_description,
+        safe_description_append,
+        safe_description_replace,
+        message="At least one field to update is required.",
+    )
     return await _run_tool(
         client.document.update(
             document_id=safe_id,
             title=safe_title,
             description=safe_description,
+            description_append=safe_description_append,
+            description_replace=safe_description_replace,
             confirm=confirm,
         )
     )
@@ -249,9 +269,15 @@ async def update_news(
     title: Annotated[str | None, Field(description=_TITLE)] = None,
     summary: Annotated[str | None, Field(description='Short plain text, at most 500 characters; "" clears it.')] = None,
     description: Annotated[str | None, Field(description='Full text in Markdown; "" clears it.')] = None,
+    description_append: TextAppend = None,
+    description_replace: TextReplaceParam = None,
     confirm: Confirm = False,
 ) -> NewsWriteResult:
-    """Update a news entry. Omitted fields stay unchanged."""
+    """Update a news entry. Omitted fields stay unchanged.
+
+    Prefer description_append and description_replace to a full description: they edit the stored text, while a
+    read cuts it and flattens its line breaks. Pass only one of the three.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(news_id, field_name="news_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
@@ -259,8 +285,15 @@ async def update_news(
     safe_description = _validate_optional_update_text(
         description, field_name="description", max_length=None, wrapped_on_read=True
     )
+    safe_description_append = _validate_text_append(description_append, field_name="description_append")
+    safe_description_replace = _validate_text_replace(description_replace, field_name="description_replace")
     _require_at_least_one(
-        safe_title, safe_summary, safe_description, message="At least one field to update is required."
+        safe_title,
+        safe_summary,
+        safe_description,
+        safe_description_append,
+        safe_description_replace,
+        message="At least one field to update is required.",
     )
     return await _run_tool(
         client.news.update(
@@ -268,6 +301,8 @@ async def update_news(
             title=safe_title,
             summary=safe_summary,
             description=safe_description,
+            description_append=safe_description_append,
+            description_replace=safe_description_replace,
             confirm=confirm,
         )
     )

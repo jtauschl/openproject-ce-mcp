@@ -50,7 +50,16 @@ from .models import (
     ProjectWorkPackageContext,
     ProjectWriteResult,
 )
-from .tool_params import Confirm, Limit, Offset, OptionalProjectRef, ProjectRef, select_field
+from .tool_params import (
+    Confirm,
+    Limit,
+    Offset,
+    OptionalProjectRef,
+    ProjectRef,
+    TextAppend,
+    TextReplaceParam,
+    select_field,
+)
 from .tool_types import IdOrName
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
@@ -72,6 +81,8 @@ from .tools_validation import (
     _validate_required_query,
     _validate_required_text,
     _validate_select,
+    _validate_text_append,
+    _validate_text_replace,
 )
 
 _NAME = "Display name, at most 255 characters."
@@ -276,12 +287,16 @@ async def update_project(
     name: Annotated[str | None, Field(description=_NAME)] = None,
     identifier: Annotated[str | None, Field(description=_IDENTIFIER)] = None,
     description: Annotated[str | None, Field(description='Markdown text; "" clears it.')] = None,
+    description_append: TextAppend = None,
+    description_replace: TextReplaceParam = None,
     public: Annotated[bool | None, Field(description=_PUBLIC)] = None,
     active: Annotated[bool | None, Field(description=_ACTIVE)] = None,
     status: Annotated[str | None, Field(description=_STATUS)] = None,
     status_explanation: Annotated[
         str | None, Field(description='Markdown text explaining the status; "" clears it.')
     ] = None,
+    status_explanation_append: TextAppend = None,
+    status_explanation_replace: TextReplaceParam = None,
     parent: Annotated[
         IdOrName | None,
         Field(description="Parent project identifier, id, or name; 'none' makes the project top-level."),
@@ -291,6 +306,8 @@ async def update_project(
     """Update a project.
 
     Omitted fields stay unchanged.
+    `<field>_append` and `<field>_replace` edit the stored description or status_explanation and leave the rest
+    untouched; a read cuts a long text, so prefer them to a full text. Pass only one of the three per field.
     `parent_target` names the project `parent` resolved to.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
@@ -303,9 +320,17 @@ async def update_project(
     safe_description = _validate_optional_update_text(
         description, field_name="description", max_length=None, wrapped_on_read=True
     )
+    safe_description_append = _validate_text_append(description_append, field_name="description_append")
+    safe_description_replace = _validate_text_replace(description_replace, field_name="description_replace")
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_status_explanation = _validate_optional_update_text(
         status_explanation, field_name="status_explanation", max_length=None, wrapped_on_read=True
+    )
+    safe_status_explanation_append = _validate_text_append(
+        status_explanation_append, field_name="status_explanation_append"
+    )
+    safe_status_explanation_replace = _validate_text_replace(
+        status_explanation_replace, field_name="status_explanation_replace"
     )
     # parent: 'none' (any case) makes the project top-level; otherwise a project ref.
     safe_parent = _clearable_ref(parent, lambda v: _validate_project_ref(v, field_name="parent"), sentinel=CLEAR)
@@ -313,10 +338,14 @@ async def update_project(
         safe_name,
         safe_identifier,
         safe_description,
+        safe_description_append,
+        safe_description_replace,
         public,
         active,
         safe_status,
         safe_status_explanation,
+        safe_status_explanation_append,
+        safe_status_explanation_replace,
         safe_parent,
         message="At least one field to update is required.",
     )
@@ -326,10 +355,14 @@ async def update_project(
             name=safe_name,
             identifier=safe_identifier,
             description=safe_description,
+            description_append=safe_description_append,
+            description_replace=safe_description_replace,
             public=public,
             active=active,
             status=safe_status,
             status_explanation=safe_status_explanation,
+            status_explanation_append=safe_status_explanation_append,
+            status_explanation_replace=safe_status_explanation_replace,
             parent=safe_parent,
             confirm=confirm,
         )

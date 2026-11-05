@@ -121,6 +121,7 @@ class HttpxNewsApi:
             # a second time.
             to_detail=lambda: normalize_news_detail(payload, summary=summary, text_limit=detail_text_limit),
             project_link=payload.get("_links", {}).get("project"),
+            payload=payload,
         )
 
     async def list_page(

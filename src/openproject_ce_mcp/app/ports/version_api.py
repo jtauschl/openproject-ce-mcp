@@ -51,6 +51,7 @@ class VersionRecord:
     summary: VersionSummary
     defining_project_link: dict[str, Any] | None
     lookup_name: str
+    payload: dict[str, Any]
 
     def to_detail(self) -> VersionDetail:
         return summary_to_detail(self.summary)

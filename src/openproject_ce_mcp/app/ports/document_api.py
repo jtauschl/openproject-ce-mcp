@@ -27,6 +27,7 @@ class DocumentRecord:
     summary: DocumentSummary
     to_detail: Callable[[], DocumentDetail]
     project_link: dict[str, Any] | None
+    payload: dict[str, Any]
 
 
 class DocumentApi(Protocol):

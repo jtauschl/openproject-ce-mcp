@@ -100,11 +100,15 @@ class BulkCreateWorkPackageItem(TypedDict, total=False):
 
 
 @with_config(ConfigDict(strict=True, extra="forbid", allow_inf_nan=False))
-class DescriptionReplace(TypedDict):
-    """The passage to replace and its replacement; `new` may be "" to delete the passage."""
-
+class TextReplace(TypedDict):
     old: str
     new: str
+
+
+TextAppend = Annotated[str | None, Field(description="Paragraph added after the stored text.")]
+TextReplaceParam = Annotated[
+    TextReplace | None, Field(description="Replaces the one passage old names with new (may be empty).")
+]
 
 
 @with_config(ConfigDict(strict=True, extra="forbid", allow_inf_nan=False))
@@ -115,8 +119,8 @@ class BulkUpdateWorkPackageItem(TypedDict, total=False):
     work_package_id: Required[WorkPackageRef]
     subject: str | None
     description: str | None
-    description_append: str | None
-    description_replace: DescriptionReplace | None
+    description_append: TextAppend
+    description_replace: TextReplaceParam
     type: IdOrName | None
     version: IdOrName | None
     target_versions: list[IdOrName] | None

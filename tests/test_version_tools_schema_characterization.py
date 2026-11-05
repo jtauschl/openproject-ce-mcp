@@ -192,11 +192,23 @@ def test_update_version_schema() -> None:
         "Update a version.\n"
         "\n"
         "Omitted fields stay unchanged.\n"
+        "Prefer description_append and description_replace to a full description: they edit the stored text, while a\n"
+        "read cuts it and flattens its line breaks. Pass only one of the three.\n"
         "A rejected validation preview is not a tool error; inspect `ready` and\n"
-        "`validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`\nand `error_codes` (OpenProject's error classes, the same in every language).\n"
+        "`validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`\n"
+        "and `error_codes` (OpenProject's error classes, the same in every language).\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
+        "$defs": {
+            "TextReplace": {
+                "additionalProperties": False,
+                "properties": {"old": {"title": "Old", "type": "string"}, "new": {"title": "New", "type": "string"}},
+                "required": ["old", "new"],
+                "title": "TextReplace",
+                "type": "object",
+            }
+        },
         "properties": {
             "version_id": {
                 "description": "Numeric version id, as returned by list_versions.",
@@ -214,6 +226,17 @@ def test_update_version_schema() -> None:
                 "default": None,
                 "description": 'Plain text, not Markdown; "" clears it.',
                 "title": "Description",
+            },
+            "description_append": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": "Paragraph added after the stored text.",
+                "title": "Description Append",
+            },
+            "description_replace": {
+                "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                "default": None,
+                "description": "Replaces the one passage old names with new (may be empty).",
             },
             "start_date": {
                 "anyOf": [{"type": "string"}, {"type": "null"}],
@@ -256,6 +279,8 @@ def test_update_version_schema() -> None:
         "version_id",
         "name",
         "description",
+        "description_append",
+        "description_replace",
         "start_date",
         "end_date",
         "status",

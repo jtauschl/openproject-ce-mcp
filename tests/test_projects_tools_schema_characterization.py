@@ -334,12 +334,28 @@ def test_get_job_status_schema() -> None:
 
 def test_update_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_project"]
-    assert (
-        tool.description
-        == "Update a project.\n\nOmitted fields stay unchanged.\n`parent_target` names the project `parent` resolved to.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`\nand `error_codes` (OpenProject's error classes, the same in every language).\n"
+    assert tool.description == (
+        "Update a project.\n"
+        "\n"
+        "Omitted fields stay unchanged.\n"
+        "`<field>_append` and `<field>_replace` edit the stored description or status_explanation and leave the rest\n"
+        "untouched; a read cuts a long text, so prefer them to a full text. Pass only one of the three per field.\n"
+        "`parent_target` names the project `parent` resolved to.\n"
+        "A rejected validation preview is not a tool error; inspect `ready` and\n"
+        "`validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`\n"
+        "and `error_codes` (OpenProject's error classes, the same in every language).\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
+        "$defs": {
+            "TextReplace": {
+                "additionalProperties": False,
+                "properties": {"old": {"title": "Old", "type": "string"}, "new": {"title": "New", "type": "string"}},
+                "required": ["old", "new"],
+                "title": "TextReplace",
+                "type": "object",
+            }
+        },
         "properties": {
             "project": {
                 "anyOf": [{"type": "integer"}, {"type": "string"}],
@@ -363,6 +379,17 @@ def test_update_project_schema() -> None:
                 "default": None,
                 "description": 'Markdown text; "" clears it.',
                 "title": "Description",
+            },
+            "description_append": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": "Paragraph added after the stored text.",
+                "title": "Description Append",
+            },
+            "description_replace": {
+                "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                "default": None,
+                "description": "Replaces the one passage old names with new (may be empty).",
             },
             "public": {
                 "anyOf": [{"type": "boolean"}, {"type": "null"}],
@@ -388,6 +415,17 @@ def test_update_project_schema() -> None:
                 "description": 'Markdown text explaining the status; "" clears it.',
                 "title": "Status Explanation",
             },
+            "status_explanation_append": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": "Paragraph added after the stored text.",
+                "title": "Status Explanation Append",
+            },
+            "status_explanation_replace": {
+                "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                "default": None,
+                "description": "Replaces the one passage old names with new (may be empty).",
+            },
             "parent": {
                 "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                 "default": None,
@@ -412,10 +450,14 @@ def test_update_project_schema() -> None:
         "name",
         "identifier",
         "description",
+        "description_append",
+        "description_replace",
         "public",
         "active",
         "status",
         "status_explanation",
+        "status_explanation_append",
+        "status_explanation_replace",
         "parent",
         "confirm",
     ]

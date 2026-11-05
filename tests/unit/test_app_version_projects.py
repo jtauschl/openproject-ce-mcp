@@ -45,7 +45,7 @@ class _FakeVersionApi:
             defining_project="Demo",
             description=None,
         )
-        return VersionRecord(summary=summary, defining_project_link=self._link, lookup_name="1.0")
+        return VersionRecord(summary=summary, defining_project_link=self._link, lookup_name="1.0", payload={})
 
 
 class _FakeProjectApi:

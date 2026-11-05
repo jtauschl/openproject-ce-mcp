@@ -368,9 +368,13 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"},
                         "description_append": {
                             "anyOf": [{"type": "string"}, {"type": "null"}],
+                            "description": "Paragraph added after the stored text.",
                             "title": "Description Append",
                         },
-                        "description_replace": {"anyOf": [{"$ref": "#/$defs/DescriptionReplace"}, {"type": "null"}]},
+                        "description_replace": {
+                            "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                            "description": "Replaces the one passage old names with new (may be empty).",
+                        },
                         "type": {"anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}], "title": "Type"},
                         "version": {
                             "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
@@ -455,15 +459,14 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "title": "BulkUpdateWorkPackageItem",
                     "type": "object",
                 },
-                "DescriptionReplace": {
+                "TextReplace": {
                     "additionalProperties": False,
-                    "description": 'The passage to replace and its replacement; `new` may be "" to delete the passage.',
                     "properties": {
                         "old": {"title": "Old", "type": "string"},
                         "new": {"title": "New", "type": "string"},
                     },
                     "required": ["old", "new"],
-                    "title": "DescriptionReplace",
+                    "title": "TextReplace",
                     "type": "object",
                 },
             },
@@ -5840,8 +5843,20 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
     },
     "update_document": {
-        "description_hash": "c0a027dc9db6f628439f35bdc37081b1e0d8e77351e4f60c19213f05adb8dbc1",
+        "description_hash": "292d8550eef931535a352d0506bd7f6c15ab6851941cc6812c9e6c3c95eb6eb8",
         "input_schema": {
+            "$defs": {
+                "TextReplace": {
+                    "additionalProperties": False,
+                    "properties": {
+                        "old": {"title": "Old", "type": "string"},
+                        "new": {"title": "New", "type": "string"},
+                    },
+                    "required": ["old", "new"],
+                    "title": "TextReplace",
+                    "type": "object",
+                }
+            },
             "properties": {
                 "document_id": {
                     "description": "Numeric document id, as returned by list_documents.",
@@ -5859,6 +5874,17 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": 'Document text; "" clears it.',
                     "title": "Description",
+                },
+                "description_append": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Paragraph added after the stored text.",
+                    "title": "Description Append",
+                },
+                "description_replace": {
+                    "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Replaces the one passage old names with new (may be empty).",
                 },
                 "confirm": {
                     "default": False,
@@ -6276,8 +6302,20 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ", "OPENPROJECT_ENABLE_PERSONAL_WRITE"),
     },
     "update_news": {
-        "description_hash": "d73c35f39a1762e8344a3a9b9f9a8c1c4fceea6c1bb6e8213f65ac5bb8ca3e2b",
+        "description_hash": "4bcb7ab35d1191724de03856ef46b38369a5bb586029162a70898df666a91f67",
         "input_schema": {
+            "$defs": {
+                "TextReplace": {
+                    "additionalProperties": False,
+                    "properties": {
+                        "old": {"title": "Old", "type": "string"},
+                        "new": {"title": "New", "type": "string"},
+                    },
+                    "required": ["old", "new"],
+                    "title": "TextReplace",
+                    "type": "object",
+                }
+            },
             "properties": {
                 "news_id": {
                     "description": "Numeric news id, as returned by list_news.",
@@ -6302,6 +6340,17 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": 'Full text in Markdown; "" clears it.',
                     "title": "Description",
                 },
+                "description_append": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Paragraph added after the stored text.",
+                    "title": "Description Append",
+                },
+                "description_replace": {
+                    "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Replaces the one passage old names with new (may be empty).",
+                },
                 "confirm": {
                     "default": False,
                     "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -6321,8 +6370,20 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
     },
     "update_project": {
-        "description_hash": "2ecf9d2e6ed9153f05ab99865a8ecfd91da8ad5407bcec337f330ab0267455c4",
+        "description_hash": "2181e66a1db1fc7aa8790af436eee80d291a750d6381d4b3119fc468235d19ae",
         "input_schema": {
+            "$defs": {
+                "TextReplace": {
+                    "additionalProperties": False,
+                    "properties": {
+                        "old": {"title": "Old", "type": "string"},
+                        "new": {"title": "New", "type": "string"},
+                    },
+                    "required": ["old", "new"],
+                    "title": "TextReplace",
+                    "type": "object",
+                }
+            },
             "properties": {
                 "project": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
@@ -6347,6 +6408,17 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": 'Markdown text; "" clears it.',
                     "title": "Description",
                 },
+                "description_append": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Paragraph added after the stored text.",
+                    "title": "Description Append",
+                },
+                "description_replace": {
+                    "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Replaces the one passage old names with new (may be empty).",
+                },
                 "public": {
                     "anyOf": [{"type": "boolean"}, {"type": "null"}],
                     "default": None,
@@ -6370,6 +6442,17 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": 'Markdown text explaining the status; "" clears it.',
                     "title": "Status Explanation",
+                },
+                "status_explanation_append": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Paragraph added after the stored text.",
+                    "title": "Status Explanation Append",
+                },
+                "status_explanation_replace": {
+                    "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Replaces the one passage old names with new (may be empty).",
                 },
                 "parent": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
@@ -6792,8 +6875,20 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "OPENPROJECT_ENABLE_USER_SCHEDULE_READ"),
     },
     "update_version": {
-        "description_hash": "8680d7116f420862fd22d8d14a1fd54110933695b0d0e8f7e9a73d973652a3b8",
+        "description_hash": "3b55282fc5166e976b7205ef178367c0a5aeeb1a794b2c22d324ef07b5b114dc",
         "input_schema": {
+            "$defs": {
+                "TextReplace": {
+                    "additionalProperties": False,
+                    "properties": {
+                        "old": {"title": "Old", "type": "string"},
+                        "new": {"title": "New", "type": "string"},
+                    },
+                    "required": ["old", "new"],
+                    "title": "TextReplace",
+                    "type": "object",
+                }
+            },
             "properties": {
                 "version_id": {
                     "description": "Numeric version id, as returned by list_versions.",
@@ -6811,6 +6906,17 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "default": None,
                     "description": 'Plain text, not Markdown; "" clears it.',
                     "title": "Description",
+                },
+                "description_append": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Paragraph added after the stored text.",
+                    "title": "Description Append",
+                },
+                "description_replace": {
+                    "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Replaces the one passage old names with new (may be empty).",
                 },
                 "start_date": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
@@ -6858,15 +6964,14 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "description_hash": "f61bdb73ea8196d943fafed444982025dace9e967c50da4799a37f59f8a43817",
         "input_schema": {
             "$defs": {
-                "DescriptionReplace": {
+                "TextReplace": {
                     "additionalProperties": False,
-                    "description": 'The passage to replace and its replacement; `new` may be "" to delete the passage.',
                     "properties": {
                         "old": {"title": "Old", "type": "string"},
                         "new": {"title": "New", "type": "string"},
                     },
                     "required": ["old", "new"],
-                    "title": "DescriptionReplace",
+                    "title": "TextReplace",
                     "type": "object",
                 }
             },
@@ -6885,11 +6990,13 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "description_append": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
+                    "description": "Paragraph added after the stored text.",
                     "title": "Description Append",
                 },
                 "description_replace": {
-                    "anyOf": [{"$ref": "#/$defs/DescriptionReplace"}, {"type": "null"}],
+                    "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
                     "default": None,
+                    "description": "Replaces the one passage old names with new (may be empty).",
                 },
                 "type": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
@@ -7012,8 +7119,20 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "update_work_package_comment": {
-        "description_hash": "3098bc682118e61bed709f6eca48933a327d31b262ab459b583a7898e6df8e0f",
+        "description_hash": "34eb80418d6bb04a80c6acbaf77d6221a1c2396a15f2f98e34cb038f0ea34fba",
         "input_schema": {
+            "$defs": {
+                "TextReplace": {
+                    "additionalProperties": False,
+                    "properties": {
+                        "old": {"title": "Old", "type": "string"},
+                        "new": {"title": "New", "type": "string"},
+                    },
+                    "required": ["old", "new"],
+                    "title": "TextReplace",
+                    "type": "object",
+                }
+            },
             "properties": {
                 "activity_id": {
                     "description": "The comment's activity id, from get_work_package_activities or add_work_package_comment's result.",
@@ -7021,9 +7140,21 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "type": "integer",
                 },
                 "comment": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
                     "description": "The new comment text in Markdown; replaces the whole text. Must not be blank. Leave off the user-content tags a read adds.",
                     "title": "Comment",
-                    "type": "string",
+                },
+                "comment_append": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Paragraph added after the stored text.",
+                    "title": "Comment Append",
+                },
+                "comment_replace": {
+                    "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Replaces the one passage old names with new (may be empty).",
                 },
                 "confirm": {
                     "default": False,
@@ -7032,7 +7163,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "type": "boolean",
                 },
             },
-            "required": ["activity_id", "comment"],
+            "required": ["activity_id"],
             "title": "update_work_package_commentArguments",
             "type": "object",
             "additionalProperties": False,

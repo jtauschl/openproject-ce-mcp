@@ -36,6 +36,7 @@ from ..policies import scope as scope_policy
 from ..policies.document_policy import document_payload_allowed
 from ..ports.document_api import DocumentApi
 from ..ports.project_ref import ProjectRefResolver
+from . import _stored_text_edit
 from .project_scoped_list import record_in_project, resolve_project_filter_id
 
 
@@ -128,11 +129,22 @@ class DocumentService:
         document_id: int,
         title: str | None = None,
         description: str | None = None,
+        description_append: str | None = None,
+        description_replace: Mapping[str, str] | None = None,
         confirm: bool = False,
     ) -> DocumentWriteResult:
         current = await self._api.get(document_id)
         scope_policy.ensure_project_write_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+        )
+        description, sentence = _stored_text_edit.edit_stored_field(
+            "document",
+            "description",
+            (current.payload.get("description") or {}).get("raw"),
+            description,
+            description_append,
+            description_replace,
+            settings=self._settings,
         )
         detail = current.to_detail()
         payload: dict[str, Any] = {}
@@ -158,7 +170,10 @@ class DocumentService:
                 action="update",
                 state="preview",
                 ready=True,
-                message="OpenProject is ready to update this document. Ask for confirmation, then call again with confirm=true.",
+                message=_stored_text_edit.with_sentence(
+                    "OpenProject is ready to update this document. Ask for confirmation, then call again with confirm=true.",
+                    sentence,
+                ),
                 document_id=detail.id,
                 project=detail.project,
                 payload=payload,
@@ -172,7 +187,7 @@ class DocumentService:
             action="update",
             state="confirmed",
             ready=True,
-            message="Document updated successfully.",
+            message=_stored_text_edit.with_sentence("Document updated successfully.", sentence),
             document_id=result.id,
             project=result.project,
             payload=payload,

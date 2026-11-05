@@ -70,7 +70,10 @@ async def test_project_scoped_without_search_walks_and_slices_client_side() -> N
     client-side, same as the project-scoped-with-search branch."""
     records = [
         VersionRecord(
-            summary=_summary(i, f"v{i}.0"), defining_project_link={"href": "/api/v3/projects/6"}, lookup_name=f"v{i}.0"
+            summary=_summary(i, f"v{i}.0"),
+            defining_project_link={"href": "/api/v3/projects/6"},
+            lookup_name=f"v{i}.0",
+            payload={},
         )
         for i in range(1, 26)
     ]
@@ -106,11 +109,13 @@ async def test_project_scoped_with_search_overfetches_and_filters_in_memory() ->
             summary=_summary(1, "Sprint 1"),
             defining_project_link={"href": "/api/v3/projects/6"},
             lookup_name="Sprint 1",
+            payload={},
         ),
         VersionRecord(
             summary=_summary(2, "Release 2"),
             defining_project_link={"href": "/api/v3/projects/6"},
             lookup_name="Release 2",
+            payload={},
         ),
     ]
     api = _FakeVersionApi(records)
@@ -140,10 +145,16 @@ async def test_project_scoped_with_search_overfetches_and_filters_in_memory() ->
 @pytest.mark.asyncio
 async def test_global_branch_filters_by_allowlist_before_search_and_pagination() -> None:
     allowed = VersionRecord(
-        summary=_summary(1, "Allowed"), defining_project_link={"href": "/api/v3/projects/6"}, lookup_name="Allowed"
+        summary=_summary(1, "Allowed"),
+        defining_project_link={"href": "/api/v3/projects/6"},
+        lookup_name="Allowed",
+        payload={},
     )
     disallowed = VersionRecord(
-        summary=_summary(2, "Blocked"), defining_project_link={"href": "/api/v3/projects/9"}, lookup_name="Blocked"
+        summary=_summary(2, "Blocked"),
+        defining_project_link={"href": "/api/v3/projects/9"},
+        lookup_name="Blocked",
+        payload={},
     )
     api = _FakeVersionApi([allowed, disallowed])
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
@@ -170,12 +181,20 @@ async def test_project_scoped_branch_drops_shared_versions_defined_outside_the_r
     """`projects/{id}/versions` also returns versions shared into the project from other
     projects, so the allowlist decides per version, not once for the requested project."""
     own = VersionRecord(
-        summary=_summary(1, "v-own"), defining_project_link={"href": "/api/v3/projects/6"}, lookup_name="v-own"
+        summary=_summary(1, "v-own"),
+        defining_project_link={"href": "/api/v3/projects/6"},
+        lookup_name="v-own",
+        payload={},
     )
     shared = VersionRecord(
-        summary=_summary(2, "v-shared"), defining_project_link={"href": "/api/v3/projects/9"}, lookup_name="v-shared"
+        summary=_summary(2, "v-shared"),
+        defining_project_link={"href": "/api/v3/projects/9"},
+        lookup_name="v-shared",
+        payload={},
     )
-    unscoped = VersionRecord(summary=_summary(3, "v-orphan"), defining_project_link=None, lookup_name="v-orphan")
+    unscoped = VersionRecord(
+        summary=_summary(3, "v-orphan"), defining_project_link=None, lookup_name="v-orphan", payload={}
+    )
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
     results, total, _next, _truncated = await fetch_version_page(
@@ -215,7 +234,10 @@ async def test_project_scoped_branch_passes_write_false_to_resolve_project_ref()
 
     records = [
         VersionRecord(
-            summary=_summary(1, "v1.0"), defining_project_link={"href": "/api/v3/projects/6"}, lookup_name="v1.0"
+            summary=_summary(1, "v1.0"),
+            defining_project_link={"href": "/api/v3/projects/6"},
+            lookup_name="v1.0",
+            payload={},
         )
     ]
     api = _FakeVersionApi(records, server_total=1)
@@ -254,6 +276,7 @@ async def test_project_scoped_with_search_branch_passes_write_false_to_resolve_p
             summary=_summary(1, "Release 1"),
             defining_project_link={"href": "/api/v3/projects/6"},
             lookup_name="Release 1",
+            payload={},
         )
     ]
     api = _FakeVersionApi(records)
@@ -311,7 +334,10 @@ class _ClampingVersionApi(_FakeVersionApi):
 async def test_a_server_that_cuts_the_page_size_is_read_to_its_end() -> None:
     records = [
         VersionRecord(
-            summary=_summary(i, f"v{i}.0"), defining_project_link={"href": "/api/v3/projects/6"}, lookup_name=f"v{i}.0"
+            summary=_summary(i, f"v{i}.0"),
+            defining_project_link={"href": "/api/v3/projects/6"},
+            lookup_name=f"v{i}.0",
+            payload={},
         )
         for i in range(1, 6)
     ]

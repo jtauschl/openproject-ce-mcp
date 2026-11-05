@@ -168,7 +168,14 @@ def _validate_required_text(
     return normalized
 
 
-def _validate_description_replace(value: Mapping[str, Any] | None, *, field_name: str) -> dict[str, str] | None:
+def _validate_text_append(value: str | None, *, field_name: str) -> str | None:
+    text = _validate_optional_text(value, field_name=field_name, max_length=None, wrapped_on_read=True)
+    if value is not None and text is None:
+        raise ValueError(f"{field_name} must not be blank.")
+    return text
+
+
+def _validate_text_replace(value: Mapping[str, Any] | None, *, field_name: str) -> dict[str, str] | None:
     if value is None:
         return None
     if not isinstance(value, Mapping) or set(value) != {"old", "new"}:

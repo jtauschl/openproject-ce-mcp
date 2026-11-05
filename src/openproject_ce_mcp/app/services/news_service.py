@@ -31,6 +31,7 @@ from ..policies import scope as scope_policy
 from ..policies.news_policy import news_payload_allowed
 from ..ports.news_api import NewsApi
 from ..ports.project_ref import ProjectRefResolver
+from . import _stored_text_edit
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_scoped_list import SUBJECT_LIMIT, record_in_project, resolve_project_filter_id
 from .project_scoped_list import trim_text as _trim_text
@@ -169,11 +170,22 @@ class NewsService:
         title: str | None = None,
         summary: str | None = None,
         description: str | None = None,
+        description_append: str | None = None,
+        description_replace: Mapping[str, str] | None = None,
         confirm: bool = False,
     ) -> NewsWriteResult:
         current = await self._api.get(news_id)
         scope_policy.ensure_project_write_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+        )
+        description, sentence = _stored_text_edit.edit_stored_field(
+            "news",
+            "description",
+            (current.payload.get("description") or {}).get("raw"),
+            description,
+            description_append,
+            description_replace,
+            settings=self._settings,
         )
         detail = current.to_detail()
         payload: dict[str, Any] = {}
@@ -199,8 +211,11 @@ class NewsService:
             commit=_commit,
             committed_identity=lambda d: {"news_id": d.id, "project": d.project},
             rejected_message="",
-            preview_message="OpenProject is ready to update this news entry. Ask for confirmation, then call again with confirm=true.",
-            success_message="News updated successfully.",
+            preview_message=_stored_text_edit.with_sentence(
+                "OpenProject is ready to update this news entry. Ask for confirmation, then call again with confirm=true.",
+                sentence,
+            ),
+            success_message=_stored_text_edit.with_sentence("News updated successfully.", sentence),
         )
         return self._to_write_result("update", outcome)
 

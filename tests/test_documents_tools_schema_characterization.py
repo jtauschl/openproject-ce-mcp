@@ -123,9 +123,23 @@ def test_get_document_schema() -> None:
 
 def test_update_document_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_document"]
-    assert tool.description == "Update a document. Omitted fields stay unchanged."
+    assert tool.description == (
+        "Update a document. Omitted fields stay unchanged.\n"
+        "\n"
+        "Prefer description_append and description_replace to a full description: they edit the stored text, while a\n"
+        "read cuts it and flattens its line breaks. Pass only one of the three.\n"
+    )
     assert tool.output_schema is None
     assert tool.parameters == {
+        "$defs": {
+            "TextReplace": {
+                "additionalProperties": False,
+                "properties": {"old": {"title": "Old", "type": "string"}, "new": {"title": "New", "type": "string"}},
+                "required": ["old", "new"],
+                "title": "TextReplace",
+                "type": "object",
+            }
+        },
         "properties": {
             "document_id": {
                 "description": "Numeric document id, as returned by list_documents.",
@@ -144,6 +158,17 @@ def test_update_document_schema() -> None:
                 "description": 'Document text; "" clears it.',
                 "title": "Description",
             },
+            "description_append": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": "Paragraph added after the stored text.",
+                "title": "Description Append",
+            },
+            "description_replace": {
+                "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                "default": None,
+                "description": "Replaces the one passage old names with new (may be empty).",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -157,7 +182,14 @@ def test_update_document_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["document_id", "title", "description", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "document_id",
+        "title",
+        "description",
+        "description_append",
+        "description_replace",
+        "confirm",
+    ]
 
 
 def test_list_news_schema() -> None:
@@ -281,9 +313,23 @@ def test_create_news_schema() -> None:
 
 def test_update_news_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_news"]
-    assert tool.description == "Update a news entry. Omitted fields stay unchanged."
+    assert tool.description == (
+        "Update a news entry. Omitted fields stay unchanged.\n"
+        "\n"
+        "Prefer description_append and description_replace to a full description: they edit the stored text, while a\n"
+        "read cuts it and flattens its line breaks. Pass only one of the three.\n"
+    )
     assert tool.output_schema is None
     assert tool.parameters == {
+        "$defs": {
+            "TextReplace": {
+                "additionalProperties": False,
+                "properties": {"old": {"title": "Old", "type": "string"}, "new": {"title": "New", "type": "string"}},
+                "required": ["old", "new"],
+                "title": "TextReplace",
+                "type": "object",
+            }
+        },
         "properties": {
             "news_id": {
                 "description": "Numeric news id, as returned by list_news.",
@@ -308,6 +354,17 @@ def test_update_news_schema() -> None:
                 "description": 'Full text in Markdown; "" clears it.',
                 "title": "Description",
             },
+            "description_append": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": "Paragraph added after the stored text.",
+                "title": "Description Append",
+            },
+            "description_replace": {
+                "anyOf": [{"$ref": "#/$defs/TextReplace"}, {"type": "null"}],
+                "default": None,
+                "description": "Replaces the one passage old names with new (may be empty).",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -321,7 +378,15 @@ def test_update_news_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["news_id", "title", "summary", "description", "confirm"]
+    assert list(tool.parameters["properties"]) == [
+        "news_id",
+        "title",
+        "summary",
+        "description",
+        "description_append",
+        "description_replace",
+        "confirm",
+    ]
 
 
 def test_delete_news_schema() -> None:

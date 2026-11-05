@@ -128,6 +128,7 @@ class HttpxDocumentApi:
             # (id, title, project, ...) a second time inside the thunk.
             to_detail=lambda: normalize_document_detail(payload, summary=summary, text_limit=detail_text_limit),
             project_link=payload.get("_links", {}).get("project"),
+            payload=payload,
         )
 
     async def list_all(

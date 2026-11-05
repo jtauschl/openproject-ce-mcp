@@ -209,3 +209,19 @@ async def test_delete_sends_delete_request() -> None:
     async with _client(handler) as http_client:
         api = HttpxNewsApi(HttpxTransport(http_client))
         await api.delete(1)
+
+
+@pytest.mark.asyncio
+async def test_get_record_carries_the_raw_payload_with_the_uncut_text_and_its_line_breaks() -> None:
+    stored = "First paragraph.\n\n- item one\n- item two\n" + "x" * 5000
+    payload = _news_payload()
+    payload["description"] = {"format": "markdown", "raw": stored}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxNewsApi(HttpxTransport(http_client))
+        record = await api.get(1)
+
+    assert record.payload["description"]["raw"] == stored

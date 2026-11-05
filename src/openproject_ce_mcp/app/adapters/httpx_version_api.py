@@ -68,6 +68,7 @@ class HttpxVersionApi:
             summary=normalize_version(payload, text_limit=text_limit),
             defining_project_link=payload.get("_links", {}).get("definingProject"),
             lookup_name=str(payload.get("name", "")),
+            payload=payload,
         )
 
     async def list_for_project(

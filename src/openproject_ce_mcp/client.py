@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import replace
 from fnmatch import fnmatchcase
 from typing import Any
@@ -1121,10 +1122,14 @@ class OpenProjectClient:
         name: str | None = None,
         identifier: str | None = None,
         description: str | None = None,
+        description_append: str | None = None,
+        description_replace: Mapping[str, str] | None = None,
         public: bool | None = None,
         active: bool | None = None,
         status: str | None = None,
         status_explanation: str | None = None,
+        status_explanation_append: str | None = None,
+        status_explanation_replace: Mapping[str, str] | None = None,
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
@@ -1133,10 +1138,14 @@ class OpenProjectClient:
             name=name,
             identifier=identifier,
             description=description,
+            description_append=description_append,
+            description_replace=description_replace,
             public=public,
             active=active,
             status=status,
             status_explanation=status_explanation,
+            status_explanation_append=status_explanation_append,
+            status_explanation_replace=status_explanation_replace,
             parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
             confirm=confirm,
         )

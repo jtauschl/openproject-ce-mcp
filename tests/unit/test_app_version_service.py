@@ -58,7 +58,7 @@ class _FakeVersionApi:
     async def get(self, version_id: int, *, text_limit: int | None = None) -> VersionRecord:
         link = {"href": "/api/v3/projects/6", "title": "Demo"}
         summary = _summary(version_id)
-        return VersionRecord(summary=summary, defining_project_link=link, lookup_name=summary.name)
+        return VersionRecord(summary=summary, defining_project_link=link, lookup_name=summary.name, payload={})
 
     async def create_form(self, payload: dict) -> VersionFormResult:
         return VersionFormResult(payload=payload, validation_errors=self.validation_errors)
@@ -107,7 +107,10 @@ async def test_list_masks_hidden_fields_and_reports_clamped_limit() -> None:
     # limit=10_000 against a small max_page_size must not see limit=10_000 back.
     records = [
         VersionRecord(
-            summary=_summary(), defining_project_link={"href": "/api/v3/projects/6"}, lookup_name=_summary().name
+            summary=_summary(),
+            defining_project_link={"href": "/api/v3/projects/6"},
+            lookup_name=_summary().name,
+            payload={},
         )
     ]
     settings = dataclasses.replace(

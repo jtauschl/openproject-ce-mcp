@@ -23,7 +23,7 @@ _RETIRED_LITERAL = 10_000
 # server-side caps and are deliberately not listed.
 _UNBOUNDED_LONG_TEXT_SITES = {
     ("tools_work_packages.py", "description"),
-    ("tools_work_packages.py", "description_append"),
+    ("tools_validation.py", "_validate_text_append()"),
     ("tools_validation.py", ".old"),
     ("tools_validation.py", ".new"),
     ("tools_work_packages.py", "comment"),
@@ -56,12 +56,21 @@ def _max_length(node: ast.Call) -> ast.expr | None:
 
 
 def _validator_calls(path: Path) -> list[ast.Call]:
+    """Every text-validator call of the module, each tagged with the name of its innermost enclosing function."""
     tree = ast.parse(path.read_text(), filename=str(path))
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _TEXT_VALIDATORS
-    ]
+    calls: list[ast.Call] = []
+
+    def visit(node: ast.AST, function: str) -> None:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            function = node.name
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _TEXT_VALIDATORS:
+            node.enclosing_function = function  # type: ignore[attr-defined]
+            calls.append(node)
+        for child in ast.iter_child_nodes(node):
+            visit(child, function)
+
+    visit(tree, "<module>")
+    return calls
 
 
 def _is_none(node: ast.expr | None) -> bool:
@@ -76,7 +85,7 @@ def test_max_length_none_sites_match_the_unbounded_inventory_exactly() -> None:
     capped_inventory_sites: list[str] = []
     for path in sorted(_TOOLS_DIR.glob("tools_*.py")):
         for call in _validator_calls(path):
-            field = _field_name(call) or f"<dynamic field_name at line {call.lineno}>"
+            field = _field_name(call) or f"{call.enclosing_function}()"  # type: ignore[attr-defined]
             site = (path.name, field)
             if _is_none(_max_length(call)):
                 none_sites.add(site)
