@@ -35,7 +35,7 @@ git clone -b release/0.5.0 https://github.com/jtauschl/openproject-ce-mcp.git
 cd openproject-ce-mcp
 
 # option A: uv (recommended)
-uv sync --dev
+uv sync --locked --dev
 
 # option B: venv + pip
 python3 -m venv .venv

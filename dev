@@ -4,13 +4,16 @@ set -euo pipefail
 cmd="${1:-}"
 shift || true
 
+# A stale uv.lock must fail every uv command of the gate, not be re-locked silently.
+export UV_LOCKED=1
+
 usage() {
     echo "Usage: ./dev {bootstrap|lint|licenses|shell-lint|test|build|sbom|ci}" >&2
     exit 1
 }
 
 bootstrap() {
-    uv sync --dev
+    uv sync --locked --dev
 }
 
 shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/install-mcp-publisher.sh)
@@ -76,8 +79,8 @@ test_() {
 # The SBOM is exported from the lock file, so the project is its root component and the graph is complete.
 # uv marks the format experimental; tools/check_sbom.py fails the build if a uv release changes what it needs.
 sbom() {
-    uv export --frozen --no-dev --format cyclonedx1.5 --preview-features sbom-export -o sbom.json >/dev/null
-    uv run --frozen python tools/check_sbom.py sbom.json
+    uv export --locked --no-dev --format cyclonedx1.5 --preview-features sbom-export -o sbom.json >/dev/null
+    uv run --locked python tools/check_sbom.py sbom.json
 }
 
 build() {

@@ -53,7 +53,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Run Ruff
         run: uv run ruff check .
@@ -96,7 +96,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Run tests
         if: matrix.python-version != '3.12'
@@ -124,7 +124,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Run tests
         run: uv run pytest
@@ -138,6 +138,7 @@ jobs:
   # for this job only, not committed back to the repo), so drift inside the
   # declared ranges (mcp>=2,<3 above all) gets caught here instead of by a
   # real user.
+  # It is the one install that does not use --locked: re-resolving is its purpose.
   test-newest-deps:
     # Also on push: a new SDK release can change behaviour between the weekly
     # runs, and only release-branch pushes exercise the code about to ship.
