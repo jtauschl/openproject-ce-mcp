@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_board_api import HttpxBoardApi
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -142,7 +143,7 @@ async def test_create_form_returns_payload_and_validation_errors() -> None:
         api = HttpxBoardApi(HttpxTransport(http_client))
         result = await api.create_form({"name": "My Board"})
 
-    assert result.validation_errors == {"name": "is invalid"}
+    assert result.validation_errors == {"name": ValidationFailure("is invalid")}
     assert result.payload["name"] == "My Board"
 
 

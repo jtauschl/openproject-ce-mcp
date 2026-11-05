@@ -12,10 +12,14 @@ from openproject_ce_mcp.app.adapters.httpx_board_api import HttpxBoardApi, _norm
 from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi
 from openproject_ce_mcp.app.adapters.httpx_membership_api import HttpxMembershipApi
 from openproject_ce_mcp.app.adapters.httpx_user_api import HttpxUserApi
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
 ADAPTERS = Path(__file__).resolve().parents[2] / "src" / "openproject_ce_mcp" / "app" / "adapters"
+
+_CONSTRAINT = "urn:openproject-org:api:v3:errors:PropertyConstraintViolation"
+_READ_ONLY = "urn:openproject-org:api:v3:errors:PropertyIsReadOnly"
 
 # What OpenProject renders for a field with two violated constraints (form.rb, create_if_many):
 # one MultipleErrors entry whose own message only says so.
@@ -25,47 +29,119 @@ MULTIPLE_ERRORS: dict[str, Any] = {
     "message": "Multiple field constraints have been violated.",
     "_embedded": {
         "errors": [
-            {"_type": "Error", "message": "Name can't be blank."},
-            {"_type": "Error", "message": "Name is too short (minimum is 3 characters)."},
+            {"_type": "Error", "errorIdentifier": _CONSTRAINT, "message": "Name can't be blank."},
+            {
+                "_type": "Error",
+                "errorIdentifier": _CONSTRAINT,
+                "message": "Name is too short (minimum is 3 characters).",
+            },
         ]
     },
 }
 SINGLE_ERROR: dict[str, Any] = {
     "_type": "Error",
-    "errorIdentifier": "urn:openproject-org:api:v3:errors:PropertyConstraintViolation",
+    "errorIdentifier": _CONSTRAINT,
     "message": "Title can't be blank.",
 }
 EXPECTED = {
-    "multiple": "Name can't be blank.; Name is too short (minimum is 3 characters).",
-    "single": "Title can't be blank.",
+    "multiple": ValidationFailure(
+        "Name can't be blank.; Name is too short (minimum is 3 characters).", ("PropertyConstraintViolation",)
+    ),
+    "single": ValidationFailure("Title can't be blank.", ("PropertyConstraintViolation",)),
 }
+
+
+def _nested(*errors: Any) -> dict[str, Any]:
+    return {**MULTIPLE_ERRORS, "_embedded": {"errors": list(errors)}}
 
 
 @pytest.mark.parametrize(
     ("errors", "expected"),
     [
         ({"name": MULTIPLE_ERRORS, "title": SINGLE_ERROR}, {"name": EXPECTED["multiple"], "title": EXPECTED["single"]}),
-        ({"hours": {"raw": "must be positive"}}, {"hours": "must be positive"}),
-        ({"name": {**MULTIPLE_ERRORS, "_embedded": {"errors": []}}}, {"name": MULTIPLE_ERRORS["message"]}),
+        ({"hours": {"raw": "must be positive"}}, {"hours": ValidationFailure("must be positive")}),
+        ({"name": _nested()}, {"name": ValidationFailure(MULTIPLE_ERRORS["message"])}),
+        ({"name": _nested({"message": ""}, "text", {"message": "x"})}, {"name": ValidationFailure("x")}),
+        ({"name": {"message": "is invalid", "_embedded": {}}}, {"name": ValidationFailure("is invalid")}),
+        ({"name": "just text"}, {"name": ValidationFailure("just text")}),
         (
-            {"name": {**MULTIPLE_ERRORS, "_embedded": {"errors": [{"message": ""}, "text", {"message": "x"}]}}},
-            {"name": "x"},
+            {"id": {"errorIdentifier": _READ_ONLY, "message": "id is read-only."}},
+            {"id": ValidationFailure("id is read-only.", ("PropertyIsReadOnly",))},
         ),
-        ({"name": {"message": "is invalid", "_embedded": {}}}, {"name": "is invalid"}),
+        (
+            {
+                "name": _nested(
+                    {"errorIdentifier": _READ_ONLY, "message": "a"},
+                    {"errorIdentifier": _CONSTRAINT, "message": "b"},
+                    {"errorIdentifier": _READ_ONLY, "message": "c"},
+                )
+            },
+            {"name": ValidationFailure("a; b; c", ("PropertyIsReadOnly", "PropertyConstraintViolation"))},
+        ),
+        (
+            {"name": _nested({"errorIdentifier": _CONSTRAINT, "message": "a"}, {"message": "b"})},
+            {"name": ValidationFailure("a; b", ("PropertyConstraintViolation",))},
+        ),
+        (
+            {"name": {"errorIdentifier": "urn:openproject-org:api:v3:errors:MultipleErrors", "message": "only"}},
+            {"name": ValidationFailure("only")},
+        ),
+        (
+            {
+                "name": _nested(
+                    {"errorIdentifier": "urn:openproject-org:api:v3:errors:MultipleErrors", "message": "a"},
+                    {"errorIdentifier": _CONSTRAINT, "message": "b"},
+                )
+            },
+            {"name": ValidationFailure("a; b", ("PropertyConstraintViolation",))},
+        ),
         (None, {}),
         ([1, 2], {}),
     ],
 )
-def test_the_shared_normalizer_reads_every_real_error_shape(errors: Any, expected: dict[str, str]) -> None:
+def test_the_shared_normalizer_reads_every_real_error_shape(
+    errors: Any, expected: dict[str, ValidationFailure]
+) -> None:
     assert normalize_form_validation_errors(errors) == expected
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "PropertyConstraintViolation",
+        "urn:openproject-org:api:v3:errors:Foo bar",
+        "urn:openproject-org:api:v3:errors:Foo\nbar",
+        "urn:openproject-org:api:v3:errors:Foo; PropertyIsReadOnly (x)",
+        "urn:openproject-org:api:v3:errors:OutboundRequest:NotFound",
+        "urn:openproject-org:api:v3:errors:" + "A" * 65,
+        "urn:openproject-org:api:v3:errors:",
+        "xurn:openproject-org:api:v3:errors:Foo",
+        42,
+        None,
+    ],
+)
+def test_an_identifier_that_is_not_the_documented_shape_yields_no_code(identifier: Any) -> None:
+    entry = {"errorIdentifier": identifier, "message": "m"}
+
+    assert normalize_form_validation_errors({"name": entry}) == {"name": ValidationFailure("m")}
+    assert normalize_form_validation_errors({"name": _nested(entry)}) == {"name": ValidationFailure("m")}
+
+
+def test_the_german_and_the_english_response_give_the_same_codes() -> None:
+    german = {"subject": {**SINGLE_ERROR, "message": "Thema muss ausgefüllt werden."}}
+    english = {"subject": {**SINGLE_ERROR, "message": "Subject can't be blank."}}
+
+    codes = [normalize_form_validation_errors(errors)["subject"].error_codes for errors in (german, english)]
+
+    assert codes == [("PropertyConstraintViolation",)] * 2
 
 
 def test_every_nested_message_is_cut_to_the_limit() -> None:
     long_error = {**MULTIPLE_ERRORS, "_embedded": {"errors": [{"message": "a" * 500}, {"message": "b"}]}}
 
-    message = normalize_form_validation_errors({"name": long_error}, limit=20)["name"]
+    failure = normalize_form_validation_errors({"name": long_error}, limit=20)["name"]
 
-    assert message == "a" * 19 + "…" + "; b"
+    assert failure == ValidationFailure("a" * 19 + "…" + "; b")
 
 
 def _client(handler) -> httpx.AsyncClient:
@@ -74,7 +150,7 @@ def _client(handler) -> httpx.AsyncClient:
     )
 
 
-async def _form_errors(api_factory, call) -> dict[str, str]:
+async def _form_errors(api_factory, call) -> dict[str, ValidationFailure]:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -139,3 +215,23 @@ def test_a_board_operator_without_a_title_is_named_by_its_decoded_href() -> None
     )
 
     assert normalized.operator == "="
+
+
+def test_every_validation_errors_field_has_the_one_type() -> None:
+    """Scans every file, not only `models.py`: a field annotated as a bare `dict` would otherwise pass unnoticed."""
+    src = Path(__file__).resolve().parents[2] / "src" / "openproject_ce_mcp"
+    wrong = []
+    seen = 0
+    for path in sorted(src.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id.endswith("validation_errors")
+            ):
+                seen += 1
+                if ast.unparse(node.annotation).replace(" ", "") != "dict[str,ValidationFailure]":
+                    wrong.append(f"{path.relative_to(src)}:{node.lineno}")
+    assert wrong == []
+    assert seen >= 30

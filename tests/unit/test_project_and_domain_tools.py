@@ -7,6 +7,7 @@ import httpx
 import pytest
 from _tools_test_helpers import FakeContext, make_settings
 
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.client import CLEAR, OpenProjectClient
 from openproject_ce_mcp.tools import (
     copy_project,
@@ -140,7 +141,7 @@ async def test_create_project_tool_does_not_raise_on_rejected_validation_preview
         async def create_project(self, **kwargs):
             return SimpleNamespace(
                 ready=False,
-                validation_errors={"identifier": "has already been taken"},
+                validation_errors={"identifier": ValidationFailure("has already been taken")},
             )
 
     result = await create_project(
@@ -151,7 +152,7 @@ async def test_create_project_tool_does_not_raise_on_rejected_validation_preview
     )
 
     assert result.ready is False
-    assert result.validation_errors == {"identifier": "has already been taken"}
+    assert result.validation_errors == {"identifier": ValidationFailure("has already been taken")}
 
 
 @pytest.mark.asyncio

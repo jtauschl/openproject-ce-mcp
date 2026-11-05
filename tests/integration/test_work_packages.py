@@ -269,7 +269,7 @@ async def test_update_work_package_rejected_status_names_the_offered_statuses(
 
     assert result.ready is False
     listed = ", ".join(offered[:20]) + (f", … (+{len(offered) - 20} more)" if len(offered) > 20 else "")
-    assert result.validation_errors["status"].endswith(
+    assert result.validation_errors["status"].message.endswith(
         f" Statuses OpenProject offers for this work package (including its current one): {listed}."
     )
 

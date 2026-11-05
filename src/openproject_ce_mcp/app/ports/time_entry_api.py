@@ -53,6 +53,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ...models import TimeEntryActivitySummary, TimeEntrySummary
+from ..form_result import ValidationFailure
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,7 @@ class TimeEntryActivityRecord:
 @dataclass(frozen=True)
 class TimeEntryFormResult:
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
 
 
 class TimeEntryApi(Protocol):

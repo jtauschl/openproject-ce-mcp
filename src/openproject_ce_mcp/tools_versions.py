@@ -148,7 +148,8 @@ async def create_version(
     """Create a version for a project.
 
     A rejected validation preview is not a tool error; inspect `ready` and
-    `validation_errors` in the result rather than the MCP error envelope.
+    `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
+    and `error_codes` (OpenProject's error classes, the same in every language).
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -187,7 +188,8 @@ async def update_version(
 
     Omitted fields stay unchanged.
     A rejected validation preview is not a tool error; inspect `ready` and
-    `validation_errors` in the result rather than the MCP error envelope.
+    `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
+    and `error_codes` (OpenProject's error classes, the same in every language).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(version_id, field_name="version_id")

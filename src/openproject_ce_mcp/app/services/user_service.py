@@ -43,6 +43,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import UserDetail, UserListResult, UserWriteResult, WriteResultState
+from ..form_result import ValidationFailure
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
@@ -319,7 +320,7 @@ class UserService:
         message: str,
         user_id: int | None,
         payload: dict[str, Any],
-        validation_errors: dict[str, str],
+        validation_errors: dict[str, ValidationFailure],
         result: UserDetail | None,
     ) -> UserWriteResult:
         return UserWriteResult(

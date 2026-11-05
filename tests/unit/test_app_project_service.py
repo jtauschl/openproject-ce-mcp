@@ -7,6 +7,7 @@ from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.adapters.httpx_project_api import normalize_project_detail, normalize_project_field_schema
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.project_api import (
     ProjectCopyFormResult,
     ProjectFormResult,
@@ -458,14 +459,14 @@ async def test_create_commits_when_confirmed() -> None:
 @pytest.mark.asyncio
 async def test_create_rejects_when_validation_errors_present() -> None:
     api = _FakeProjectApi()
-    api.validation_errors = {"name": "too short"}
+    api.validation_errors = {"name": ValidationFailure("too short")}
     service = _service(api)
 
     result = await service.create(name="x", identifier="x", confirm=True)
 
     assert result.ready is False
     assert result.state == "invalid"
-    assert result.validation_errors == {"name": "too short"}
+    assert result.validation_errors == {"name": ValidationFailure("too short")}
     assert api.commit_create_calls == []
 
 
@@ -792,7 +793,7 @@ async def test_copy_confirmed_with_validation_errors_never_commits() -> None:
     test rather than being proven generically."""
     settings = dataclasses.replace(make_settings(), enable_project_write=True)
     api = _FakeProjectApi()
-    api.copy_validation_errors = {"identifier": "has already been taken"}
+    api.copy_validation_errors = {"identifier": ValidationFailure("has already been taken")}
     service = _service(api, settings=settings)
 
     result = await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=True)

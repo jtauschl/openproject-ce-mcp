@@ -5,6 +5,7 @@ import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_membership_api import HttpxMembershipApi
 from openproject_ce_mcp.app.errors import OpenProjectServerError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -180,4 +181,4 @@ async def test_create_form_returns_payload_and_validation_errors() -> None:
         api = HttpxMembershipApi(HttpxTransport(http_client), base_url=BASE_URL)
         result = await api.create_form({"_links": {}})
 
-    assert result.validation_errors == {"roles": "is invalid"}
+    assert result.validation_errors == {"roles": ValidationFailure("is invalid")}

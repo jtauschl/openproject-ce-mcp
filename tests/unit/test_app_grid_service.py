@@ -17,6 +17,7 @@ from openproject_ce_mcp.app.errors import (
     ProjectScopeDeniedError,
     TransportError,
 )
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.grid_api import GridFormResult, GridRecord
 from openproject_ce_mcp.app.services.grid_service import GridService
 from openproject_ce_mcp.models import GridSummary, ProjectSummary
@@ -674,7 +675,7 @@ async def test_create_rechecks_the_project_link_of_the_form() -> None:
 @pytest.mark.asyncio
 async def test_create_shows_validation_errors_without_rechecking_an_incomplete_form() -> None:
     api = _FakeGridApi()
-    api.validation_errors = {"scope": "is invalid"}
+    api.validation_errors = {"scope": ValidationFailure("is invalid")}
 
     async def without_links(payload: dict) -> GridFormResult:
         return GridFormResult(payload={"name": payload["name"]}, validation_errors=api.validation_errors)
@@ -683,7 +684,7 @@ async def test_create_shows_validation_errors_without_rechecking_an_incomplete_f
 
     result = await _service(api).create(name="G", scope="/projects/demo")
 
-    assert result.validation_errors == {"scope": "is invalid"}
+    assert result.validation_errors == {"scope": ValidationFailure("is invalid")}
 
 
 @pytest.mark.asyncio

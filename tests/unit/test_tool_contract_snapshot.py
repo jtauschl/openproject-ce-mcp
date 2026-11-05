@@ -523,7 +523,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "copy_project": {
-        "description_hash": "4021d24916cd23add35a07ba00885c9207eebc852bc01b86a1df3d7a546a96df",
+        "description_hash": "6ad98fa4a354a493abe4c44b5c87906cf51226fe6ef95b8cc98739756e0382eb",
         "input_schema": {
             "properties": {
                 "source_project": {
@@ -967,7 +967,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "create_membership": {
-        "description_hash": "350ae298a0ebbbab46421f951fbd7cbe34c190f1706089132a0c9ed2cb37096f",
+        "description_hash": "1dd5c92f10af238278434213ee8e978277dc24da5390aa110b932bcc5630c2a3",
         "input_schema": {
             "properties": {
                 "project": {
@@ -1061,7 +1061,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
     },
     "create_project": {
-        "description_hash": "4e90b3819b9bc0f2c3051e4c262b08b10a5b12bf93291af8896889111a362b8d",
+        "description_hash": "bf3e271a6bb42fb82a7a0f67fbdab609adaf35545ee4a452fb4641c79b2b69a9",
         "input_schema": {
             "properties": {
                 "name": {"description": "Display name, at most 255 characters.", "title": "Name", "type": "string"},
@@ -1456,7 +1456,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "create_user": {
-        "description_hash": "a3baeb40223723d36dac03b4f0b3ced42df781885fbdad876443efd4ddab3eb4",
+        "description_hash": "ac26e75ef2bee65952fc4d04608021e7d0f23a2b29cd2e3de799339e7b77db5e",
         "input_schema": {
             "properties": {
                 "login": {"description": "Login name used to sign in.", "title": "Login", "type": "string"},
@@ -1626,7 +1626,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "OPENPROJECT_ENABLE_USER_SCHEDULE_READ"),
     },
     "create_version": {
-        "description_hash": "7973b9ed9465f02cb58c99d5b93b4128da509c43e971ad9c4b1271ca56d2a804",
+        "description_hash": "8f9c786ecb8fcbed5fbe7e4ceddb8e5a0708bc697ff90275950bcfa8d208bad3",
         "input_schema": {
             "properties": {
                 "project": {
@@ -1689,7 +1689,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "create_work_package": {
-        "description_hash": "0a5e32f1e5e0626220a4c1bceacaca27639475f5702d301a53f9b7bcabdb4ba0",
+        "description_hash": "916e3913db393f143ffbc00c78d4ceb7ae36b5039f733dc359130d5b1cfa0b86",
         "input_schema": {
             "properties": {
                 "project": {
@@ -6184,7 +6184,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "update_membership": {
-        "description_hash": "e99f9171ec979a3bb41c24ed61d496dade99828fe98a6d0b534f2ebb26b96d28",
+        "description_hash": "52f6502447b1b9d5247753df020252e8535bc78a7d6d194ca5aba34bd2aa1c42",
         "input_schema": {
             "properties": {
                 "membership_id": {
@@ -6315,7 +6315,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
     },
     "update_project": {
-        "description_hash": "e2e372ed69c83b02b5177b7f49b4a6aa049ee20a9cc129c828f80e400fc46be4",
+        "description_hash": "2ecf9d2e6ed9153f05ab99865a8ecfd91da8ad5407bcec337f330ab0267455c4",
         "input_schema": {
             "properties": {
                 "project": {
@@ -6615,7 +6615,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "update_user": {
-        "description_hash": "b39c65b0dd73bc3c3930c6cc62f01e9b1bb5d79668f431688546b682804808bc",
+        "description_hash": "57b25d6b138f7011e781b475d2265ca283b90a9edf39081e967b8b8c57839b0d",
         "input_schema": {
             "properties": {
                 "user_id": {"description": "User id, from list_users.", "title": "User Id", "type": "integer"},
@@ -6786,7 +6786,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", "OPENPROJECT_ENABLE_USER_SCHEDULE_READ"),
     },
     "update_version": {
-        "description_hash": "8b1dd2d67e5e976b946f5312324d1948925b4304738541b660b79eb00ff66098",
+        "description_hash": "8680d7116f420862fd22d8d14a1fd54110933695b0d0e8f7e9a73d973652a3b8",
         "input_schema": {
             "properties": {
                 "version_id": {

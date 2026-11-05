@@ -23,6 +23,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp import models as m
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.presentation import _to_payload
@@ -538,7 +539,7 @@ def test_bulk_select_path_keeps_both_failure_shapes() -> None:
         work_package_id=None,
         project="Demo",
         payload={"subject": ""},
-        validation_errors={"subject": "can't be blank"},
+        validation_errors={"subject": ValidationFailure("can't be blank")},
         result=None,
     )
     items = [
@@ -551,7 +552,10 @@ def test_bulk_select_path_keeps_both_failure_shapes() -> None:
     assert out["items"][0] == {
         "index": 0,
         "success": False,
-        "result": {"validation_errors": {"subject": "can't be blank"}, "result": None},
+        "result": {
+            "validation_errors": {"subject": {"message": "can't be blank", "error_codes": []}},
+            "result": None,
+        },
     }
     assert out["items"][1] == {"index": 1, "success": False, "error": "boom", "result": None}
 
@@ -1132,3 +1136,27 @@ async def test_trimming_stage_failure_is_sanitized_and_logged_as_an_error(caplog
     assert len(structured) == 1
     assert structured[0]["status"] == "error"
     assert structured[0]["error_code"] == "INTERNAL_ERROR"
+
+
+def test_a_validation_failure_serialises_as_message_and_a_list_of_codes() -> None:
+    rejected = m.WorkPackageWriteResult(
+        action="create",
+        state="rejected",
+        ready=False,
+        message="rejected",
+        work_package_id=None,
+        project="Demo",
+        payload={"subject": ""},
+        validation_errors={
+            "subject": ValidationFailure("can't be blank", ("PropertyConstraintViolation",)),
+            "id": ValidationFailure("read-only", ("PropertyIsReadOnly", "PropertyConstraintViolation")),
+            "free": ValidationFailure("no code"),
+        },
+        result=None,
+    )
+
+    assert _to_payload(rejected)["validation_errors"] == {
+        "subject": {"message": "can't be blank", "error_codes": ["PropertyConstraintViolation"]},
+        "id": {"message": "read-only", "error_codes": ["PropertyIsReadOnly", "PropertyConstraintViolation"]},
+        "free": {"message": "no code", "error_codes": []},
+    }

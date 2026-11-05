@@ -13,6 +13,7 @@ from openproject_ce_mcp.app.errors import (
     OpenProjectServerError,
     PermissionDeniedError,
 )
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -137,7 +138,7 @@ async def test_create_form_posts_to_form_endpoint_and_reports_validation_errors(
         form = await api.create_form({"name": "Release 1"})
 
     assert form.payload == {"name": "Release 1"}
-    assert form.validation_errors == {"name": "too short"}
+    assert form.validation_errors == {"name": ValidationFailure("too short")}
 
 
 @pytest.mark.asyncio
@@ -165,7 +166,7 @@ async def test_create_form_validation_errors_prefer_raw_over_message() -> None:
         api = HttpxVersionApi(HttpxTransport(http_client))
         form = await api.create_form({"name": "Release 1"})
 
-    assert form.validation_errors == {"name": "raw error"}
+    assert form.validation_errors == {"name": ValidationFailure("raw error")}
 
 
 @pytest.mark.asyncio

@@ -52,6 +52,7 @@ from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 from ...models import WriteResultState
+from ..form_result import ValidationFailure
 from ..link_titles import without_foreign_capable_titles
 
 _DetailT = TypeVar("_DetailT")
@@ -63,7 +64,7 @@ class _WriteOutcome(Generic[_DetailT]):
     state: WriteResultState
     message: str
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     detail: _DetailT | None
     identity: dict[str, Any]
 
@@ -72,7 +73,7 @@ async def _finalize_write(
     *,
     confirm: bool,
     payload: dict[str, Any],
-    validation_errors: dict[str, str],
+    validation_errors: dict[str, ValidationFailure],
     identity: dict[str, Any],
     ensure_write_enabled: Any,
     commit: Any,

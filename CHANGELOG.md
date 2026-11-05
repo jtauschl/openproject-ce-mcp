@@ -61,6 +61,9 @@ to install and discover.
   form offers, including the current one.
 - A write rejected for its `version` or `target_versions` lists the versions the form offers within the read scope;
   closed or locked ones cannot be assigned.
+- **Breaking:** each entry of `validation_errors` is an object with `message` and `error_codes`, no longer a string.
+- A rejected request (422) starts its error with OpenProject's error class and attribute, e.g.
+  `PropertyConstraintViolation (subject)`.
 - A confirmed bulk write no longer returns an item's echoed `payload` when
   `select` names it; the normalized `result` carries the same data.
 - **Breaking:** a confirmed bulk write returns a lean item per success without

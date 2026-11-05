@@ -15,6 +15,7 @@ from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
     normalize_work_package_summary,
 )
 from openproject_ce_mcp.app.errors import InvalidInputError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from openproject_ce_mcp.app.ports.scoped_reference import VisibleReferences
 from openproject_ce_mcp.app.ports.work_package_api import WorkPackageGroupRecord
@@ -378,7 +379,7 @@ async def test_parse_form_extracts_payload_validation_errors_and_schema() -> Non
     result = await api.parse_form(form)
 
     assert result.payload == {"subject": "Draft"}
-    assert result.validation_errors == {"subject": "can't be blank"}
+    assert result.validation_errors == {"subject": ValidationFailure("can't be blank")}
     assert result.schema == {"priority": {"writable": True}}
 
 

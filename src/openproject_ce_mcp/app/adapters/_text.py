@@ -18,6 +18,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 from ...user_content import delimit_user_content as delimit_user_content
 from ..errors import InvalidInputError
+from ..form_result import ValidationFailure, error_code
 from ..origin import origin_from_url
 
 # This project's own client-side response-truncation limits, applied when
@@ -166,28 +167,34 @@ def has_usable_id(item: Any) -> bool:
     return isinstance(raw_id, int | str) and str(raw_id).isdigit()
 
 
-def _nested_error_messages(entry: Any, *, limit: int) -> list[str]:
-    nested = entry.get("_embedded", {}).get("errors") if isinstance(entry, dict) else None
-    if not isinstance(nested, list):
-        return []
-    messages = (trim_text(item.get("message"), limit=limit) for item in nested if isinstance(item, dict))
-    return [message for message in messages if message]
+_MULTIPLE_ERRORS = "MultipleErrors"
 
 
-def normalize_form_validation_errors(value: Any, *, limit: int = SUBJECT_LIMIT) -> dict[str, str]:
-    """The message of every field in a form's `validationErrors`.
+def _nested_errors(entry: Any) -> list[dict[str, Any]]:
+    embedded = entry.get("_embedded") if isinstance(entry, dict) else None
+    nested = embedded.get("errors") if isinstance(embedded, dict) else None
+    return [item for item in nested if isinstance(item, dict)] if isinstance(nested, list) else []
+
+
+def normalize_form_validation_errors(value: Any, *, limit: int = SUBJECT_LIMIT) -> dict[str, ValidationFailure]:
+    """The message and error classes of every field in a form's `validationErrors`.
 
     A field with several violated constraints is one `MultipleErrors` entry whose own message only
-    says so; the constraints are the messages under `_embedded.errors`, and they are joined here.
-    Otherwise: formattable-text extraction, then `entry.get("message")`, then a raw trim.
+    says so; the constraints are the errors under `_embedded.errors`: their messages are joined and their
+    distinct classes kept in order. Otherwise: formattable-text extraction, then `entry.get("message")`,
+    then a raw trim, with the entry's own class.
     """
     if not isinstance(value, dict):
         return {}
-    normalized: dict[str, str] = {}
+    normalized: dict[str, ValidationFailure] = {}
     for key, entry in value.items():
-        nested = _nested_error_messages(entry, limit=limit)
-        if nested:
-            normalized[str(key)] = "; ".join(nested)
+        nested = _nested_errors(entry)
+        nested_messages = [
+            message for message in (trim_text(item.get("message"), limit=limit) for item in nested) if message
+        ]
+        if nested_messages:
+            codes = dict.fromkeys(code for code in map(error_code, nested) if code and code != _MULTIPLE_ERRORS)
+            normalized[str(key)] = ValidationFailure("; ".join(nested_messages), tuple(codes))
             continue
         message = _extract_formattable_text(entry, limit=limit)
         if message is None and isinstance(entry, dict):
@@ -195,7 +202,8 @@ def normalize_form_validation_errors(value: Any, *, limit: int = SUBJECT_LIMIT) 
         if message is None:
             message = trim_text(entry, limit=limit)
         if message:
-            normalized[str(key)] = message
+            code = error_code(entry)
+            normalized[str(key)] = ValidationFailure(message, (code,) if code and code != _MULTIPLE_ERRORS else ())
     return normalized
 
 

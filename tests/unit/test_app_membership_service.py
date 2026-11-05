@@ -6,6 +6,7 @@ import pytest
 from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.membership_api import MembershipFormResult, MembershipPage, MembershipRecord
 from openproject_ce_mcp.app.ports.role_api import RoleRecord
 from openproject_ce_mcp.app.services.membership_service import MembershipService
@@ -380,7 +381,7 @@ async def test_create_rejects_when_hidden_field_is_being_written() -> None:
 @pytest.mark.asyncio
 async def test_create_rejects_when_validation_errors_present() -> None:
     api = _FakeMembershipApi()
-    api.validation_errors = {"roles": "is invalid"}
+    api.validation_errors = {"roles": ValidationFailure("is invalid")}
     service = _service(api)
 
     result = await service.create(project="demo", principal="me", roles=["Member"], confirm=True)

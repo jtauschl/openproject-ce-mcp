@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, NamedTuple
 
+from .app.form_result import ValidationFailure
+
 
 class SortCriterion(NamedTuple):
     """A validated sort criterion with field name and direction.
@@ -169,7 +171,7 @@ class ProjectWriteResult(ConfirmationHeader):
     project_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: ProjectSummary | None
     # The project the `parent` reference resolved to; None without a parent or when it is cleared.
     parent_target: ResolvedParentProject | None = None
@@ -180,7 +182,7 @@ class ProjectCopyResult(ConfirmationHeader):
     source_project_id: int | None
     source_project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     job_status_id: str | None
     parent_target: ResolvedParentProject | None = None
 
@@ -203,7 +205,7 @@ class MembershipWriteResult(ConfirmationHeader):
     membership_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: MembershipSummary | None
 
 
@@ -544,7 +546,7 @@ class WorkPackageWriteResult(ConfirmationHeader):
     work_package_id: int | str | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: WorkPackageDetail | None
     # On a create this is the referenced parent, since `result` is the new work package.
     target: ResolvedWorkPackage | None = None
@@ -576,7 +578,7 @@ class BulkWorkPackageWriteResult:
 class ActivityWriteResult(ConfirmationHeader):
     work_package_id: int | str
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: ActivitySummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -586,7 +588,7 @@ class RelationWriteResult(ConfirmationHeader):
     relation_id: int | None
     work_package_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: RelationSummary | None
     target: ResolvedWorkPackage | None = None
     related_target: ResolvedWorkPackage | None = None
@@ -671,7 +673,7 @@ class VersionWriteResult(ConfirmationHeader):
     version_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: VersionDetail | None
 
 
@@ -787,7 +789,7 @@ class BoardWriteResult(ConfirmationHeader):
     board_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: BoardDetail | None
 
 
@@ -958,7 +960,7 @@ class DocumentWriteResult(ConfirmationHeader):
     document_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: DocumentDetail | None
 
 
@@ -1076,7 +1078,7 @@ class AttachmentWriteResult(ConfirmationHeader):
     attachment_id: int | None
     work_package_id: int | str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: AttachmentSummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -1166,7 +1168,7 @@ class TimeEntryWriteResult(ConfirmationHeader):
     time_entry_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: TimeEntrySummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -1334,7 +1336,7 @@ class NewsWriteResult(ConfirmationHeader):
     news_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: NewsDetail | None
 
 
@@ -1437,7 +1439,7 @@ class AvailableWatcherListResult(PageResult):
 class WatcherWriteResult(ConfirmationHeader):
     work_package_id: int | str
     watcher_user_id: int | None
-    validation_errors: dict
+    validation_errors: dict[str, ValidationFailure]
     result: WatcherSummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -1480,7 +1482,7 @@ class NotificationListResult:
 class UserWriteResult(ConfirmationHeader):
     user_id: int | None
     payload: dict
-    validation_errors: dict
+    validation_errors: dict[str, ValidationFailure]
     result: UserDetail | None
 
 
@@ -1488,7 +1490,7 @@ class UserWriteResult(ConfirmationHeader):
 class GroupWriteResult(ConfirmationHeader):
     group_id: int | None
     payload: dict
-    validation_errors: dict
+    validation_errors: dict[str, ValidationFailure]
     result: GroupSummary | None
 
 
@@ -1559,7 +1561,7 @@ class StorageListResult(PageResult):
 class StorageWriteResult(ConfirmationHeader):
     storage_id: int | None
     payload: dict
-    validation_errors: dict
+    validation_errors: dict[str, ValidationFailure]
     result: StorageDetail | None
 
 
@@ -1621,7 +1623,7 @@ class FileLinkListResult(PageResult):
 class FileLinkWriteResult(ConfirmationHeader):
     file_link_id: int | None
     work_package_id: int | None
-    validation_errors: dict
+    validation_errors: dict[str, ValidationFailure]
     result: FileLinkSummary | None
 
 
@@ -1645,7 +1647,7 @@ class GridWriteResult(ConfirmationHeader):
     grid_id: int | None
     scope: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: GridSummary | None
 
 
@@ -1781,7 +1783,7 @@ class ReminderListResult(PageResult):
 class ReminderWriteResult(ConfirmationHeader):
     reminder_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: ReminderSummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -1814,7 +1816,7 @@ class WikiPageLinkWriteResult(ConfirmationHeader):
     link_id: int | None
     work_package_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: WikiPageLinkSummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -1838,7 +1840,7 @@ class UserNonWorkingTimeWriteResult(ConfirmationHeader):
     non_working_time_id: int | None
     user_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: UserNonWorkingTimeSummary | None
 
 
@@ -1868,7 +1870,7 @@ class UserWorkingHoursWriteResult(ConfirmationHeader):
     working_hours_id: int | None
     user_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: UserWorkingHoursSummary | None
 
 
@@ -1913,7 +1915,7 @@ class MeetingWriteResult(ConfirmationHeader):
     meeting_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: MeetingSummary | None
 
 
@@ -1951,7 +1953,7 @@ class MeetingAgendaItemWriteResult(ConfirmationHeader):
     agenda_item_id: int | None
     meeting_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: MeetingAgendaItemSummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -1983,7 +1985,7 @@ class MeetingOutcomeWriteResult(ConfirmationHeader):
     outcome_id: int | None
     meeting_agenda_item_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: MeetingOutcomeSummary | None
     target: ResolvedWorkPackage | None = None
 
@@ -2012,7 +2014,7 @@ class MeetingSectionWriteResult(ConfirmationHeader):
     section_id: int | None
     meeting_id: int | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: MeetingSectionSummary | None
 
 
@@ -2054,7 +2056,7 @@ class RecurringMeetingWriteResult(ConfirmationHeader):
     recurring_meeting_id: int | None
     project: str | None
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: RecurringMeetingSummary | None
 
 
@@ -2090,7 +2092,7 @@ class RecurringMeetingOccurrenceWriteResult(ConfirmationHeader):
     recurring_meeting_id: int
     start_time: str
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: MeetingSummary | None
 
 
@@ -2188,7 +2190,7 @@ class ContainerAttachmentWriteResult(ConfirmationHeader):
     container_type: str
     container_id: int
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     result: AttachmentSummary | None
 
 

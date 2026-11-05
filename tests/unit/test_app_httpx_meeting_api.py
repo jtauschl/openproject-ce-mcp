@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi, normalize_meeting
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 from openproject_ce_mcp.models import MeetingParticipantSummary
 
@@ -172,7 +173,7 @@ async def test_create_form_extracts_message_first_validation_errors() -> None:
         api = HttpxMeetingApi(HttpxTransport(http_client))
         form = await api.create_form({})
 
-    assert form.validation_errors == {"title": "can't be blank"}
+    assert form.validation_errors == {"title": ValidationFailure("can't be blank")}
 
 
 @pytest.mark.asyncio

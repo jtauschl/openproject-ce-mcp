@@ -126,6 +126,7 @@ from ..errors import (
     PermissionDeniedError,
     ProjectScopeDeniedError,
 )
+from ..form_result import ValidationFailure
 from ..pagination import collection_exhausted, effective_limit, paginate_server
 from ..policies import access, hidden_fields, work_package_query_policy, work_package_target_policy
 from ..policies import work_package_policy as _work_package_policy
@@ -1918,8 +1919,8 @@ class WorkPackageService:
         )
 
     async def _with_offered_versions(
-        self, parsed: WorkPackageFormResult, *, requested: bool, errors: dict[str, str] | None = None
-    ) -> dict[str, str]:
+        self, parsed: WorkPackageFormResult, *, requested: bool, errors: dict[str, ValidationFailure] | None = None
+    ) -> dict[str, ValidationFailure]:
         """The form errors, with the versions the form offers named on a rejected version. The form lists
         the project's assignable versions, which can include versions shared from a project the read scope
         does not cover, so the options pass the same visibility filter as any other schema option."""

@@ -171,7 +171,7 @@ async def create_user(
 ) -> UserWriteResult:
     """Create a new user (admin operation).
 
-    The preview is validated by OpenProject; problems come back in validation_errors."""
+    The preview is validated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."""
     client = _client_from_context(ctx)
     safe_login = _validate_required_query(login, field_name="login", max_length=100)
     safe_email = _validate_required_query(email, field_name="email", max_length=255)
@@ -209,7 +209,7 @@ async def update_user(
     """Update an existing user (admin operation).
 
     Pass at least one field; omitted fields stay unchanged. The preview is
-    validated by OpenProject; problems come back in validation_errors."""
+    validated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(user_id, field_name="user_id")
     safe_login = _validate_optional_query(login, field_name="login", max_length=100)

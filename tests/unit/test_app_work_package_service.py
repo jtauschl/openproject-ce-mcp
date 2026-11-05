@@ -19,6 +19,7 @@ from openproject_ce_mcp.app.errors import (
     ProjectScopeDeniedError,
     TransportError,
 )
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.activity_api import ActivityRecord
 from openproject_ce_mcp.app.ports.scoped_reference import ScopedReference
 from openproject_ce_mcp.app.ports.status_priority_type_api import StatusRecord
@@ -33,6 +34,7 @@ from openproject_ce_mcp.app.ports.work_package_resolution import WorkPackageAllo
 from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
 from openproject_ce_mcp.app.services._work_package_write_helpers import with_offered_version_values
 from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION, WorkPackageService
+from openproject_ce_mcp.app.transport.errors import raise_for_status
 from openproject_ce_mcp.models import (
     ActivitySummary,
     CurrentUser,
@@ -169,7 +171,7 @@ class _FakeWorkPackageApi:
         # Each entry in validation_errors_queue is consumed once per
         # validate_create/validate_update call, in order -- lets a test force
         # a rejection on a specific call without affecting others.
-        self.validation_errors_queue: list[dict[str, str]] = []
+        self.validation_errors_queue: list[dict[str, ValidationFailure]] = []
         self.next_schema: dict = {}
         self.parse_form_resolve_links_calls: list[bool] = []
         self.parse_form_allowed_values_cache_calls: list[object] = []
@@ -216,7 +218,7 @@ class _FakeWorkPackageApi:
             return self._records_by_id[wp_id]
         raise NotFoundError(f"OpenProject work package {wp_id} was not found.")
 
-    def _next_validation_errors(self) -> dict[str, str]:
+    def _next_validation_errors(self) -> dict[str, ValidationFailure]:
         return self.validation_errors_queue.pop(0) if self.validation_errors_queue else {}
 
     async def validate_create(self, project_id: str, payload: dict) -> dict:
@@ -1828,13 +1830,13 @@ async def test_create_target_versions_write_rejected_when_only_version_hidden() 
 @pytest.mark.asyncio
 async def test_create_reports_validation_errors_as_not_ready() -> None:
     api = _FakeWorkPackageApi()
-    api.validation_errors_queue.append({"subject": "can't be blank"})
+    api.validation_errors_queue.append({"subject": ValidationFailure("can't be blank")})
     service, _ = _service(api)
 
     result = await service.create(project="demo", type="Task", subject="New WP", confirm=False)
 
     assert result.ready is False
-    assert result.validation_errors == {"subject": "can't be blank"}
+    assert result.validation_errors == {"subject": ValidationFailure("can't be blank")}
     assert api.commit_create_calls == []
 
 
@@ -2398,14 +2400,14 @@ async def test_update_without_version_intent_leaves_target_versions_untouched() 
 @pytest.mark.asyncio
 async def test_update_rejected_target_versions_conflict_reports_validation_errors() -> None:
     api = _TargetVersionsEchoingWorkPackageApi()
-    api.validation_errors_queue.append({"version": "Version is not assignable."})
+    api.validation_errors_queue.append({"version": ValidationFailure("Version is not assignable.")})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, version="1.0", confirm=True)
 
     assert result.state == "invalid"
     assert result.ready is False
-    assert result.validation_errors == {"version": "Version is not assignable."}
+    assert result.validation_errors == {"version": ValidationFailure("Version is not assignable.")}
     assert "targetVersions" in result.payload["_links"]
     assert api.commit_update_calls == []
 
@@ -2504,7 +2506,7 @@ async def test_update_target_versions_rejected_never_commits() -> None:
     # (test_update_rejected_target_versions_conflict_reports_validation_errors
     # above only covers the strip/version direction).
     api = _TargetVersionsEchoingWorkPackageApi()
-    api.validation_errors_queue.append({"targetVersions": "Version is not assignable."})
+    api.validation_errors_queue.append({"targetVersions": ValidationFailure("Version is not assignable.")})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, target_versions=["1.0"], confirm=True)
@@ -2715,13 +2717,13 @@ async def test_update_rejects_write_to_hidden_field() -> None:
 @pytest.mark.asyncio
 async def test_update_reports_validation_errors_as_not_ready() -> None:
     api = _FakeWorkPackageApi()
-    api.validation_errors_queue.append({"subject": "is too long"})
+    api.validation_errors_queue.append({"subject": ValidationFailure("is too long")})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, subject="Renamed", confirm=False)
 
     assert result.ready is False
-    assert result.validation_errors == {"subject": "is too long"}
+    assert result.validation_errors == {"subject": ValidationFailure("is too long")}
 
 
 @pytest.mark.asyncio
@@ -2931,14 +2933,18 @@ def _status_schema(*names: str) -> dict:
 async def test_update_rejected_status_names_the_offered_statuses() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _status_schema("New", "In progress", "Closed")
-    api.validation_errors_queue.append({"status": _TRANSITION_INVALID})
+    api.validation_errors_queue.append(
+        {"status": ValidationFailure(_TRANSITION_INVALID, ("PropertyConstraintViolation",))}
+    )
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, status="Developed", confirm=False)
 
     assert result.ready is False
     assert result.validation_errors == {
-        "status": f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, In progress, Closed.",
+        "status": ValidationFailure(
+            f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, In progress, Closed.", ("PropertyConstraintViolation",)
+        ),
     }
 
 
@@ -2946,13 +2952,15 @@ async def test_update_rejected_status_names_the_offered_statuses() -> None:
 async def test_update_confirmed_rejected_status_names_the_offered_statuses_without_committing() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _status_schema("New", "Closed")
-    api.validation_errors_queue.append({"status": _TRANSITION_INVALID})
+    api.validation_errors_queue.append({"status": ValidationFailure(_TRANSITION_INVALID)})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, status="Developed", confirm=True)
 
     assert result.ready is False
-    assert result.validation_errors == {"status": f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, Closed."}
+    assert result.validation_errors == {
+        "status": ValidationFailure(f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, Closed.")
+    }
     assert api.commit_update_calls == []
 
 
@@ -2964,62 +2972,64 @@ async def test_update_rejected_status_reads_the_revalidated_form_after_auto_deri
         "remainingTime": {"writable": True},
         **_status_schema("New", "In progress"),
     }
-    api.validation_errors_queue.extend([{}, {"status": _TRANSITION_INVALID}])
+    api.validation_errors_queue.extend([{}, {"status": ValidationFailure(_TRANSITION_INVALID)}])
     service, _ = _service(api, status_api=_FakeStatusApi(is_closed=True))
 
     result = await service.update(work_package_id=6, status="Closed", confirm=False)
 
     assert len(api.validate_update_calls) == 2
-    assert result.validation_errors == {"status": f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, In progress."}
+    assert result.validation_errors == {
+        "status": ValidationFailure(f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, In progress.")
+    }
 
 
 @pytest.mark.asyncio
 async def test_update_rejected_status_caps_the_offered_statuses() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _status_schema(*(f"S{i}" for i in range(1, 24)))
-    api.validation_errors_queue.append({"status": _TRANSITION_INVALID})
+    api.validation_errors_queue.append({"status": ValidationFailure(_TRANSITION_INVALID)})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, status="Developed", confirm=False)
 
     shown = ", ".join(f"S{i}" for i in range(1, 21))
-    assert result.validation_errors["status"] == f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}{shown}, … (+3 more)."
+    assert result.validation_errors["status"].message == f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}{shown}, … (+3 more)."
 
 
 @pytest.mark.asyncio
 async def test_update_rejected_status_without_embedded_values_keeps_the_message() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = {"status": {"_links": {"allowedValues": [{"href": "/api/v3/statuses/1"}]}}}
-    api.validation_errors_queue.append({"status": _TRANSITION_INVALID})
+    api.validation_errors_queue.append({"status": ValidationFailure(_TRANSITION_INVALID)})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, status="Developed", confirm=False)
 
-    assert result.validation_errors == {"status": _TRANSITION_INVALID}
+    assert result.validation_errors == {"status": ValidationFailure(_TRANSITION_INVALID)}
 
 
 @pytest.mark.asyncio
 async def test_update_rejected_other_field_gets_no_status_hint() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _status_schema("New", "Closed")
-    api.validation_errors_queue.append({"subject": "is too long"})
+    api.validation_errors_queue.append({"subject": ValidationFailure("is too long")})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, status="Closed", confirm=False)
 
-    assert result.validation_errors == {"subject": "is too long"}
+    assert result.validation_errors == {"subject": ValidationFailure("is too long")}
 
 
 @pytest.mark.asyncio
 async def test_update_status_error_without_requested_status_keeps_the_message() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _status_schema("New", "Closed")
-    api.validation_errors_queue.append({"status": _TRANSITION_INVALID})
+    api.validation_errors_queue.append({"status": ValidationFailure(_TRANSITION_INVALID)})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, subject="Renamed", confirm=False)
 
-    assert result.validation_errors == {"status": _TRANSITION_INVALID}
+    assert result.validation_errors == {"status": ValidationFailure(_TRANSITION_INVALID)}
 
 
 @pytest.mark.asyncio
@@ -3041,7 +3051,7 @@ async def test_update_hidden_status_is_rejected_before_the_form_is_queried() -> 
 async def test_bulk_update_rejected_status_names_the_offered_statuses() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _status_schema("New", "Closed")
-    api.validation_errors_queue.append({"status": _TRANSITION_INVALID})
+    api.validation_errors_queue.append({"status": ValidationFailure(_TRANSITION_INVALID)})
     service, _ = _service(api)
 
     result = await service.bulk_update(items=[{"work_package_id": 6, "status": "Developed"}], confirm=True)
@@ -3050,7 +3060,9 @@ async def test_bulk_update_rejected_status_names_the_offered_statuses() -> None:
     assert api.commit_update_calls == []
     item = result.items[0]
     assert item.result is not None
-    assert item.result.validation_errors == {"status": f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, Closed."}
+    assert item.result.validation_errors == {
+        "status": ValidationFailure(f"{_TRANSITION_INVALID} {_OFFERED_PREFIX}New, Closed.")
+    }
 
 
 # ----------------------------------------------------------------------
@@ -4405,31 +4417,41 @@ def _versions_schema(field: str, *versions: tuple[int, str]) -> dict:
 def test_with_offered_version_values_names_the_offered_versions_of_each_rejected_field() -> None:
     schema = {**_versions_schema("version", (1, "1.0"), (2, "2.0")), **_versions_schema("targetVersions", (3, "3.0"))}
 
-    enriched = with_offered_version_values({"version": "a", "targetVersions": "b", "subject": "c"}, schema)
+    constraint = ("PropertyConstraintViolation",)
+    errors = {
+        "version": ValidationFailure("a", constraint),
+        "targetVersions": ValidationFailure("b", constraint),
+        "subject": ValidationFailure("c", constraint),
+    }
+
+    enriched = with_offered_version_values(errors, schema)
 
     assert enriched == {
-        "version": f"a {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}",
-        "targetVersions": f"b {_VERSIONS_OFFERED}3.0.{_VERSIONS_NOTE}",
-        "subject": "c",
+        "version": ValidationFailure(f"a {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}", constraint),
+        "targetVersions": ValidationFailure(f"b {_VERSIONS_OFFERED}3.0.{_VERSIONS_NOTE}", constraint),
+        "subject": ValidationFailure("c", constraint),
     }
 
 
 def test_with_offered_version_values_caps_the_list() -> None:
     schema = _versions_schema("version", *((i, f"V{i}") for i in range(1, 24)))
 
-    enriched = with_offered_version_values({"version": "a"}, schema)
+    enriched = with_offered_version_values({"version": ValidationFailure("a")}, schema)
 
     shown = ", ".join(f"V{i}" for i in range(1, 21))
-    assert enriched == {"version": f"a {_VERSIONS_OFFERED}{shown}, … (+3 more).{_VERSIONS_NOTE}"}
+    assert enriched == {"version": ValidationFailure(f"a {_VERSIONS_OFFERED}{shown}, … (+3 more).{_VERSIONS_NOTE}")}
 
 
 @pytest.mark.parametrize(
     ("errors", "schema"),
     [
-        ({"subject": "x"}, _versions_schema("version", (1, "1.0"))),
-        ({"version": "x"}, {}),
-        ({"version": "x"}, {"version": {"_links": {"allowedValues": [{"href": "/api/v3/versions/1"}]}}}),
-        ({"version": "x"}, _versions_schema("version")),
+        ({"subject": ValidationFailure("x")}, _versions_schema("version", (1, "1.0"))),
+        ({"version": ValidationFailure("x")}, {}),
+        (
+            {"version": ValidationFailure("x")},
+            {"version": {"_links": {"allowedValues": [{"href": "/api/v3/versions/1"}]}}},
+        ),
+        ({"version": ValidationFailure("x")}, _versions_schema("version")),
     ],
     ids=["no-version-error", "no-schema-field", "no-embedded-values", "empty-values"],
 )
@@ -4442,12 +4464,14 @@ def test_with_offered_version_values_leaves_the_errors_alone_without_offered_val
 async def test_create_rejected_version_names_the_offered_versions(field, request_args) -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _versions_schema(field, (1, "1.0"), (2, "2.0"))
-    api.validation_errors_queue.append({field: _VERSION_REJECTED})
+    api.validation_errors_queue.append({field: ValidationFailure(_VERSION_REJECTED)})
     service, _ = _service(api)
 
     result = await service.create(project="demo", type="Task", subject="New", confirm=False, **request_args)
 
-    assert result.validation_errors == {field: f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}"}
+    assert result.validation_errors == {
+        field: ValidationFailure(f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}")
+    }
 
 
 @pytest.mark.asyncio
@@ -4455,14 +4479,16 @@ async def test_create_rejected_version_names_the_offered_versions(field, request
 async def test_create_subtask_rejected_version_names_the_offered_versions(field, request_args) -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _versions_schema(field, (1, "1.0"))
-    api.validation_errors_queue.append({field: _VERSION_REJECTED})
+    api.validation_errors_queue.append({field: ValidationFailure(_VERSION_REJECTED)})
     service, _ = _service(api)
 
     result = await service.create_subtask(
         parent_work_package_id=6, type="Task", subject="Child", confirm=False, **request_args
     )
 
-    assert result.validation_errors == {field: f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"}
+    assert result.validation_errors == {
+        field: ValidationFailure(f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}")
+    }
 
 
 @pytest.mark.asyncio
@@ -4470,13 +4496,15 @@ async def test_create_subtask_rejected_version_names_the_offered_versions(field,
 async def test_update_rejected_version_names_the_offered_versions(field, request_args) -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _versions_schema(field, (1, "1.0"), (2, "2.0"))
-    api.validation_errors_queue.append({field: _VERSION_REJECTED})
+    api.validation_errors_queue.append({field: ValidationFailure(_VERSION_REJECTED)})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, confirm=True, **request_args)
 
     assert result.ready is False
-    assert result.validation_errors == {field: f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}"}
+    assert result.validation_errors == {
+        field: ValidationFailure(f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0, 2.0.{_VERSIONS_NOTE}")
+    }
     assert api.commit_update_calls == []
 
 
@@ -4484,7 +4512,7 @@ async def test_update_rejected_version_names_the_offered_versions(field, request
 async def test_bulk_update_rejected_version_names_the_offered_versions() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _versions_schema("targetVersions", (1, "1.0"))
-    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    api.validation_errors_queue.append({"targetVersions": ValidationFailure(_VERSION_REJECTED)})
     service, _ = _service(api)
 
     result = await service.bulk_update(items=[{"work_package_id": 6, "target_versions": ["Closed one"]}], confirm=True)
@@ -4493,7 +4521,7 @@ async def test_bulk_update_rejected_version_names_the_offered_versions() -> None
     item = result.items[0]
     assert item.result is not None
     assert item.result.validation_errors == {
-        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"
+        "targetVersions": ValidationFailure(f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"),
     }
 
 
@@ -4501,7 +4529,7 @@ async def test_bulk_update_rejected_version_names_the_offered_versions() -> None
 async def test_bulk_create_rejected_version_names_the_offered_versions() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _versions_schema("targetVersions", (1, "1.0"))
-    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    api.validation_errors_queue.append({"targetVersions": ValidationFailure(_VERSION_REJECTED)})
     service, _ = _service(api)
 
     result = await service.bulk_create(
@@ -4512,7 +4540,7 @@ async def test_bulk_create_rejected_version_names_the_offered_versions() -> None
     item = result.items[0]
     assert item.result is not None
     assert item.result.validation_errors == {
-        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"
+        "targetVersions": ValidationFailure(f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}1.0.{_VERSIONS_NOTE}"),
     }
 
 
@@ -4520,14 +4548,14 @@ async def test_bulk_create_rejected_version_names_the_offered_versions() -> None
 async def test_update_rejected_version_names_only_versions_the_read_scope_covers() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _versions_schema("targetVersions", (7, "Secret"), (8, "Own"))
-    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    api.validation_errors_queue.append({"targetVersions": ValidationFailure(_VERSION_REJECTED)})
     restricted = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
     service, _ = _service(api, settings=restricted, references_allowed=_only_visible)
 
     result = await service.update(work_package_id=6, target_versions=["Own"], confirm=False)
 
     assert result.validation_errors == {
-        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}Own.{_VERSIONS_NOTE}"
+        "targetVersions": ValidationFailure(f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}Own.{_VERSIONS_NOTE}"),
     }
 
 
@@ -4535,12 +4563,12 @@ async def test_update_rejected_version_names_only_versions_the_read_scope_covers
 async def test_update_version_error_without_a_requested_version_keeps_the_message() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = _versions_schema("targetVersions", (1, "1.0"))
-    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    api.validation_errors_queue.append({"targetVersions": ValidationFailure(_VERSION_REJECTED)})
     service, _ = _service(api)
 
     result = await service.update(work_package_id=6, subject="Renamed", confirm=False)
 
-    assert result.validation_errors == {"targetVersions": _VERSION_REJECTED}
+    assert result.validation_errors == {"targetVersions": ValidationFailure(_VERSION_REJECTED)}
 
 
 @pytest.mark.asyncio
@@ -4551,14 +4579,14 @@ async def test_update_rejected_version_does_not_name_an_offered_value_that_is_no
         {"name": "Odd", "_links": {"self": {"href": "/api/v3/elsewhere/1", "title": "Odd"}}}
     )
     api.next_schema = schema
-    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    api.validation_errors_queue.append({"targetVersions": ValidationFailure(_VERSION_REJECTED)})
     restricted = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
     service, _ = _service(api, settings=restricted, references_allowed=_only_visible)
 
     result = await service.update(work_package_id=6, target_versions=["Own"], confirm=False)
 
     assert result.validation_errors == {
-        "targetVersions": f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}Own.{_VERSIONS_NOTE}"
+        "targetVersions": ValidationFailure(f"{_VERSION_REJECTED} {_VERSIONS_OFFERED}Own.{_VERSIONS_NOTE}"),
     }
 
 
@@ -4570,13 +4598,13 @@ async def test_update_rejected_version_offering_only_non_version_links_keeps_the
         {"name": "Odd", "_links": {"self": {"href": "/api/v3/elsewhere/1", "title": "Odd"}}}
     )
     api.next_schema = schema
-    api.validation_errors_queue.append({"targetVersions": _VERSION_REJECTED})
+    api.validation_errors_queue.append({"targetVersions": ValidationFailure(_VERSION_REJECTED)})
     restricted = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
     service, _ = _service(api, settings=restricted, references_allowed=_only_visible)
 
     result = await service.update(work_package_id=6, target_versions=["Own"], confirm=False)
 
-    assert result.validation_errors == {"targetVersions": _VERSION_REJECTED}
+    assert result.validation_errors == {"targetVersions": ValidationFailure(_VERSION_REJECTED)}
 
 
 # ----------------------------------------------------------------------
@@ -4787,3 +4815,25 @@ async def test_get_with_allowed_statuses_fails_loudly_on_a_form_without_status_o
 
     with pytest.raises(OpenProjectServerError, match="status"):
         await service.get(6, include_allowed_statuses=True)
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_item_carries_the_422_header_in_its_error(monkeypatch) -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    async def _rejected(*args, **kwargs):
+        raise_for_status(
+            422,
+            {
+                "errorIdentifier": "urn:openproject-org:api:v3:errors:PropertyConstraintViolation",
+                "message": "Thema muss ausgefüllt werden.",
+                "_embedded": {"details": {"attribute": "subject"}},
+            },
+        )
+
+    monkeypatch.setattr(service, "update", _rejected)
+
+    result = await service.bulk_update(items=[{"work_package_id": 6, "subject": ""}], confirm=True)
+
+    assert result.items[0].error == "PropertyConstraintViolation (subject): Thema muss ausgefüllt werden."

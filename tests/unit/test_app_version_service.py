@@ -6,6 +6,7 @@ import pytest
 from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.project_api import ProjectPage
 from openproject_ce_mcp.app.ports.version_api import VersionFormResult, VersionPage, VersionRecord
 from openproject_ce_mcp.app.services.version_service import VersionService
@@ -244,14 +245,14 @@ async def test_create_builds_defining_project_href_from_this_service_s_own_api_p
 @pytest.mark.asyncio
 async def test_create_rejects_when_validation_errors_present() -> None:
     api = _FakeVersionApi()
-    api.validation_errors = {"name": "too short"}
+    api.validation_errors = {"name": ValidationFailure("too short")}
     service = _service(api)
 
     result = await service.create(project="demo", name="x", confirm=True)
 
     assert result.ready is False
     assert result.state == "invalid"
-    assert result.validation_errors == {"name": "too short"}
+    assert result.validation_errors == {"name": ValidationFailure("too short")}
     assert api.commit_calls == []
 
 

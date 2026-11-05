@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.services._write_outcome import _finalize_write
 
 
@@ -57,7 +58,11 @@ async def test_finalize_write_only_commits_on_confirmed_valid_payload() -> None:
         calls.append(payload)
         return "detail"
 
-    for confirm, validation_errors in [(False, {}), (False, {"x": "bad"}), (True, {"x": "bad"})]:
+    for confirm, validation_errors in [
+        (False, {}),
+        (False, {"x": ValidationFailure("bad")}),
+        (True, {"x": ValidationFailure("bad")}),
+    ]:
         await _finalize_write(
             confirm=confirm,
             payload={"x": "value"},
@@ -89,7 +94,7 @@ async def test_finalize_write_only_commits_on_confirmed_valid_payload() -> None:
 
 @pytest.mark.asyncio
 async def test_finalize_write_detail_and_identity_only_set_on_commit() -> None:
-    for confirm, validation_errors in [(False, {}), (True, {"x": "bad"})]:
+    for confirm, validation_errors in [(False, {}), (True, {"x": ValidationFailure("bad")})]:
         outcome = await _finalize_write(
             confirm=confirm,
             payload={"x": "value"},

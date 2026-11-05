@@ -17,10 +17,12 @@ dependencies. Not worth it for line-count reduction alone.
 from __future__ import annotations
 
 import builtins
+from dataclasses import replace
 from typing import Any
 
 from ...work_package_reference import is_numeric_ref
 from ..errors import InvalidInputError
+from ..form_result import ValidationFailure
 
 _SUBJECT_LIMIT = 255
 
@@ -113,42 +115,52 @@ def _offered_titles(field: Any) -> str | None:
     return offered
 
 
-def with_offered_status_values(validation_errors: dict[str, str], schema: dict[str, Any]) -> dict[str, str]:
+def with_offered_status_values(
+    validation_errors: dict[str, ValidationFailure], schema: dict[str, Any]
+) -> dict[str, ValidationFailure]:
     """Append the status values the update form offers to its `status` error.
 
     OpenProject's own message only says the transition is invalid, which
     does not tell a workflow gap from a missing role; the same form's schema
     carries the statuses the workflow allows for this user's roles (plus the
     current status), which settles it."""
-    message = validation_errors.get("status")
-    if message is None:
+    failure = validation_errors.get("status")
+    if failure is None:
         return validation_errors
     offered = _offered_titles(schema.get("status"))
     if offered is None:
         return validation_errors
     return {
         **validation_errors,
-        "status": f"{message} Statuses OpenProject offers for this work package (including its current one): {offered}.",
+        "status": replace(
+            failure,
+            message=f"{failure.message} Statuses OpenProject offers for this work package (including its current one): {offered}.",
+        ),
     }
 
 
 VERSION_ERROR_KEYS = ("version", "targetVersions")
 
 
-def with_offered_version_values(validation_errors: dict[str, str], schema: dict[str, Any]) -> dict[str, str]:
+def with_offered_version_values(
+    validation_errors: dict[str, ValidationFailure], schema: dict[str, Any]
+) -> dict[str, ValidationFailure]:
     """Append the versions the form offers to a `version` or `targetVersions` error.
 
     OpenProject's message only says the value is not allowed, in the instance language; it does not say that a
     closed or locked version can never be assigned. The caller passes a schema whose options the read scope covers."""
     enriched = validation_errors
     for key in VERSION_ERROR_KEYS:
-        message = enriched.get(key)
-        offered = _offered_titles(schema.get(key)) if message is not None else None
-        if offered is not None:
+        failure = enriched.get(key)
+        offered = _offered_titles(schema.get(key)) if failure is not None else None
+        if failure is not None and offered is not None:
             enriched = {
                 **enriched,
-                key: f"{message} Versions OpenProject offers for this work package: {offered}. "
-                "A closed or locked version cannot be assigned.",
+                key: replace(
+                    failure,
+                    message=f"{failure.message} Versions OpenProject offers for this work package: {offered}. "
+                    "A closed or locked version cannot be assigned.",
+                ),
             }
     return enriched
 

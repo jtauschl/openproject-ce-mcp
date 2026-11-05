@@ -11,6 +11,7 @@ from openproject_ce_mcp.app.adapters.httpx_time_entry_api import (
     normalize_time_entry_raw,
     normalize_validation_errors,
 )
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -412,13 +413,13 @@ def test_normalize_time_entry_activity_extracts_fields() -> None:
 def test_normalize_validation_errors_extracts_formattable_text() -> None:
     errors = normalize_validation_errors({"hours": {"raw": "must be positive"}})
 
-    assert errors == {"hours": "must be positive"}
+    assert errors == {"hours": ValidationFailure("must be positive")}
 
 
 def test_normalize_validation_errors_falls_back_to_message_key() -> None:
     errors = normalize_validation_errors({"activity": {"message": "is not allowed"}})
 
-    assert errors == {"activity": "is not allowed"}
+    assert errors == {"activity": ValidationFailure("is not allowed")}
 
 
 def test_normalize_validation_errors_returns_empty_for_non_dict() -> None:

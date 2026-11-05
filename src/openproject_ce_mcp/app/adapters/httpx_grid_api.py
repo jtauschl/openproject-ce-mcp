@@ -2,13 +2,7 @@
 
 No `httpx` import (depends on the `Transport` Protocol only).
 
-`normalize_form_validation_errors` (from `_text.py`) is NOT the same as
-HttpxMembershipApi's local validation-error normalizer -- the two genuinely
-differ in behavior and are not interchangeable: `normalize_form_validation_errors`
-tries formattable-text extraction first, then `entry.get("message")`, then a
-raw trim fallback; Memberships' local copy skips the formattable-text branch
-entirely. This adapter's `create`/`update` form-validation responses use the
-three-branch shape.
+Form-validation responses go through the shared `normalize_form_validation_errors` (`_text.py`).
 """
 
 from __future__ import annotations

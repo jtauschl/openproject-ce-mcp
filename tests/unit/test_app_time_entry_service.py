@@ -7,6 +7,7 @@ from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.adapters.httpx_time_entry_api import normalize_time_entry_activity_raw
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.time_entry_api import TimeEntryActivityRecord, TimeEntryFormResult, TimeEntryRecord
 from openproject_ce_mcp.app.ports.user_api import UserRecord
 from openproject_ce_mcp.app.services.time_entry_service import TimeEntryService
@@ -611,7 +612,7 @@ async def test_create_reports_validation_errors_as_not_ready() -> None:
     class _RejectingApi(_FakeTimeEntryApi):
         async def validate_create(self, payload: dict) -> dict:
             self.validate_create_calls.append(payload)
-            return {"_embedded": {"payload": payload, "validationErrors": {"hours": {"message": "invalid"}}}}
+            return {"_embedded": {"payload": payload, "validationErrors": {"hours": ValidationFailure("invalid")}}}
 
     api = _RejectingApi()
     service = _service(api=api)
@@ -621,7 +622,7 @@ async def test_create_reports_validation_errors_as_not_ready() -> None:
     )
 
     assert result.ready is False
-    assert result.validation_errors == {"hours": {"message": "invalid"}}
+    assert result.validation_errors == {"hours": ValidationFailure("invalid")}
     assert api.create_calls == []
 
 

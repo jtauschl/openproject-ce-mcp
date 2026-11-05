@@ -184,7 +184,8 @@ async def create_project(
     Omitted optional fields are not sent, so OpenProject's defaults apply.
     `parent_target` names the project `parent` resolved to.
     A rejected validation preview is not a tool error; inspect `ready` and
-    `validation_errors` in the result rather than the MCP error envelope.
+    `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
+    and `error_codes` (OpenProject's error classes, the same in every language).
     """
     client = _client_from_context(ctx)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
@@ -229,7 +230,8 @@ async def copy_project(
     copy starts a background job; poll get_job_status with the returned job_status_id.
     `parent_target` names the project `parent` resolved to.
     A rejected validation preview is not a tool error; inspect `ready` and
-    `validation_errors` in the result rather than the MCP error envelope.
+    `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
+    and `error_codes` (OpenProject's error classes, the same in every language).
     """
     client = _client_from_context(ctx)
     safe_source_project = _validate_project_ref(source_project, field_name="source_project")
@@ -291,7 +293,8 @@ async def update_project(
     Omitted fields stay unchanged.
     `parent_target` names the project `parent` resolved to.
     A rejected validation preview is not a tool error; inspect `ready` and
-    `validation_errors` in the result rather than the MCP error envelope.
+    `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
+    and `error_codes` (OpenProject's error classes, the same in every language).
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)

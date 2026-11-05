@@ -6,6 +6,7 @@ import pytest
 from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, PermissionDeniedError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.user_api import UserFormResult, UserRecord
 from openproject_ce_mcp.app.services.user_service import UserService
 from openproject_ce_mcp.models import UserDetail, UserSummary
@@ -336,13 +337,13 @@ async def test_create_returns_preview_without_committing() -> None:
 @pytest.mark.asyncio
 async def test_create_rejects_when_validation_errors_present() -> None:
     api = _FakeUserApi()
-    api.validation_errors = {"email": "is invalid"}
+    api.validation_errors = {"email": ValidationFailure("is invalid")}
     service = _service(api)
 
     result = await service.create(login="ada", email="bad", firstname="Ada", lastname="Lovelace")
 
     assert result.ready is False
-    assert result.validation_errors == {"email": "is invalid"}
+    assert result.validation_errors == {"email": ValidationFailure("is invalid")}
     assert api.commit_create_calls == []
 
 

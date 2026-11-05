@@ -85,6 +85,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
+from ..form_result import ValidationFailure
 from .project_resolution import WorkPackageResolutionContext
 from .scoped_reference import ScopedReference, VisibleReferences
 
@@ -135,7 +136,7 @@ class WorkPackageRecord:
 @dataclass(frozen=True)
 class WorkPackageFormResult:
     payload: dict[str, Any]
-    validation_errors: dict[str, str]
+    validation_errors: dict[str, ValidationFailure]
     schema: dict[str, Any]  # raw _embedded.schema -- needed by the Service's schema-option
     # resolution AND the auto-percentage/remaining-time schema check
 

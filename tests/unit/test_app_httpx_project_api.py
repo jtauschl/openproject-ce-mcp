@@ -7,6 +7,7 @@ import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_project_api import HttpxProjectApi
 from openproject_ce_mcp.app.errors import InvalidInputError, OpenProjectServerError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -181,7 +182,7 @@ async def test_create_form_validation_errors_prefer_raw_over_message() -> None:
         api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
         form = await api.create_form({"name": "Demo"})
 
-    assert form.validation_errors == {"name": "raw error"}
+    assert form.validation_errors == {"name": ValidationFailure("raw error")}
 
 
 @pytest.mark.asyncio

@@ -115,10 +115,10 @@ provider may transform or cache the catalog before billing it.
 | --- | ---: | ---: |
 | Fresh install, no project scope | 14 | ~1,960 |
 | Project reads, no writes | 88 | ~29,085 |
-| Work-package writes only | 114 | ~46,076 |
-| Every project readable and writable, other settings default (Glama build) | 153 | ~62,043 |
-| Every write scope | 187 | ~72,758 |
-| Every write scope plus extended tools | 204 | ~75,863 |
+| Work-package writes only | 114 | ~46,101 |
+| Every project readable and writable, other settings default (Glama build) | 153 | ~62,223 |
+| Every write scope | 187 | ~72,968 |
+| Every write scope plus extended tools | 204 | ~76,073 |
 
 The figures include each tool's MCP annotations (read-only, destructive,
 idempotent and open-world hints) and the parameter descriptions in its input

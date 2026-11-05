@@ -805,6 +805,27 @@ Successful write previews are not errors — they return a structured result wit
 `ready`, `state` (`"rejected"` | `"invalid"` | `"preview"` | `"confirmed"`),
 `validation_errors`, and a human-readable `message`.
 
+### Validation errors
+
+Each entry of `validation_errors` is keyed by the attribute OpenProject rejected and holds a `message` and
+`error_codes`. The message is written in the language of the account the token belongs to; `Accept-Language` does not
+change it. `error_codes` are OpenProject's error classes and do not depend on the language:
+
+| Code | Meaning |
+| --- | --- |
+| `PropertyConstraintViolation` | A value breaks a constraint: blank, too long, taken, out of range. The reason is only in the message |
+| `PropertyIsReadOnly` | The attribute cannot be written |
+| `PropertyFormatError` | The value has the wrong format |
+
+A field with several violated constraints lists each distinct code once, in order, and its messages are joined with
+`; `. An entry without a code has an empty list. The code is coarse: use the attribute and the class to branch, the
+message to explain.
+
+A request OpenProject rejects with 422 (a malformed value, a refused commit) starts its error text with the same
+information as a header: `PropertyFormatError (dueDate): <message>`; several errors give
+`PropertyConstraintViolation (identifier), PropertyIsReadOnly (id): <message>; <message>`. Read only that header.
+Without an error class in the response the text is OpenProject's message, with any nested messages in parentheses.
+
 ## See also
 
 - [Documentation hub](README.md) — full documentation index

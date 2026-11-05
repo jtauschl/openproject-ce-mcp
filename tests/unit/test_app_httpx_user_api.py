@@ -5,6 +5,7 @@ import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_user_api import HttpxUserApi, normalize_user, normalize_user_detail
 from openproject_ce_mcp.app.errors import InvalidInputError
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -123,7 +124,7 @@ async def test_create_form_returns_payload_and_validation_errors() -> None:
         form = await api.create_form({"login": "ada"})
 
     assert form.payload == {"login": "ada"}
-    assert form.validation_errors == {"email": "is invalid"}
+    assert form.validation_errors == {"email": ValidationFailure("is invalid")}
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ from ..errors import (
     OpenProjectServerError,
     RateLimitedError,
 )
+from ..form_result import error_attribute, error_code
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +57,38 @@ def _combined_message(payload: dict[str, Any]) -> str:
     return f"{message} ({details})" if message else details
 
 
+def _error_objects(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    embedded = payload.get("_embedded")
+    nested = embedded.get("errors") if isinstance(embedded, dict) else None
+    return [item for item in nested if isinstance(item, dict)] if isinstance(nested, list) else []
+
+
+def _validation_message(payload: dict[str, Any]) -> str:
+    """The text of a 422: a leading header of OpenProject's error classes, then the messages.
+
+    The header lists `Code (attribute)` pairs (the top-level error first, unless it is the generic
+    `MultipleErrors` wrapper, then each nested error in order; a pair that fails the shape check is
+    skipped and identical pairs appear once), followed by `": "` and the messages. A consumer reads only
+    that anchored header, so text inside a message cannot add to it. Without any well-formed code the text
+    is exactly `_combined_message`, which keeps a non-OpenProject body from looking like a rendered one.
+    """
+    top = payload.get("message")
+    top_code = error_code(payload)
+    wrapper = top_code == "MultipleErrors"
+    nested = _error_objects(payload)
+    sources = ([] if wrapper else [payload]) + nested
+    pairs = dict.fromkeys(
+        (code, error_attribute(source)) for source in sources if (code := error_code(source)) is not None
+    )
+    if not pairs:
+        return _combined_message(payload)
+    header = ", ".join(f"{code} ({attribute})" if attribute else code for code, attribute in pairs)
+    parts = [str(top).strip()] if top and not wrapper else []
+    parts.extend(str(err.get("message")).strip() for err in nested if str(err.get("message") or "").strip())
+    text = "; ".join(part for part in parts if part)
+    return f"{header}: {text or 'OpenProject rejected the request.'}"
+
+
 def raise_for_status(status_code: int, payload: dict[str, Any] | None) -> None:
     """Tier-2 mapper: HTTP status + HAL error payload -> typed exception.
 
@@ -82,7 +115,9 @@ def raise_for_status(status_code: int, payload: dict[str, Any] | None) -> None:
         raise OpenProjectPermissionDeniedError(f"OpenProject denied access to this resource.{detail}")
     if status_code == 404:
         raise NotFoundError("OpenProject resource not found.")
-    if status_code in {400, 422}:
+    if status_code == 422:
+        raise InvalidInputError(_validation_message(payload) or "OpenProject rejected the request.")
+    if status_code == 400:
         raise InvalidInputError(message or "OpenProject rejected the request.")
     if status_code == 409:
         raise ConflictError(message or "OpenProject rejected the request due to a conflict.")

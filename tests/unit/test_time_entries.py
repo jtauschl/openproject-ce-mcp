@@ -12,6 +12,7 @@ from _client_test_helpers import (
     started_client,
 )
 
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.client import (
     OpenProjectClient,
 )
@@ -831,7 +832,7 @@ async def test_create_time_entry_preview_reflects_openproject_validation_errors(
 
     assert result.ready is False
     assert result.state == "rejected"
-    assert result.validation_errors == {"hours": "must be greater than 0"}
+    assert result.validation_errors == {"hours": ValidationFailure("must be greater than 0")}
 
     await client.aclose()
 
@@ -868,7 +869,7 @@ async def test_update_time_entry_preview_reflects_openproject_validation_errors(
 
     assert result.ready is False
     assert result.state == "rejected"
-    assert result.validation_errors == {"hours": "must be greater than 0"}
+    assert result.validation_errors == {"hours": ValidationFailure("must be greater than 0")}
 
     await client.aclose()
 

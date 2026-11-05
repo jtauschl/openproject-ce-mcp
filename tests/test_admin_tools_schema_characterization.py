@@ -242,7 +242,7 @@ def test_create_user_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_user"]
     assert (
         tool.description
-        == "Create a new user (admin operation).\n\nThe preview is validated by OpenProject; problems come back in validation_errors."
+        == "Create a new user (admin operation).\n\nThe preview is validated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -305,7 +305,7 @@ def test_update_user_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_user"]
     assert (
         tool.description
-        == "Update an existing user (admin operation).\n\nPass at least one field; omitted fields stay unchanged. The preview is\nvalidated by OpenProject; problems come back in validation_errors."
+        == "Update an existing user (admin operation).\n\nPass at least one field; omitted fields stay unchanged. The preview is\nvalidated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."
     )
     assert tool.output_schema is None
     assert tool.parameters == {

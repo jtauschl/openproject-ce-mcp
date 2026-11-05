@@ -120,7 +120,7 @@ def test_create_version_schema() -> None:
         "Create a version for a project.\n"
         "\n"
         "A rejected validation preview is not a tool error; inspect `ready` and\n"
-        "`validation_errors` in the result rather than the MCP error envelope.\n"
+        "`validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`\nand `error_codes` (OpenProject's error classes, the same in every language).\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -193,7 +193,7 @@ def test_update_version_schema() -> None:
         "\n"
         "Omitted fields stay unchanged.\n"
         "A rejected validation preview is not a tool error; inspect `ready` and\n"
-        "`validation_errors` in the result rather than the MCP error envelope.\n"
+        "`validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`\nand `error_codes` (OpenProject's error classes, the same in every language).\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

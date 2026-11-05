@@ -657,7 +657,8 @@ async def create_work_package(
     the exact calendar date matters. This server does not expose a way to opt out of that shift
     (OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).
     A rejected validation preview is not a tool error; inspect `ready` and
-    `validation_errors` in the result rather than the MCP error envelope.
+    `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
+    and `error_codes` (OpenProject's error classes, the same in every language).
     When a parent is given, the result names the work package it resolved to in `target`, and
     expect_parent_display_id names the parent you mean and makes a mismatch an error; see the server instructions.
     If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in

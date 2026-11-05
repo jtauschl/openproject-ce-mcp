@@ -162,7 +162,7 @@ async def create_membership(
 ) -> MembershipWriteResult:
     """Create a project membership.
 
-    The preview is validated by OpenProject; problems come back in validation_errors."""
+    The preview is validated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."""
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_principal = _validate_ref(principal, field_name="principal", max_length=255)
@@ -202,7 +202,7 @@ async def update_membership(
 ) -> MembershipWriteResult:
     """Update a project membership's roles.
 
-    The preview is validated by OpenProject; problems come back in validation_errors."""
+    The preview is validated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(membership_id, field_name="membership_id")
     safe_roles = _validate_required_ref_list(roles, field_name="roles", max_items=20, item_max_length=100)

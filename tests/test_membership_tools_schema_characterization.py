@@ -220,7 +220,7 @@ def test_create_membership_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_membership"]
     assert (
         tool.description
-        == "Create a project membership.\n\nThe preview is validated by OpenProject; problems come back in validation_errors."
+        == "Create a project membership.\n\nThe preview is validated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -273,7 +273,7 @@ def test_update_membership_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_membership"]
     assert (
         tool.description
-        == "Update a project membership's roles.\n\nThe preview is validated by OpenProject; problems come back in validation_errors."
+        == "Update a project membership's roles.\n\nThe preview is validated by OpenProject; problems come back in validation_errors, each with a message and error_codes (OpenProject's error classes)."
     )
     assert tool.output_schema is None
     assert tool.parameters == {

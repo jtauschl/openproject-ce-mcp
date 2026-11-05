@@ -13,6 +13,7 @@ import json
 import pytest
 
 from openproject_ce_mcp import models as m
+from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.presentation import _to_payload
 from openproject_ce_mcp.tool_errors import ToolInputError
 from openproject_ce_mcp.tools_validation import BULK_ITEM_WRAPPER_FIELDS, _validate_select
@@ -154,12 +155,16 @@ def test_an_item_that_failed_keeps_its_error_and_has_no_write_result() -> None:
 
 def test_an_item_openproject_rejected_keeps_its_validation_errors_and_payload() -> None:
     rejected = _write(
-        state="invalid", ready=False, validation_errors={"subject": "is too long"}, result=None, message="rejected"
+        state="invalid",
+        ready=False,
+        validation_errors={"subject": ValidationFailure("is too long")},
+        result=None,
+        message="rejected",
     )
 
     item = _first_item([_item(rejected, success=False, error="OpenProject rejected the proposed changes.")])
 
-    assert item["result"]["validation_errors"] == {"subject": "is too long"}
+    assert item["result"]["validation_errors"] == {"subject": {"message": "is too long", "error_codes": []}}
     assert item["result"]["payload"] == {"status": "In progress"}
     assert item["result"]["message"] == "rejected"
     assert item["error"] == "OpenProject rejected the proposed changes."
@@ -178,13 +183,17 @@ def test_a_preview_item_keeps_its_full_write_result() -> None:
 def test_the_lean_rule_applies_per_item_in_a_mixed_confirmed_run() -> None:
     items = [
         _item(_write(), index=0),
-        _item(_write(state="invalid", ready=False, validation_errors={"a": "b"}, result=None), index=1, success=False),
+        _item(
+            _write(state="invalid", ready=False, validation_errors={"a": ValidationFailure("b")}, result=None),
+            index=1,
+            success=False,
+        ),
     ]
 
     payload = _to_payload(_bulk(items))["items"]
 
     assert set(payload[0]["result"]) == LEAN_WRITE_KEYS
-    assert payload[1]["result"]["validation_errors"] == {"a": "b"}
+    assert payload[1]["result"]["validation_errors"] == {"a": {"message": "b", "error_codes": []}}
 
 
 def test_a_caller_select_replaces_the_lean_rule() -> None:
