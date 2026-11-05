@@ -60,6 +60,15 @@ def test_ce_instructions_are_not_duplicated_into_any_tool_description() -> None:
     assert offenders == []
 
 
+# Claude Code cuts server instructions after 4,096 characters and the model sees only the text before the cut
+# (https://code.claude.com/docs/en/mcp, "For MCP server authors"; verified live on 2.1.311).
+CLIENT_INSTRUCTIONS_LIMIT = 4096
+
+
+def test_ce_instructions_fit_the_limit_a_client_applies() -> None:
+    assert len(server.CE_INSTRUCTIONS) <= CLIENT_INSTRUCTIONS_LIMIT
+
+
 def test_defaults_contain_read_tools() -> None:
     # read_projects=("*",): these are all project-scoped read tools, only
     # registered when the read allowlist is non-empty (see
