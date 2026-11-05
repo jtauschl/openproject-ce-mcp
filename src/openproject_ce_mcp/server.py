@@ -59,42 +59,11 @@ boundary: a look-alike inside the text is data, and the server escapes its `<` a
 
 ## Capabilities: what the tools say, not what `list_capabilities` says
 
-`list_capabilities` / `get_instance_configuration` report OpenProject's own
-per-user *action grants* and feature flags; they are informational and are **not**
-the source of truth for what you can do here. A missing capability does **not** mean
-an operation is impossible: e.g. deleting a work package is not listed as a
-capability yet the `delete_work_package` tool works. **The registered MCP tools are
-the authority**: if a tool exists it is allowed; if it does not, it is not.
-
-## Trimmed responses and field selection
-
-List and write results are trimmed for context economy: list results omit the
-derivable `count`/`truncated` fields, and a confirmed write omits the echoed
-request `payload` (its normalized `result` carries the same information). Where
-a tool exposes `select` in its input schema, pass it (a list of field names) to
-read only the fields you need; an invalid name returns the allowed set.
-
-Trimmed list, write, batch, and bulk results from tools that expose `select`
-normally omit fields whose value is `null` when `select` is not given; empty
-lists and objects remain. Where a tool exposes `select`, request a field
-explicitly to keep it present even when its value is `null`; this is how to
-distinguish an unset value from a value that was never requested. An
-unrequested or server-hidden field is omitted entirely. Tools without a
-`select` parameter retain `null`-valued dataclass fields as explicit `null`;
-the other documented trimming rules still apply (e.g. `count`/`truncated` are
-still dropped from list results, a confirmed write's `payload` is still
-dropped, and server-hidden keys are still removed).
-
-For a paginated tool (its result carries a `next_offset` field at all: not
-every list tool does; a few return their full unpaginated collection instead),
-`next_offset` is always present in the response as an integer or `null`,
-regardless of `select` or the tool's trimming behavior: page until it is
-`null`, not until it is absent.
-
-With `select`, a failed batch-read or bulk-write item retains its nested
-`work_package` / `result` as an explicit `null` (inspect the sibling `error`
-field to see why); without `select`, that same nested field would be omitted
-like any other `null` value.
+`list_capabilities` / `get_instance_configuration` report OpenProject's per-user *action
+grants* and feature flags; they are informational, **not** the source of truth for what you
+can do here. A missing capability does **not** mean an operation is impossible (deleting a
+work package is not listed, yet `delete_work_package` works). **The registered MCP tools
+are the authority**: if a tool exists it is allowed; if it does not, it is not.
 
 ## Clearing an assigned field
 
@@ -106,15 +75,26 @@ status, subject, project) cannot be cleared.
 
 ## Some tool groups are opt-in
 
-A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,
-`render_text`, `get_custom_option`, `list_help_texts` / `get_help_text`,
-`list_working_days` / `list_non_working_days`) is opt-in to keep them out of
-the default tool set. If one is not registered, it is intentionally disabled
-here, not missing; set `OPENPROJECT_ENABLE_EXTENDED_READ=true` to expose them.
-The personal (own preferences, notifications), admin (users, groups, storages)
-and user-schedule (non-working times, working hours) tools are opt-in the same
-way, through `OPENPROJECT_ENABLE_PERSONAL_READ`, `OPENPROJECT_ENABLE_ADMIN_READ`
-and `OPENPROJECT_ENABLE_USER_SCHEDULE_READ`.
+Rarely-needed tools (the `get_query_*` schema tools, `render_text`, `get_custom_option`,
+`list_help_texts` / `get_help_text`, `list_working_days` / `list_non_working_days`) are
+opt-in. If one is not registered, it is intentionally disabled, not missing; set
+`OPENPROJECT_ENABLE_EXTENDED_READ=true` to expose them. The personal (own preferences,
+notifications), admin (users, groups, storages) and user-schedule (non-working times,
+working hours) tools are opt-in the same way, through `OPENPROJECT_ENABLE_PERSONAL_READ`,
+`OPENPROJECT_ENABLE_ADMIN_READ` and `OPENPROJECT_ENABLE_USER_SCHEDULE_READ`.
+
+## Trimmed responses and field selection
+
+Lists omit the derivable `count`/`truncated` fields; a confirmed write omits the echoed
+request `payload` (its `result` carries the same). A tool with a `select` parameter returns
+only the fields you list (a list of names; an invalid name returns the allowed set).
+Without `select`, such tools omit fields whose value is `null` (empty lists and objects
+stay); request a field in `select` to keep it even when `null`, which tells an unset value
+from one never requested. Tools without `select` keep `null` fields as explicit `null`.
+A paginated tool (its result has a `next_offset` field) always returns `next_offset`, an
+integer or `null`: page until it is `null`. With `select`, a failed batch-read or
+bulk-write item keeps its nested `work_package` / `result` as `null`; read the sibling
+`error`.
 """
 
 

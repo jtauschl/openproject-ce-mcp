@@ -14,6 +14,7 @@ and 0.2.0 the first one published to PyPI.
 
 ### Fixed
 
+- The server instructions fit the 4,096 characters Claude Code reads; the opt-in tool groups and the rule for clearing a field were cut off.
 - Writes that take a work package reference show the resolved work package in `target`, so a misread bare number is visible before `confirm`.
 - `update_work_package` and `bulk_update_work_packages` show the work package a given `parent` resolved to in `parent_target`, before and after `confirm`.
 - `create_project`, `update_project` and `copy_project` show the project a given `parent` resolved to in `parent_target`.
