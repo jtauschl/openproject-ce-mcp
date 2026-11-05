@@ -25,6 +25,7 @@ and 0.2.0 the first one published to PyPI.
   without a message.
 - Descriptions of `update_work_package`, `bulk_update_work_packages` and `update_membership` now state what an empty text does.
 - Work-package tool descriptions and the assignee error no longer point to `list_users`, which needs admin read; assignee ids come from `list_project_memberships`.
+- A project-not-found message names `list_projects` only when that tool is registered.
 
 ### Security
 

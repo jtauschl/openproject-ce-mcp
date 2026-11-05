@@ -150,3 +150,26 @@ def test_the_rejected_assignee_message_names_only_tools_registered_by_default() 
     named = set(_TOOL_NAME.findall(str(raised.value)))
     assert named
     assert named <= _registered(_DEFAULT_FLAGS)
+
+
+def _instruction_paragraphs() -> list[tuple[str, set[str]]]:
+    from openproject_ce_mcp.server import CE_INSTRUCTIONS
+
+    paragraphs = [(text, set(_TOOL_NAME.findall(text))) for text in CE_INSTRUCTIONS.split("\n\n")]
+    return [(text, names) for text, names in paragraphs if names]
+
+
+def test_the_server_instructions_name_registered_tools() -> None:
+    assert all(names <= _ALL for _, names in _instruction_paragraphs())
+
+
+@pytest.mark.parametrize(("text", "names"), _instruction_paragraphs(), ids=lambda value: str(value)[:40])
+def test_a_tool_the_instructions_name_is_registered_by_default_or_comes_with_its_flag(
+    text: str, names: set[str]
+) -> None:
+    unregistered = names - _registered(_DEFAULT_FLAGS)
+    if not unregistered:
+        return
+    env_vars = {group.read_env_var for group in TOOL_GROUPS}
+    flags = set(re.findall(r"OPENPROJECT_ENABLE_[A-Z_]+", text))
+    assert flags and flags <= env_vars, sorted(unregistered)
