@@ -87,7 +87,7 @@ class ProjectResolver:
         if is_numeric_ref(project_ref):
             # OpenProject never allows an all-digit identifier, so this was an id; a name
             # search would substring-match it, e.g. "7" against a project named "Release 2027".
-            raise NotFoundError(f"OpenProject project '{project_ref}' was not found. Call list_projects.")
+            raise NotFoundError(f"OpenProject project '{project_ref}' was not found.{self._list_projects_hint()}")
         return await self._resolve_by_name_record(project_ref, write=write, text_limit=text_limit)
 
     async def _resolve_by_name_record(self, project_ref: str, *, write: bool, text_limit: int | None) -> ProjectRecord:
@@ -140,7 +140,14 @@ class ProjectResolver:
             return await self._resolve_record_uncached(str(substring_matches[0].id), write=write, text_limit=text_limit)
         if len(substring_matches) > 1:
             raise self._ambiguous_error(project_ref, substring_matches, exhausted=True)
-        raise NotFoundError(f"OpenProject project '{project_ref}' was not found. Call list_projects.")
+        raise NotFoundError(f"OpenProject project '{project_ref}' was not found.{self._list_projects_hint()}")
+
+    def _list_projects_hint(self) -> str:
+        return " Call list_projects." if self._list_projects_is_registered() else ""
+
+    def _list_projects_is_registered(self) -> bool:
+        # list_projects is registered only with project read enabled and a non-empty read allowlist.
+        return bool(self._settings.read_enabled("project") and self._settings.read_projects)
 
     def _ambiguous_error(
         self, project_ref: str, candidates: list[ProjectSummary], *, exhausted: bool
@@ -154,5 +161,6 @@ class ProjectResolver:
             suffix = " (additional matches may exist)"
         return InvalidInputError(
             f"OpenProject project '{project_ref}' is ambiguous: {formatted}{suffix}. "
-            f"Use a numeric id or exact identifier, or call list_projects(search='{project_ref}')."
+            "Use a numeric id or exact identifier"
+            + (f", or call list_projects(search='{project_ref}')." if self._list_projects_is_registered() else ".")
         )

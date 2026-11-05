@@ -339,3 +339,48 @@ async def test_non_ascii_digits_are_a_name(name: str) -> None:
 
     assert payload["id"] == 6
     assert api.list_searches == [name[-1]]
+
+
+_PROJECT_READ_SETTINGS = [
+    pytest.param(True, ("*",), id="project-read-on"),
+    pytest.param(False, ("*",), id="project-read-off"),
+    pytest.param(True, (), id="no-read-allowlist"),
+]
+
+
+def _settings_with(project_read: bool, read_projects: tuple[str, ...]):
+    return dataclasses.replace(make_settings(), enable_project_read=project_read, read_projects=read_projects)
+
+
+def _list_projects_is_registered(settings) -> bool:
+    from openproject_ce_mcp.tools import enabled_tool_names
+
+    return "list_projects" in enabled_tool_names(settings)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("project_read", "read_projects"), _PROJECT_READ_SETTINGS)
+@pytest.mark.parametrize("reference", ["7", "nope"], ids=["id", "name"])
+async def test_a_project_not_found_message_names_list_projects_only_when_it_is_registered(
+    reference: str, project_read: bool, read_projects: tuple[str, ...]
+) -> None:
+    settings = _settings_with(project_read, read_projects)
+    resolver = _resolver([], settings=settings)
+
+    with pytest.raises(NotFoundError) as raised:
+        await resolver.resolve(reference)
+
+    assert ("list_projects" in str(raised.value)) is _list_projects_is_registered(settings)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("project_read", [True, False])
+async def test_an_ambiguous_project_message_names_list_projects_only_when_it_is_registered(project_read: bool) -> None:
+    settings = _settings_with(project_read, ("*",))
+    resolver = _resolver([_record(1, "Duplicate"), _record(2, "Duplicate")], settings=settings)
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve("Duplicate")
+
+    assert ("list_projects(search='Duplicate')" in str(raised.value)) is _list_projects_is_registered(settings)
+    assert ("list_projects" in str(raised.value)) is _list_projects_is_registered(settings)

@@ -644,7 +644,7 @@ async def create_work_package(
     """Create a work package.
 
     The tool validates the payload first. description is Markdown; leave off the user-content tags a read adds.
-    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent nests the new work package under that parent.
+    assignee: 'me' or numeric user id (e.g., 42; list_available_assignees returns the valid ones). parent nests the new work package under that parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).
     target_versions accepts a list of version names/ids to assign multiple target versions at once
     (OpenProject's multi-version feature); omit it, or pass [], to create with no target version
@@ -844,7 +844,7 @@ async def update_work_package(
     """Update a work package.
 
     The tool validates the patch first.
-    description is Markdown and replaces the whole text; pass "" to clear it. Leave off the user-content tags a read adds. assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
+    description is Markdown and replaces the whole text; pass "" to clear it. Leave off the user-content tags a read adds. assignee: 'me' or numeric user id (e.g., 42; list_available_assignees returns the valid ones). parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     To add to or change part of a stored description, use description_append (a new paragraph at the end) or
     description_replace ({"old": ..., "new": ...}, "old" must name exactly one passage; whitespace runs may differ):
     both edit the stored text and leave the rest untouched. Pass only one of description, description_append and

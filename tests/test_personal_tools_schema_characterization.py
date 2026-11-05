@@ -43,7 +43,7 @@ def _tools(mcp) -> dict:
 def test_list_notifications_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_notifications"]
     assert tool.description == (
-        "List in-app notifications for the current user.\n\nReading them does not mark them read; use mark_notifications_read for that.\n"
+        "List in-app notifications for the current user.\n\nReading them does not mark them read.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -119,8 +119,7 @@ def test_get_my_preferences_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_my_preferences"]
     assert tool.description == (
         "Return the current user's OpenProject preferences (timezone, sorting, popups, …).\n\n"
-        "Note: language is a User attribute, not a preference -- use update_user's\n"
-        '"language" field to change it.\n'
+        "Note: language is a User attribute, not a preference, so it is not set here.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -138,8 +137,7 @@ def test_update_my_preferences_schema() -> None:
     assert tool.description == (
         "Update the current user's preferences; omitted fields stay unchanged.\n"
         "\n"
-        "Note: language is a User attribute, not a preference -- use update_user's\n"
-        '"language" field to change it.\n'
+        "Note: language is a User attribute, not a preference, so it is not set here.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

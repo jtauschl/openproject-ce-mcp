@@ -1692,7 +1692,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "create_work_package": {
-        "description_hash": "3ac8308dc87efe4a2760d7791ba8f613d6074e9c12fca282dc8973d4b8b10fd2",
+        "description_hash": "eb0ec89d16ddc2c117b7780ce7e5d08803bdb863f635f176c13f4bf194ae3b72",
         "input_schema": {
             "properties": {
                 "project": {
@@ -2992,7 +2992,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEMBERSHIP_READ",),
     },
     "get_my_preferences": {
-        "description_hash": "37468d33b6c5609bb54701b43279038ed6e955e3631f3dc51ade0db7e748203d",
+        "description_hash": "b1215c3c2ec9f14d51069b94a949b79082602ab5234c04afeef82579ee8ce68f",
         "input_schema": {
             "properties": {},
             "title": "get_my_preferencesArguments",
@@ -4251,7 +4251,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ",),
     },
     "list_notifications": {
-        "description_hash": "00231ea5ca4e96146adbad349f0021566946dc72cbba6afffaf87fb0b28322cc",
+        "description_hash": "77182b2dfd8ac5a785fabdafc4055cdb3434e858548c1a59624e4ad2db43aa15",
         "input_schema": {
             "properties": {
                 "unread_only": {
@@ -4828,7 +4828,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
     },
     "list_user_non_working_times": {
-        "description_hash": "163984d7183362fd7c97c60ebb102ae450700c4ff1ae27f687c6d0ce06b3cafd",
+        "description_hash": "0001c5b83dd361e4aae8c763f6f7b2a4ad68c80fde6d8c28e29b8adb62585479",
         "input_schema": {
             "properties": {
                 "user_ref": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "User Ref"},
@@ -6257,7 +6257,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "OPENPROJECT_ENABLE_MEMBERSHIP_READ"),
     },
     "update_my_preferences": {
-        "description_hash": "6f492d9acf80b3237edbaa189b4245b98974f3f4ab1b12f0bdd9eaa7d047a4aa",
+        "description_hash": "937be2b4559088af4c75b40ed27d1ac35b55cec665acad82dfbdd732ac7ba522",
         "input_schema": {
             "properties": {
                 "time_zone": {
@@ -6961,7 +6961,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "f61bdb73ea8196d943fafed444982025dace9e967c50da4799a37f59f8a43817",
+        "description_hash": "d05d93bd5dfad1a20979b61868a43dc8ffdb0eadfb5ad6fd4574e0a65dbb24cf",
         "input_schema": {
             "$defs": {
                 "TextReplace": {

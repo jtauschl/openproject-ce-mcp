@@ -412,7 +412,9 @@ def _validate_optional_user_ref(value: int | str | None, field_name: str = "assi
     if is_numeric_ref(normalized):
         _validate_positive_int(int(normalized), field_name=field_name)
         return normalized
-    raise ValueError(f"{field_name}: 'me' or numeric user id (e.g., 42). Call list_users to find ids.")
+    raise ValueError(
+        f"{field_name}: 'me' or numeric user id (e.g., 42; list_available_assignees returns the valid ones)."
+    )
 
 
 def _validate_optional_user_or_principal_ref(value: int | str | None, *, field_name: str) -> str | None:

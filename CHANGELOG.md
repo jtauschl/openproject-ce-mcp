@@ -122,6 +122,8 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 - `update_meeting` can clear the location: `location=""` empties it instead of being dropped
   without a message.
 - Descriptions of `update_work_package`, `bulk_update_work_packages` and `update_membership` now state what an empty text does.
+- Work-package tool descriptions and the assignee error no longer point to `list_users`, which needs admin read; assignee ids come from `list_project_memberships`.
+- A project-not-found message names `list_projects` only when that tool is registered.
 
 ### Security
 
