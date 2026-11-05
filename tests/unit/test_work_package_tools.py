@@ -84,7 +84,7 @@ async def test_get_work_packages_tool_rejects_unknown_select_field() -> None:
     with pytest.raises(ValueError, match="not a valid WorkPackageDetail field"):
         await get_work_packages(
             FakeContext(StubClient()),  # type: ignore[arg-type]
-            ids=["1"],
+            work_package_ids=["1"],
             select=["bogus"],
         )
 
@@ -101,7 +101,7 @@ async def test_get_work_packages_tool_does_not_forward_select_to_client() -> Non
 
     result = await get_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        ids=["1"],
+        work_package_ids=["1"],
         select=["id", "subject"],
     )
 

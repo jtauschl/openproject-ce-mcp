@@ -69,6 +69,18 @@ and other flags as `true` or `false` (not `"yes"`, `"true"` or `1`), and a
 mistyped argument is rejected with a validation error before anything is sent
 to OpenProject.
 
+Argument names mostly follow one scheme: `<entity>_id` is the one resource a tool acts on
+(`work_package_id`, `version_id`), `<entity>_ids` several of them
+(`work_package_ids`), and the bare entity name is a reference or a filter
+(`project`, `user`, `version`). A project is always `project`. Exceptions: a user
+is `user_id` on the tools that write one (`update_user`, `delete_user`) but `user`
+on `get_user`, and a user reference is `user_ref` on some tools and `user` on
+others; a parent is `parent` on `create_work_package` and `update_work_package`
+but `parent_work_package_id` on `create_subtask`. A rejected unknown argument
+names the closest allowed one, for example `id (did you mean work_package_id?)`,
+and the call is still not sent. No hint is given where several arguments could
+be meant.
+
 Clearing a field: on `update_work_package` and `update_project`, pass the string
 `"none"` to unassign a nullable association instead of changing it —
 work-package `assignee`, `responsible`, `version`, `sprint`, `parent`,

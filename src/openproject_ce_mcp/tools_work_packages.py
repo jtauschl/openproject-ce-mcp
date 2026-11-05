@@ -59,8 +59,10 @@ from .tool_params import (
     Limit,
     Offset,
     OptionalProjectRef,
+    ParentRef,
     ProjectRef,
     WorkPackageRef,
+    WorkPackageRefs,
     select_field,
 )
 from .tool_types import IdOrName
@@ -133,12 +135,11 @@ async def search_work_packages(
     include_sums: bool = False,
     custom_field_filters: dict[str, dict[str, Any]] | None = None,
 ) -> WorkPackageListResult:
-    """Search work packages by free text, optionally scoped to a project.
+    """Search work packages by free text, optionally scoped to a project; to filter without text (version, status, assignee, dates), use list_work_packages.
 
     search matches only the work package subject and numeric ID (OpenProject's
     native subject_or_id full-text filter); it does NOT match version,
-    category, description, or other linked-resource fields. To filter by
-    version, use list_work_packages(version=..., project=...) instead.
+    category, description, or other linked-resource fields.
 
     In parallel with that text/id search, a search shaped like a work package
     reference (a numeric id or a display id like "PROJ-42", but not a date
@@ -508,7 +509,7 @@ async def get_work_package(
 @register_tool
 async def get_work_packages(
     ctx: Context,
-    ids: list[int | str],
+    work_package_ids: WorkPackageRefs,
     text_limit: int | None = None,
     select: Annotated[
         list[str] | None, select_field(WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS)
@@ -519,9 +520,6 @@ async def get_work_packages(
     Fetches work packages in parallel and returns per-item results.
     Failed fetches are reported individually without stopping the batch.
     Maximum 100 IDs per batch.
-
-    ids: internal ids (e.g., 952) or display_ids (e.g., "PROJ-51"),
-    not UI display numbers. Duplicate IDs are automatically deduplicated.
 
     select restricts each result's work_package to the given fields (e.g.
     ["id", "subject", "status"]); an invalid name returns the allowed set.
@@ -543,14 +541,14 @@ async def get_work_packages(
     """
     client = _client_from_context(ctx)
 
-    if not isinstance(ids, list):
-        raise ValueError("ids must be a list")
-    if not ids:
-        raise ValueError("ids list cannot be empty")
+    if not isinstance(work_package_ids, list):
+        raise ValueError("work_package_ids must be a list")
+    if not work_package_ids:
+        raise ValueError("work_package_ids list cannot be empty")
 
     seen = set()
     unique_ids: list[int | str] = []
-    for raw_id in ids:
+    for raw_id in work_package_ids:
         safe_id = _validate_work_package_ref(raw_id)
         normalized = str(safe_id)
         if normalized not in seen:
@@ -632,7 +630,7 @@ async def create_work_package(
     priority: IdOrName | None = None,
     category: IdOrName | None = None,
     custom_fields: dict[str, Any] | None = None,
-    parent: IdOrName | None = None,
+    parent: ParentRef = None,
     start_date: str | None = None,
     due_date: str | None = None,
     estimated_time: str | None = None,
@@ -644,7 +642,7 @@ async def create_work_package(
     """Create a work package.
 
     The tool validates the payload first. description is Markdown; leave off the user-content tags a read adds.
-    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number to nest the new work package under a parent.
+    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent nests the new work package under that parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).
     target_versions accepts a list of version names/ids to assign multiple target versions at once
     (OpenProject's multi-version feature); omit it, or pass [], to create with no target version
@@ -834,7 +832,7 @@ async def update_work_package(
     priority: IdOrName | None = None,
     category: IdOrName | None = None,
     custom_fields: dict[str, Any] | None = None,
-    parent: IdOrName | None = None,
+    parent: ParentRef = None,
     start_date: str | None = None,
     due_date: str | None = None,
     estimated_time: str | None = None,

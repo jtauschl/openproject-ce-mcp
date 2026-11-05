@@ -16,6 +16,7 @@ from mcp.types import Icon, ToolAnnotations
 from pydantic import ConfigDict
 
 from . import http_request_counter, policy_observation
+from .argument_hint import suggest_argument
 from .logging_support import ToolCallLogRecord
 from .tool_errors import ToolInputError
 
@@ -165,9 +166,16 @@ class StrictMCPServer(MCPServer):
             allowed = set(tool.parameters.get("properties", {}).keys())
             unknown = sorted(set(arguments.keys()) - allowed)
             if unknown:
+                required = tool.parameters.get("required", [])
+                hinted = [
+                    f"{key} (did you mean {suggestion}?)"
+                    if (suggestion := suggest_argument(key, allowed, required))
+                    else key
+                    for key in unknown
+                ]
                 message = (
                     f"[VALIDATION_FAILED] Unknown argument(s) for tool "
-                    f"'{name}': {', '.join(unknown)}. "
+                    f"'{name}': {', '.join(hinted)}. "
                     f"Allowed arguments: {', '.join(sorted(allowed))}"
                 )
                 self._emit_dispatch_error_log(name, start, request_id)

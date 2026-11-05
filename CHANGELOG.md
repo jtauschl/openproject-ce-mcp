@@ -22,6 +22,7 @@ to install and discover.
 - List available assignees and relation candidates for work packages.
 - `get_work_package` lists the statuses OpenProject offers the current user for
   a work package when `include_allowed_statuses` is set.
+- A rejected unknown argument names the closest allowed one, e.g. `id (did you mean work_package_id?)`.
 - `update_work_package` and `bulk_update_work_packages` edit a stored description in place with `description_append` and
   `description_replace`.
 - Opt-in `extended` tools list a project's budgets, a version's shared projects, watchable users, movable-to projects
@@ -61,6 +62,7 @@ to install and discover.
   form offers, including the current one.
 - A write rejected for its `version` or `target_versions` lists the versions the form offers within the read scope;
   closed or locked ones cannot be assigned.
+- **Breaking:** `get_work_packages` takes `work_package_ids` instead of `ids`.
 - **Breaking:** each entry of `validation_errors` is an object with `message` and `error_codes`, no longer a string.
 - A rejected request (422) starts its error with OpenProject's error class and attribute, e.g.
   `PropertyConstraintViolation (subject)`.

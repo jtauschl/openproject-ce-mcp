@@ -1689,7 +1689,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "create_work_package": {
-        "description_hash": "916e3913db393f143ffbc00c78d4ceb7ae36b5039f733dc359130d5b1cfa0b86",
+        "description_hash": "3ac8308dc87efe4a2760d7791ba8f613d6074e9c12fca282dc8973d4b8b10fd2",
         "input_schema": {
             "properties": {
                 "project": {
@@ -1758,6 +1758,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "parent": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                     "default": None,
+                    "description": 'Parent work package: id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                     "title": "Parent",
                 },
                 "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Date"},
@@ -3632,10 +3633,15 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
     },
     "get_work_packages": {
-        "description_hash": "5bd30c2c95d31b28d9242560dc0b2cbbeddcd92b4a9ad68df0e38a93158cc7dc",
+        "description_hash": "2b31d5723392b780576c2211cb045aa6a5dd519ec9d8069c2ceca1c21575c035",
         "input_schema": {
             "properties": {
-                "ids": {"items": {"anyOf": [{"type": "integer"}, {"type": "string"}]}, "title": "Ids", "type": "array"},
+                "work_package_ids": {
+                    "description": 'Work package ids (e.g. 952) or display ids (e.g. "PROJ-51"), not the bare number 51. Duplicates are dropped.',
+                    "items": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
+                    "title": "Work Package Ids",
+                    "type": "array",
+                },
                 "text_limit": {
                     "anyOf": [{"type": "integer"}, {"type": "null"}],
                     "default": None,
@@ -3648,7 +3654,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "title": "Select",
                 },
             },
-            "required": ["ids"],
+            "required": ["work_package_ids"],
             "title": "get_work_packagesArguments",
             "type": "object",
             "additionalProperties": False,
@@ -5510,7 +5516,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "search_work_packages": {
-        "description_hash": "d2cb841070311b9b76c2c364111d3422cd706d19df72840cda7e9650755f348b",
+        "description_hash": "707d7ff34cf6b90b834f5d5e857ac82d0f6689c7eb4288e3adbdcce40230cb26",
         "input_schema": {
             "properties": {
                 "search": {"title": "Search", "type": "string"},
@@ -6954,6 +6960,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "parent": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                     "default": None,
+                    "description": 'Parent work package: id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
                     "title": "Parent",
                 },
                 "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Date"},

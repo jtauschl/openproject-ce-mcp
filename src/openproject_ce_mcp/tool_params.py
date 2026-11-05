@@ -41,6 +41,16 @@ BulkConfirm = Annotated[
 _WORK_PACKAGE_REF = 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.'
 WorkPackageRef = Annotated[int | str, Field(description=_WORK_PACKAGE_REF)]
 OptionalWorkPackageRef = Annotated[int | str | None, Field(description=_WORK_PACKAGE_REF)]
+ParentRef = Annotated[
+    int | str | None,
+    Field(description='Parent work package: id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.'),
+]
+WorkPackageRefs = Annotated[
+    list[int | str],
+    Field(
+        description='Work package ids (e.g. 952) or display ids (e.g. "PROJ-51"), not the bare number 51. Duplicates are dropped.'
+    ),
+]
 
 _EXPECT_DISPLAY_ID = 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.'
 ExpectDisplayId = Annotated[str | None, Field(description=_EXPECT_DISPLAY_ID)]
