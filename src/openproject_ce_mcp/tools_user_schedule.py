@@ -59,7 +59,7 @@ async def list_user_non_working_times(
     limit: Limit = None,
 ) -> UserNonWorkingTimeListResult:
     """List a user's per-user non-working-time date ranges (e.g. vacation),
-    distinct from the instance-wide non-working days (list_non_working_days).
+    distinct from the instance-wide non-working days.
 
     Requires OpenProject 17.3+ (feature-flag-gated through 17.6, generally
     available from 17.7). On an older server, or on 17.3 to 17.6 with the

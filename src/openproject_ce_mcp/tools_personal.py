@@ -44,7 +44,7 @@ async def list_notifications(
 ) -> NotificationListResult:
     """List in-app notifications for the current user.
 
-    Reading them does not mark them read; use mark_notifications_read for that.
+    Reading them does not mark them read.
     """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
@@ -76,8 +76,7 @@ async def mark_notifications_read(
 async def get_my_preferences(ctx: Context) -> UserPreferences:
     """Return the current user's OpenProject preferences (timezone, sorting, popups, …).
 
-    Note: language is a User attribute, not a preference -- use update_user's
-    "language" field to change it.
+    Note: language is a User attribute, not a preference, so it is not set here.
     """
     client = _client_from_context(ctx)
     return await _run_tool(client.user_preferences.get())
@@ -96,8 +95,7 @@ async def update_my_preferences(
 ) -> UserPreferencesWriteResult:
     """Update the current user's preferences; omitted fields stay unchanged.
 
-    Note: language is a User attribute, not a preference -- use update_user's
-    "language" field to change it.
+    Note: language is a User attribute, not a preference, so it is not set here.
     """
     client = _client_from_context(ctx)
     return await _run_tool(
