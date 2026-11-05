@@ -80,8 +80,6 @@ async def create_work_package_relation(
     assuming they match what you requested.
     The result names the work packages the two references resolved to in `target` (work_package_id)
     and `related_target` (related_to_work_package_id).
-    expect_display_id and expect_related_display_id name the tickets you mean for the two references and make a
-    mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)

@@ -411,8 +411,6 @@ async def create_meeting_agenda_item(
 
     Requires OpenProject 17.6+. Rejected while the meeting is closed. For a work package, its project must be
     inside OPENPROJECT_WRITE_PROJECTS. To record a result of a discussed item use create_meeting_outcome.
-    When a work package is given, the result names the work package it resolved to in `target`, and
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_meeting_id = _validate_positive_int(meeting_id, field_name="meeting_id")
@@ -465,8 +463,6 @@ async def update_meeting_agenda_item(
 
     Requires OpenProject 17.6+. Rejected while the meeting is closed. Each confirmed update also updates the
     meeting's own timestamp. Outcomes of the item are changed with update_meeting_outcome.
-    When a work package is given, the result names the work package it resolved to in `target`, and
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
@@ -580,8 +576,6 @@ async def create_meeting_outcome(
     with an internal server error rather than a clean validation error).
     "information"-kind outcomes require notes; "work_package"-kind outcomes
     require work_package_id.
-    When a work package is given, the result names the work package it resolved to in `target`, and
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_agenda_item_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
@@ -619,8 +613,6 @@ async def update_meeting_outcome(
     (OpenProject's real enum values, not e.g. "info" or "action", which
     OpenProject rejects with an internal server error rather than a clean
     validation error).
-    When a work package is given, the result names the work package it resolved to in `target`, and
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")

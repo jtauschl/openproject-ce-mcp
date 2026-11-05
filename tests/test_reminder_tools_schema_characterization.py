@@ -63,7 +63,7 @@ def test_create_work_package_reminder_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_work_package_reminder"]
     assert (
         tool.description
-        == "Create a reminder on a work package.\n\n`remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one\nactive reminder per work package is allowed; creating a second one fails.\nRequires OpenProject 16.1+.\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\nThe result names the work package the reference resolved to in `target`.\n"
+        == "Create a reminder on a work package.\n\n`remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one\nactive reminder per work package is allowed; creating a second one fails.\nRequires OpenProject 16.1+.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

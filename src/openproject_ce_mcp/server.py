@@ -27,7 +27,6 @@ CE_INSTRUCTIONS = """\
 # OpenProject Community Edition MCP
 
 This server wraps one **OpenProject Community Edition (CE)** instance over REST API v3.
-Community Edition, not Enterprise: plan accordingly.
 
 ## Not creatable or modifiable via the API (do not attempt)
 
@@ -50,8 +49,7 @@ that is exactly one wrapped text loses the pair.
 
 `list_capabilities` / `get_instance_configuration` report per-user *action grants* and
 feature flags: informational, **not** the source of truth. A missing capability does **not**
-make an operation impossible. **The registered MCP tools are the authority**: a registered
-tool is allowed.
+make an operation impossible. **The registered MCP tools are the authority.**
 
 ## Clearing an assigned field
 
@@ -64,12 +62,13 @@ fields (type, status, subject, project) cannot be cleared.
 
 A bare number is the internal id; `PROJ-51` is another ticket. On an instance with display
 ids, a write that takes a work package refuses a bare-number id unless `expect_display_id`
-names the ticket you mean, in preview and in confirm; a display id as the id needs no
-expectation. A value that does not name the resolved work package is refused. While the
-`display_id` field is hidden the guard is off and `expect_display_id` is refused. A parent
-follows the same rule with `expect_parent_display_id`, the related work package of
-`create_work_package_relation` with `expect_related_display_id`. An expectation with
-nothing to check is refused.
+names the ticket you mean as a display id (preview and confirm); a display id as the id
+needs none. An expectation naming another ticket or no reference is refused. While
+`display_id` is hidden the guard is off and every expectation is refused. A parent takes
+`expect_parent_display_id`, a relation's other end `expect_related_display_id`. A write
+echoes the work package it names in `target` (a work-package create: its parent), an
+update's parent in `parent_target`, a relation's other end in `related_target`: check
+before `confirm`.
 
 ## Some tool groups are opt-in
 

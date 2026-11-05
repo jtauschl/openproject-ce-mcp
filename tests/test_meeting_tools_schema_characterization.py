@@ -392,7 +392,7 @@ def test_create_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_meeting_agenda_item"]
     assert (
         tool.description
-        == "Add an item to a meeting's agenda.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. For a work package, its project must be\ninside OPENPROJECT_WRITE_PROJECTS. To record a result of a discussed item use create_meeting_outcome.\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n"
+        == "Add an item to a meeting's agenda.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. For a work package, its project must be\ninside OPENPROJECT_WRITE_PROJECTS. To record a result of a discussed item use create_meeting_outcome.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -469,7 +469,7 @@ def test_update_meeting_agenda_item_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_meeting_agenda_item"]
     assert (
         tool.description
-        == "Update one agenda item of a meeting; omitted fields stay unchanged.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. Each confirmed update also updates the\nmeeting's own timestamp. Outcomes of the item are changed with update_meeting_outcome.\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n"
+        == "Update one agenda item of a meeting; omitted fields stay unchanged.\n\nRequires OpenProject 17.6+. Rejected while the meeting is closed. Each confirmed update also updates the\nmeeting's own timestamp. Outcomes of the item are changed with update_meeting_outcome.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -638,7 +638,7 @@ def test_create_meeting_outcome_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_meeting_outcome"]
     assert (
         tool.description
-        == 'Create a meeting outcome on an agenda item.\n\nRequires OpenProject 17.6+.\n\nkind must be one of "information", "decision", "work_package" (OpenProject\'s\nreal enum values, not e.g. "info" or "action", which OpenProject rejects\nwith an internal server error rather than a clean validation error).\n"information"-kind outcomes require notes; "work_package"-kind outcomes\nrequire work_package_id.\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n'
+        == 'Create a meeting outcome on an agenda item.\n\nRequires OpenProject 17.6+.\n\nkind must be one of "information", "decision", "work_package" (OpenProject\'s\nreal enum values, not e.g. "info" or "action", which OpenProject rejects\nwith an internal server error rather than a clean validation error).\n"information"-kind outcomes require notes; "work_package"-kind outcomes\nrequire work_package_id.\n'
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -685,7 +685,7 @@ def test_update_meeting_outcome_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_meeting_outcome"]
     assert (
         tool.description
-        == 'Update a meeting outcome.\n\nRequires OpenProject 17.6+.\n\nkind, if given, must be one of "information", "decision", "work_package"\n(OpenProject\'s real enum values, not e.g. "info" or "action", which\nOpenProject rejects with an internal server error rather than a clean\nvalidation error).\nWhen a work package is given, the result names the work package it resolved to in `target`, and\nexpect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.\n'
+        == 'Update a meeting outcome.\n\nRequires OpenProject 17.6+.\n\nkind, if given, must be one of "information", "decision", "work_package"\n(OpenProject\'s real enum values, not e.g. "info" or "action", which\nOpenProject rejects with an internal server error rather than a clean\nvalidation error).\n'
     )
     assert tool.output_schema is None
     assert tool.parameters == {

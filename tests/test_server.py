@@ -60,6 +60,79 @@ def test_ce_instructions_are_not_duplicated_into_any_tool_description() -> None:
     assert offenders == []
 
 
+def _naming_section() -> str:
+    text = server.CE_INSTRUCTIONS
+    start = text.index("## Naming the work package in a write")
+    return text[start : text.index("\n## ", start + 1)]
+
+
+def _expect_parameter_names() -> set[str]:
+    """Every `expect_*` parameter of a registered tool and of a bulk item type, from the registry and not a list."""
+    import inspect
+    from typing import get_type_hints
+
+    from typing_extensions import is_typeddict
+
+    from openproject_ce_mcp import tool_params, tools_runtime
+
+    names = {
+        parameter
+        for function in tools_runtime._TOOL_FUNCTIONS.values()
+        for parameter in inspect.signature(function).parameters
+        if parameter.startswith("expect_")
+    }
+    for value in vars(tool_params).values():
+        if inspect.isclass(value) and is_typeddict(value) and value.__module__ == tool_params.__name__:
+            names |= {key for key in get_type_hints(value) if key.startswith("expect_")}
+    return names
+
+
+def test_the_instructions_state_the_display_id_guard_and_what_target_holds() -> None:
+    section = " ".join(_naming_section().split())
+    expected = _expect_parameter_names()
+    assert expected == {"expect_display_id", "expect_parent_display_id", "expect_related_display_id"}
+    for name in expected:
+        assert f"`{name}`" in section
+    assert "`target` (a work-package create: its parent)" in section
+    assert "an update's parent in `parent_target`" in section
+    assert "a relation's other end in `related_target`" in section
+
+
+def _all_descriptions(node: object) -> list[str]:
+    if isinstance(node, dict):
+        own = [node["description"]] if isinstance(node.get("description"), str) else []
+        return [*own, *(text for value in node.values() for text in _all_descriptions(value))]
+    if isinstance(node, list):
+        return [text for value in node for text in _all_descriptions(value)]
+    return []
+
+
+def test_no_description_points_to_the_instructions_except_the_three_shared_expectation_parameters() -> None:
+    import re
+
+    from openproject_ce_mcp import tool_params
+
+    shared = {
+        tool_params._EXPECT_DISPLAY_ID,
+        tool_params._EXPECT_RELATED_DISPLAY_ID,
+        tool_params._EXPECT_PARENT_DISPLAY_ID,
+    }
+    pointer = re.compile(r"see\s+the\s+server\s+instructions", re.IGNORECASE)
+    settings = make_settings(
+        **{group.read_attr: True for group in TOOL_GROUPS},
+        **{group.write.attr: True for group in TOOL_GROUPS if group.write is not None},
+        read_projects=("*",),
+        write_projects=("*",),
+        attachment_root="/tmp",
+    )
+    offenders = []
+    for tool in create_app(settings)._tool_manager.list_tools():
+        for text in [tool.description or "", *_all_descriptions(tool.parameters)]:
+            if pointer.search(text) and text not in shared:
+                offenders.append(tool.name)
+    assert offenders == []
+
+
 # Claude Code cuts server instructions after 4,096 characters and the model sees only the text before the cut
 # (https://code.claude.com/docs/en/mcp, "For MCP server authors"; verified live on 2.1.311).
 CLIENT_INSTRUCTIONS_LIMIT = 4096

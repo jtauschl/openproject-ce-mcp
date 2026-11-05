@@ -212,8 +212,6 @@ async def create_work_package_attachment(
     The preview checks that the file exists inside OPENPROJECT_ATTACHMENT_ROOT, is not a credential or
     configuration file, and fits OpenProject's maximum attachment size. For wiki pages, forum posts, meetings
     or comments use create_container_attachment.
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
-    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_work_package_id = _validate_work_package_ref(work_package_id)

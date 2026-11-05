@@ -54,8 +54,6 @@ async def create_work_package_reminder(
     `remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one
     active reminder per work package is allowed; creating a second one fails.
     Requires OpenProject 16.1+.
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
-    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)

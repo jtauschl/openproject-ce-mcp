@@ -92,6 +92,8 @@ to install and discover.
 - `update_work_package`, `update_project`, `update_version`, `update_document`, `update_news` and
   `update_work_package_comment` refuse a full text that holds a truncated read copy ending in `…`.
 - The preview and result of a change to a stored long text state its length before and after.
+- The display-id guard and the `target` fields are described once in the server instructions, not in each tool;
+  the tool catalog shrinks by 500 to 700 tokens.
 
 ### Removed
 

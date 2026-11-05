@@ -166,8 +166,6 @@ async def create_time_entry(
     tracking of start and end times"; ignored otherwise. No end_time parameter --
     OpenProject derives it read-only from start_time + hours. Use
     create_time_entry_until to specify an end time instead of hours directly.
-    When a work package is given, the result names the work package it resolved to in `target`, and
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_ref(activity, field_name="activity", max_length=100)
@@ -273,8 +271,6 @@ async def create_time_entry_until(
     start_time. There is no ongoing parameter here -- a time entry with a
     known end time is complete, not still running; use create_time_entry for
     an ongoing entry.
-    When a work package is given, the result names the work package it resolved to in `target`, and
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_ref(activity, field_name="activity", max_length=100)

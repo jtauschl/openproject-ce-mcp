@@ -659,8 +659,6 @@ async def create_work_package(
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
     and `error_codes` (OpenProject's error classes, the same in every language).
-    When a parent is given, the result names the work package it resolved to in `target`, and
-    expect_parent_display_id names the parent you mean and makes a mismatch an error; see the server instructions.
     If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in
     server completion order, not call order; use bulk_create_work_packages instead when relative
     ID/creation order across a batch matters.
@@ -867,10 +865,7 @@ async def update_work_package(
     omit percentage_done and let OpenProject derive it instead.
     due_date's non-working-day shift and the confirm/preview contract work exactly as documented
     on create_work_package.
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
-    The result names the work package the reference resolved to in `target`.
-    When `parent` is given, `parent_target` names the work package it resolved to, and
-    expect_parent_display_id names the parent you mean and makes a mismatch an error.
+    When `parent` is given, `parent_target` names the work package it resolved to.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -976,7 +971,7 @@ async def bulk_create_work_packages(
     `assignee`, `responsible`, `priority`, `category`,
     `custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching
     `create_work_package`'s naming; do not specify both on the same item), `expect_parent_display_id`
-    (the parent you mean, see the server instructions; a refused item is reported in its `error`),
+    (the parent you mean; a refused item is reported in its `error`),
     `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
     (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'). An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
@@ -1127,10 +1122,9 @@ async def bulk_update_work_packages(
     `parent`, an alias for the same field, matching `update_work_package`'s naming; do not specify
     both on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,
     `remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear
-    one of these), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean, see
-    the server instructions; a refused item is reported in its `error`), `expect_parent_display_id` (the parent
-    you mean, same rules). Pass 'none' to `version`, `sprint`,
-    `project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to
+    one of these), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean; a refused
+    item is reported in its `error`), `expect_parent_display_id` (the parent you mean, same rules). Pass 'none'
+    to `version`, `sprint`, `project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to
     clear that field on the item, same as `update_work_package`. An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
     Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
@@ -1252,8 +1246,6 @@ async def delete_work_package(
 
     This cannot be undone. Up to 17.6 all its descendants are deleted too; 17.7+ only those you may delete,
     the others lose their parent.
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
-    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1294,8 +1286,6 @@ async def create_subtask(
     data and cannot be used together in one call.
     observed_in_versions accepts a list of version names/ids recording where a bug was observed
     (OpenProject 17.9+, types with the attribute enabled); pass [] to clear.
-    expect_parent_display_id names the parent you mean and makes a mismatch an error; see the server instructions.
-    The result names the parent work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
@@ -1364,8 +1354,6 @@ async def add_work_package_comment(
     write response omits it, a best-effort follow-up lookup fills it in; if
     that also comes back empty, `user` stays null even though the comment was
     saved successfully.
-    expect_display_id names the ticket you mean and makes a mismatch an error; see the server instructions.
-    The result names the work package the reference resolved to in `target`.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
