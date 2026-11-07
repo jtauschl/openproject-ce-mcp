@@ -67,6 +67,8 @@ from .tools_validation import (
 
 _NEWS_ID = "Numeric news id, as returned by list_news."
 _TITLE = "At most 255 characters."
+# OpenProject rejects a longer news summary (app/models/news.rb: `validates :summary, length: { maximum: 255 }`).
+_NEWS_SUMMARY_MAX = 255
 
 
 @register_tool
@@ -207,7 +209,9 @@ async def create_news(
     ctx: Context,
     project: ProjectRef,
     title: Annotated[str, Field(description=_TITLE)],
-    summary: Annotated[str | None, Field(description="Short plain text, at most 500 characters.")] = None,
+    summary: Annotated[
+        str | None, Field(description=f"Short plain text, at most {_NEWS_SUMMARY_MAX} characters.")
+    ] = None,
     description: Annotated[str | None, Field(description="Full text in Markdown.")] = None,
     confirm: Confirm = False,
 ) -> NewsWriteResult:
@@ -215,7 +219,7 @@ async def create_news(
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_title = _validate_required_query(title, field_name="title", max_length=255)
-    safe_summary = _validate_optional_text(summary, field_name="summary", max_length=500)
+    safe_summary = _validate_optional_text(summary, field_name="summary", max_length=_NEWS_SUMMARY_MAX)
     safe_description = _validate_optional_text(description, field_name="description", max_length=None)
     return await _run_tool(
         client.news.create(
@@ -233,7 +237,9 @@ async def update_news(
     ctx: Context,
     news_id: Annotated[int, Field(description=_NEWS_ID)],
     title: Annotated[str | None, Field(description=_TITLE)] = None,
-    summary: Annotated[str | None, Field(description='Short plain text, at most 500 characters; "" clears it.')] = None,
+    summary: Annotated[
+        str | None, Field(description=f'Short plain text, at most {_NEWS_SUMMARY_MAX} characters; "" clears it.')
+    ] = None,
     description: Annotated[str | None, Field(description='Full text in Markdown; "" clears it.')] = None,
     confirm: Confirm = False,
 ) -> NewsWriteResult:
@@ -241,7 +247,7 @@ async def update_news(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(news_id, field_name="news_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
-    safe_summary = _validate_optional_update_text(summary, field_name="summary", max_length=500)
+    safe_summary = _validate_optional_update_text(summary, field_name="summary", max_length=_NEWS_SUMMARY_MAX)
     safe_description = _validate_optional_update_text(description, field_name="description", max_length=None)
     _require_at_least_one(
         safe_title, safe_summary, safe_description, message="At least one field to update is required."
