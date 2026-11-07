@@ -611,7 +611,7 @@ async def create_work_package(
 
     The tool validates the payload first.
     assignee: 'me' or numeric user id (e.g., 42; the principal_id of a list_project_memberships row for the project). parent: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number to nest the new work package under a parent.
-    estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).
+    estimated_time and remaining_time accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours). A day in a duration string is 24 hours, so write 'PT8H' for a working day. duration counts whole days (e.g., 'P1D', 'P2W'); OpenProject rejects less than one day.
     target_versions accepts a list of version names/ids to assign multiple target versions at once
     (OpenProject's multi-version feature); omit it, or pass [], to create with no target version
     assigned. target_versions and version write the same underlying data and cannot be used together
@@ -794,7 +794,7 @@ async def update_work_package(
     A change of version, target_versions, sprint or a version custom field is refused while the work
     package holds such an assignment in a project OPENPROJECT_READ_PROJECTS does not cover, because the
     change would remove it.
-    estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day); omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.
+    estimated_time and remaining_time accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours). A day in a duration string is 24 hours, so write 'PT8H' for a working day. duration counts whole days (e.g., 'P1D', 'P2W'); OpenProject rejects less than one day. Omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.
     Setting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you
     don't supply them explicitly and OpenProject's schema reports those fields as writable (on instances
     using status-based progress calculation, OpenProject already derives them itself and this is skipped).
@@ -897,8 +897,8 @@ async def bulk_create_work_packages(
     `assignee`, `responsible`, `priority`, `category`,
     `custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching
     `create_work_package`'s naming; do not specify both on the same item), `start_date`
-    (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
-    (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'). An item containing any other key is
+    (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`
+    (ISO8601 duration strings, e.g. 'PT8H' or 'PT1H30M'), `duration` (whole days, e.g. 'P1D'). An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
     due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
     next working day by OpenProject; compare the request and the returned item's
@@ -1025,7 +1025,7 @@ async def bulk_update_work_packages(
     `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id` (or
     `parent`, an alias for the same field, matching `update_work_package`'s naming; do not specify
     both on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,
-    `remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear
+    `remaining_time` (ISO8601 duration strings, e.g. 'PT8H' or 'PT1H30M'), `duration` (whole days, e.g. 'P1D'; pass 'none' to clear
     one of these), `percentage_done` (integer 0-100). Pass 'none' to `version`, `sprint`,
     `project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to
     clear that field on the item, same as `update_work_package`. An item containing any other key is
