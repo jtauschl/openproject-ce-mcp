@@ -432,6 +432,7 @@ def test_create_work_package_schema() -> None:
             "custom_fields": {
                 "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
                 "default": None,
+                "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
                 "title": "Custom Fields",
             },
             "parent": {
@@ -560,6 +561,7 @@ def test_update_work_package_schema() -> None:
             "custom_fields": {
                 "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
                 "default": None,
+                "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
                 "title": "Custom Fields",
             },
             "parent": {
@@ -678,6 +680,7 @@ def test_bulk_create_work_packages_schema() -> None:
                     },
                     "custom_fields": {
                         "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                        "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
                         "title": "Custom Fields",
                     },
                     "parent": {"anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}], "title": "Parent"},
@@ -777,6 +780,7 @@ def test_bulk_update_work_packages_schema() -> None:
                     },
                     "custom_fields": {
                         "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                        "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
                         "title": "Custom Fields",
                     },
                     "parent": {"anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}], "title": "Parent"},
@@ -909,6 +913,7 @@ def test_create_subtask_schema() -> None:
             "custom_fields": {
                 "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
                 "default": None,
+                "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
                 "title": "Custom Fields",
             },
             "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Date"},

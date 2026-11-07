@@ -14,6 +14,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from . import project_columns
 from .config import TEXT_LIMIT_MAX
 from .models import SortCriterion
 from .sort_criteria import parse_sort_by
@@ -200,7 +201,7 @@ _CF_FILTER_KEY_PATTERN = re.compile(r"^(cf_|customField)([1-9]\d*)$", re.ASCII)
 # unambiguous), while an operator that IS in the union but illegal for the
 # specific field's format is left to OpenProject's own validation (a clean
 # 400, mapped to InvalidInputError by app/transport/errors.py) -- see
-# work_package_service.py's _apply_custom_field_filters for the format-aware
+# _custom_field_filters.py's append_custom_field_filters for the format-aware
 # part of this split.
 _CF_FILTER_OPERATOR_SYMBOLS = frozenset(
     {
@@ -246,7 +247,7 @@ def _validate_custom_field_filters(
     module (see _validate_optional_custom_fields): per-field format/operator
     legality and OPENPROJECT_HIDE_CUSTOM_FIELDS rejection both require
     Settings and/or format knowledge this layer does not have, and happen in
-    work_package_service.py's _apply_custom_field_filters instead.
+    _custom_field_filters.py's append_custom_field_filters instead.
     """
     if value is None:
         return None
@@ -724,6 +725,24 @@ def _validate_sort_by(values: list[str] | None) -> list[SortCriterion] | None:
                 f"Valid fields are: {_describe_valid_fields(SORTABLE_FIELDS)}."
             )
 
+    return criteria or None
+
+
+def _validate_project_sort_by(values: list[str] | None) -> list[SortCriterion] | None:
+    """Parse sort_by of the project list into SortCriterion objects, each field checked against the
+    sortable project columns. Returns None for None or an empty list."""
+    if values is None:
+        return None
+    if not isinstance(values, list):
+        raise ValueError("sort_by must be a list of strings")
+    criteria = parse_sort_by(values, field_name="sort_by")
+    for i, criterion in enumerate(criteria):
+        if not project_columns.is_sortable(criterion.field):
+            raise ValueError(
+                f"sort_by[{i}]: unknown field '{criterion.field}'. Valid fields are: "
+                f"{', '.join(sorted(project_columns.SORTABLE_FIELDS))}, a custom field's cf_<id> identifier, "
+                "or project_phase_<id>."
+            )
     return criteria or None
 
 

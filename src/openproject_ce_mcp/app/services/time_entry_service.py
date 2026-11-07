@@ -524,6 +524,8 @@ class TimeEntryService:
         parsed = self._api.parse_form_result(form)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="time_entry",
+            settings=self._settings,
             payload=parsed.payload,
             validation_errors=parsed.validation_errors,
             identity={"time_entry_id": None, "project": project_name},
@@ -574,6 +576,8 @@ class TimeEntryService:
         parsed = self._api.parse_form_result(form)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="time_entry",
+            settings=self._settings,
             payload=parsed.payload,
             validation_errors=parsed.validation_errors,
             identity={"time_entry_id": time_entry_id, "project": project_name},

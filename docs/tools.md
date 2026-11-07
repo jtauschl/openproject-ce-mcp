@@ -107,18 +107,18 @@ default tool set and save context.
 
 | Tool | Description |
 | --- | --- |
-| `list_projects` | List visible projects with an optional name/identifier filter |
-| `get_project` | Fetch a compact project summary by id, identifier or name |
+| `list_projects` | List visible projects with an optional name/identifier filter, `custom_field_filters` and `sort_by` on project attributes (`cf_<N>`, see [filters.md](filters.md#project-attributes)); each row carries the project attributes the token may see as `custom_fields` |
+| `get_project` | Fetch a compact project summary by id, identifier or name, including the project attributes (`custom_fields`, and from OpenProject 17.2 `custom_comments`) the token may see |
 | `get_project_admin_context` | Return project admin metadata such as lifecycle statuses, parent project options, and writable fields |
 | `get_project_configuration` | Return project-scoped configuration such as internal comment support |
 | `list_sprints` | List Backlogs sprints (requires Backlogs/OpenProject 17.3+), with an optional project filter and name search filter — omit `project` to list every sprint visible to the current token, or pass it to list only that project's sprints |
 | `get_sprint` | Fetch a Backlogs sprint by id (requires OpenProject 17.3+) |
 | `list_backlog_buckets` | List Backlogs backlog buckets (requires Backlogs/OpenProject 17.6+), with an optional project filter and name search filter — omit `project` to list every backlog bucket visible to the current token, or pass it to list only that project's backlog buckets |
 | `get_backlog_bucket` | Fetch a Backlogs backlog bucket by id (requires OpenProject 17.6+) |
-| `create_project` | Validate and then create a project; only writes when called again with `confirm=true` |
-| `copy_project` | Validate and then copy an existing project into a new project; only starts the copy job when called again with `confirm=true` |
+| `create_project` | Validate and then create a project, with `custom_fields` for project attributes; only writes when called again with `confirm=true` |
+| `copy_project` | Validate and then copy an existing project into a new project, with `custom_fields` for project attributes (not their comments: OpenProject fails a copy that names one); only starts the copy job when called again with `confirm=true` |
 | `get_job_status` | Fetch the current status of a background job such as project copy |
-| `update_project` | Validate and then update a project; only writes when called again with `confirm=true` |
+| `update_project` | Validate and then update a project, with `custom_fields` for project attributes; only writes when called again with `confirm=true` |
 | `delete_project` | Validate and then delete a project; only deletes when called again with `confirm=true` |
 | `set_project_favorite` | Validate and then mark or unmark a project as a favorite (OpenProject 17.0+), based on `favorite`; only writes when called again with `confirm=true` |
 | `get_instance_configuration` | Return instance-level OpenProject configuration and active feature flags |

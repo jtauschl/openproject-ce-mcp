@@ -262,6 +262,8 @@ class BoardService:
         identity_project = form.payload.get("_links", {}).get("project", {}).get("title")
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="board",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"board_id": None, "project": identity_project},
@@ -326,6 +328,8 @@ class BoardService:
         identity_project = form.payload.get("_links", {}).get("project", {}).get("title") or current.summary.project
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="board",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"board_id": board_id, "project": identity_project},

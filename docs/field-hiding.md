@@ -32,6 +32,21 @@ orders or labels by a hidden field (`version` and `target_versions` close togeth
 `estimated_time`, `remaining_time`, `percentage_done` and of a hidden custom field. Without
 this, the values would show up one query at a time.
 
+A hidden custom field column is closed the same way: with `custom_fields` named in the entity's
+hide setting, or the field matched by `OPENPROJECT_HIDE_CUSTOM_FIELDS`, a `cf_<N>` entry in
+`sort_by`, `group_by` or `custom_field_filters` is refused on work packages and projects. Naming
+`custom_fields` in `OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS` or `OPENPROJECT_HIDE_PROJECT_FIELDS` also
+refuses writes to `custom_fields` on that entity.
+
+## Project attributes
+
+Project custom fields (project attributes) follow the same rules as work package custom fields:
+`OPENPROJECT_HIDE_PROJECT_FIELDS` naming `custom_fields` or `custom_comments` hides the whole dict,
+and `OPENPROJECT_HIDE_CUSTOM_FIELDS` removes single entries by the raw `customField<N>` key (with its
+`customComment<N>` entry; a comment is judged by its field's key, so it goes even when the value is not in the result). `get_project_admin_context` leaves out the definitions of hidden attributes. The preview and result `payload` of every write that shows a form payload (projects, work packages, versions, users, time entries and the rest) leave out hidden values the form echoes back. A validation error on a hidden key keeps the key and replaces its message, so a rejected write does not name the hidden field's title or value. Like every read-side hide, this follows the raw key: a pattern written as a friendly name refuses writes by that name but does not redact (see below).
+A version-valued attribute that points to a version outside `OPENPROJECT_READ_PROJECTS` reads as
+`null`, and `update_project` refuses a write that would replace such a hidden value.
+
 ## Custom fields: a read/write asymmetry
 
 `OPENPROJECT_HIDE_CUSTOM_FIELDS` behaves differently on reads than on writes:

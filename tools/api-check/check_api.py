@@ -85,6 +85,7 @@ _WP_REPRESENTER = "lib/api/v3/work_packages/work_package_representer.rb"
 _USER_REPRESENTER = "lib/api/v3/users/user_representer.rb"
 _VERSION_REPRESENTER = "lib/api/v3/versions/version_representer.rb"
 _MEMBERSHIP_REPRESENTER = "lib/api/v3/memberships/membership_representer.rb"
+_PROJECT_ORDERS = "app/models/queries/projects/orders"
 
 ASSUMPTIONS: list[Assumption] = [
     # --- Endpoint paths the client builds (checked against the path helper) ---
@@ -233,6 +234,61 @@ ASSUMPTIONS: list[Assumption] = [
         "associated_resource_default_setter(:sprint, :sprint, :sprint)",
         subtree="modules/backlogs/lib/open_project/backlogs/patches/api/work_package_representer.rb",
         present_from="17.3",
+    ),
+    # --- Project list: the sort keys of project_columns.py and the custom field filter and sort. Each order
+    # is checked at the key it registers, not just at its file.
+    Assumption(
+        "project id/identifier/created_at/public/lft sort keys",
+        "field",
+        "id|identifier|created_at|public|lft",
+        subtree=f"{_PROJECT_ORDERS}/default_order.rb",
+    ),
+    Assumption("project name sort key", "field", ":name", subtree=f"{_PROJECT_ORDERS}/name_order.rb"),
+    Assumption(
+        "project latest_activity_at sort key",
+        "field",
+        ":latest_activity_at",
+        subtree=f"{_PROJECT_ORDERS}/latest_activity_at_order.rb",
+    ),
+    Assumption(
+        "project project_status sort key",
+        "field",
+        ":project_status",
+        subtree=f"{_PROJECT_ORDERS}/project_status_order.rb",
+    ),
+    Assumption(
+        "project required_disk_space sort key",
+        "field",
+        ":required_disk_space",
+        subtree=f"{_PROJECT_ORDERS}/required_disk_space_order.rb",
+    ),
+    Assumption("project typeahead sort key", "field", ":typeahead", subtree=f"{_PROJECT_ORDERS}/typeahead_order.rb"),
+    Assumption(
+        "project project_phase_<id> sort key",
+        "field",
+        "project_phase_",
+        subtree=f"{_PROJECT_ORDERS}/project_phase_order.rb",
+    ),
+    Assumption("project cf_<id> sort key", "field", "cf_", subtree=f"{_PROJECT_ORDERS}/custom_field_order.rb"),
+    Assumption(
+        "project cf_<id> sort excludes text fields",
+        "field",
+        "EXCLUDED_CUSTOM_FIELD_TYPES = %w[text]",
+        subtree=f"{_PROJECT_ORDERS}/custom_field_order.rb",
+    ),
+    # updated_at is the one project sort key with a floor (COLUMN_FLOORS in project_columns.py).
+    Assumption(
+        "project updated_at sort key", "field", "updated_at_order.rb", subtree=_PROJECT_ORDERS, present_from="16.5"
+    ),
+    Assumption(
+        "project custom field filter", "filter", "custom_field_filter.rb", subtree="app/models/queries/projects/filters"
+    ),
+    # Project attributes: the copy form carries them, and a project attribute can have a comment from 17.2.
+    Assumption(
+        "project copy form endpoint", "path", "resource :form", subtree="lib/api/v3/projects/copy/create_form_api.rb"
+    ),
+    Assumption(
+        "project attribute comments", "field", "comments: true", subtree="app/models/project.rb", present_from="17.2"
     ),
 ]
 

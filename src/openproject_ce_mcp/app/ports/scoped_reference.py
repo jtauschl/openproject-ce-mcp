@@ -8,7 +8,7 @@ title instead of leaking it.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Iterable
+from collections.abc import Awaitable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -37,7 +37,7 @@ def reference_of_link(link: Any, links: ResourceLinks) -> ScopedReference | None
 
 
 class VisibleReferences:
-    """The references a result may name. Built only by `_work_package_references`, which makes the
+    """The references a result may name. Built only by `_scoped_references`, which makes the
     decision; the adapters receive it and keep a title only if it contains the reference."""
 
     __slots__ = ("_visible",)
@@ -55,6 +55,15 @@ class VisibleReferences:
 
     def contains(self, reference: ScopedReference) -> bool:
         return self._visible is None or reference in self._visible
+
+
+class ScopedRecord(Protocol):
+    """A record whose presentation needs a decision on its references: `references` maps the result field
+    that shows a reference (`version`, `sprint`, `customField<N>`, ...) to the references it names, so a field
+    a hide setting removes costs no lookup."""
+
+    @property
+    def references(self) -> Mapping[str, frozenset[ScopedReference]]: ...
 
 
 class ScopedReferencesAllowedBulkCheck(Protocol):

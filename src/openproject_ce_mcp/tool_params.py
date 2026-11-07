@@ -64,7 +64,7 @@ class BulkCreateWorkPackageItem(TypedDict, total=False):
     responsible: IdOrName | None
     priority: IdOrName | None
     category: IdOrName | None
-    custom_fields: dict[str, Any] | None
+    custom_fields: CustomFieldValues
     parent: IdOrName | None
     parent_work_package_id: OptionalWorkPackageRef
     start_date: str | None
@@ -92,7 +92,7 @@ class BulkUpdateWorkPackageItem(TypedDict, total=False):
     responsible: IdOrName | None
     priority: IdOrName | None
     category: IdOrName | None
-    custom_fields: dict[str, Any] | None
+    custom_fields: CustomFieldValues
     parent: IdOrName | None
     parent_work_package_id: OptionalWorkPackageRef
     start_date: str | None
@@ -102,6 +102,23 @@ class BulkUpdateWorkPackageItem(TypedDict, total=False):
     duration: str | None
     percentage_done: int | None
 
+
+CustomFieldValues = Annotated[
+    dict[str, Any] | None,
+    Field(
+        description="Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as "
+        "is; list, user and version fields take an option id or title (a list for several values); null clears."
+    ),
+]
+
+CustomFieldFilters = Annotated[
+    dict[str, dict[str, Any]] | None,
+    Field(
+        description='Filter by custom field values: {"cf_<N>": {"operator": "=", "values": ["x"]}}, N from a '
+        "customField<N> key. The operators a field takes depend on its format (docs/filters.md). At most 20 "
+        "filters, 100 values each. A project matches only where the token may see the field."
+    ),
+]
 
 Offset = Annotated[int, Field(description="1-based page number; pass the previous result's next_offset.")]
 

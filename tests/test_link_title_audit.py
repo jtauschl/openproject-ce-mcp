@@ -145,7 +145,7 @@ OTHER_TITLE_READS: dict[str, str] = {
     "httpx_user_non_working_time_api.py:normalize_user_non_working_time": _OWN,
     "httpx_user_working_hours_api.py:normalize_user_working_hours": _OWN,
     "httpx_wiki_page_api.py:normalize_wiki_page": _OWN,
-    "httpx_work_package_api.py:_link_title_with_meta": "the helper behind the scoped custom field titles; every caller passes a link already judged",
+    "_custom_fields.py:link_title_with_meta": "the helper behind the scoped custom field titles; every caller passes a link already judged",
     "httpx_work_package_api.py:normalize_work_package_summary": _REDUCED_BY_SERVICE + " (the parent's display id)",
     "httpx_work_package_api.py:normalize_work_package_detail": _REDUCED_BY_SERVICE
     + " (children, ancestors and parent)",
@@ -209,6 +209,7 @@ def test_the_scan_refuses_a_spelling_it_cannot_name() -> None:
 # The links of a work package whose resource is defined in a project: a title reaches a result only
 # through the helpers that keep it for a reference the service judged visible.
 WORK_PACKAGE_ADAPTER = "httpx_work_package_api.py"
+CUSTOM_FIELDS_MODULE = "_custom_fields.py"
 UNBOUND_WORK_PACKAGE_LINKS = {
     "type",
     "status",
@@ -222,7 +223,7 @@ UNBOUND_WORK_PACKAGE_LINKS = {
 }
 # "file:function" -> how many `["title"]`/`.get("title")` reads the function holds, and why
 WORK_PACKAGE_TITLE_READS = {
-    f"{WORK_PACKAGE_ADAPTER}:_link_title_with_meta": 1,
+    f"{CUSTOM_FIELDS_MODULE}:link_title_with_meta": 1,
     f"{WORK_PACKAGE_ADAPTER}:normalize_work_package_summary": 1,  # counts the titled target version links
     f"{WORK_PACKAGE_ADAPTER}:normalize_work_package_detail": 2,  # children and ancestors, reduced by the service
 }
@@ -230,9 +231,11 @@ WORK_PACKAGE_TITLE_READS = {
 
 def _bound_links_read_plainly(source: str | None = None) -> set[str]:
     named, _ = _titled_links(source)
-    return {name for name, files in named.items() if WORK_PACKAGE_ADAPTER in files or "planted.py" in files} - (
-        UNBOUND_WORK_PACKAGE_LINKS
-    )
+    return {
+        name
+        for name, files in named.items()
+        if WORK_PACKAGE_ADAPTER in files or CUSTOM_FIELDS_MODULE in files or "planted.py" in files
+    } - (UNBOUND_WORK_PACKAGE_LINKS)
 
 
 def test_the_work_package_adapter_reads_a_link_with_a_defining_project_only_through_the_scoped_helpers() -> None:
@@ -254,7 +257,11 @@ def test_a_plain_title_read_of_a_version_or_sprint_link_is_found(source: str) ->
 
 def _work_package_title_reads(source: str | None = None) -> dict[str, int]:
     nodes = matching_nodes(reads_key(("title",)), source=source) if source else matching_nodes(reads_key(("title",)))
-    return {name: len(found) for name, found in nodes.items() if name.startswith(WORK_PACKAGE_ADAPTER) or source}
+    return {
+        name: len(found)
+        for name, found in nodes.items()
+        if name.startswith((WORK_PACKAGE_ADAPTER, CUSTOM_FIELDS_MODULE)) or source
+    }
 
 
 def test_the_work_package_adapter_holds_no_title_read_besides_the_known_ones() -> None:

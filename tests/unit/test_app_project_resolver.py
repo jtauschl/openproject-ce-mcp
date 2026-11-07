@@ -4,11 +4,12 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _project_record_helpers import project_record
 
 from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.project_api import ProjectPage, ProjectRecord
 from openproject_ce_mcp.app.resolvers.project_resolver import ProjectResolver
-from openproject_ce_mcp.models import ProjectDetail, ProjectSummary
+from openproject_ce_mcp.models import ProjectSummary
 
 
 def _summary(project_id: int, name: str, *, identifier: str | None = None) -> ProjectSummary:
@@ -23,10 +24,8 @@ def _summary(project_id: int, name: str, *, identifier: str | None = None) -> Pr
 
 def _record(project_id: int, name: str, *, identifier: str | None = None) -> ProjectRecord:
     summary = _summary(project_id, name, identifier=identifier)
-    return ProjectRecord(
-        summary=summary,
-        to_detail=lambda: ProjectDetail(**vars(summary)),
-        payload={"id": project_id, "name": name, "identifier": identifier, "_type": "Project"},
+    return project_record(
+        summary, payload={"id": project_id, "name": name, "identifier": identifier, "_type": "Project"}
     )
 
 
@@ -48,7 +47,7 @@ class _FakeProjectApi:
         raise NotFoundError(f"no fake record for ref {project_ref}")
 
     async def list(
-        self, *, server_offset: int, server_page_size: int, search: str | None, text_limit=None
+        self, *, server_offset: int, server_page_size: int, search: str | None, text_limit=None, **_
     ) -> ProjectPage:
         self.list_searches.append(search)
         if server_offset > 1:
@@ -64,7 +63,7 @@ class _FakeProjectApi:
     async def commit_create(self, payload): ...
     async def commit_update(self, project_id, payload): ...
     async def delete(self, project_id): ...
-    async def get_schema(self, *, project_id, draft_payload): ...
+    async def get_schema(self, *, project_id, draft_payload, **kwargs): ...
     async def list_available_parent_projects(self, project_id, *, schema): ...
     async def get_configuration(self, project_id): ...
     async def list_phase_definitions(self): ...

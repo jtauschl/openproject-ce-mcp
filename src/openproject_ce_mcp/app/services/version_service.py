@@ -146,6 +146,8 @@ class VersionService:
         form = await self._api.create_form(payload)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="version",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"version_id": None, "project": project_payload.get("name")},
@@ -188,6 +190,8 @@ class VersionService:
         form = await self._api.update_form(version_id, payload)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="version",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"version_id": version_id, "project": current.summary.defining_project},

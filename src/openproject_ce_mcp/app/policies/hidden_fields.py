@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from fnmatch import fnmatchcase
@@ -140,3 +141,26 @@ def apply_hidden_fields(entity: str, value: Any, *, settings: Settings) -> Any:
         # mypy's DataclassInstance protocol has no way to express this.
         value._hidden_keys = hidden  # type: ignore[union-attr]
     return value
+
+
+_CUSTOM_FIELD_COLUMN = re.compile(r"cf_([1-9]\d*)")
+
+
+def custom_field_column_hidden(column: str, *, entity: str, settings: Settings) -> bool:
+    """True when `column` is a `cf_<N>` sort, group or filter column of a custom field that is hidden:
+    ordering by it would show its values one query at a time. With no schema, a hide pattern may be
+    written in either spelling of the key, so both are checked."""
+    match = _CUSTOM_FIELD_COLUMN.fullmatch(column)
+    if match is None:
+        return False
+    return field_hidden(entity, "custom_fields", settings=settings) or custom_field_hidden(
+        column, f"customField{match.group(1)}", settings=settings
+    )
+
+
+def ensure_custom_field_column_usable(column: str, use: str, *, entity: str, settings: Settings) -> None:
+    if custom_field_column_hidden(column, entity=entity, settings=settings):
+        raise InvalidInputError(
+            f"OpenProject custom field '{column}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS "
+            f"or by the custom_fields field of the {entity.replace('_', ' ')} hide setting and cannot be used to {use}."
+        )

@@ -245,6 +245,8 @@ class GridService:
         identity_scope = form_links.get("scope", {}).get("href")
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="grid",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"grid_id": None, "scope": identity_scope},
@@ -283,6 +285,8 @@ class GridService:
         identity_scope = form.payload.get("_links", {}).get("scope", {}).get("href") or current_scope_href
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="grid",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"grid_id": grid_id, "scope": identity_scope},

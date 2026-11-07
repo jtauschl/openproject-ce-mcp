@@ -44,6 +44,7 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.user_api import UserApi
+from ._custom_field_masking import redacted_validation_errors, without_hidden_custom_fields
 
 
 class UserService:
@@ -365,7 +366,7 @@ class UserService:
             ready=ready,
             message=message,
             user_id=user_id,
-            payload=payload,
-            validation_errors=validation_errors,
+            payload=without_hidden_custom_fields(payload, entity="user", settings=self._settings),
+            validation_errors=redacted_validation_errors(validation_errors, entity="user", settings=self._settings),
             result=self._stamp(result) if result is not None else None,
         )

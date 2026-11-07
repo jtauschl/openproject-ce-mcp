@@ -7,7 +7,7 @@ Pure, no I/O.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from ...config import Settings
@@ -21,7 +21,7 @@ def _hidden(fields: Iterable[str], *, settings: Settings) -> str | None:
 
 
 def ensure_query_allowed(
-    *, settings: Settings, filters: Iterable[str], sort_fields: Iterable[str], group_by: str | None
+    *, settings: Settings, filters: Iterable[str], sort_fields: Sequence[str], group_by: str | None
 ) -> None:
     """Raises when a requested filter parameter, sort column or group column is a hidden field.
     A column or parameter that stands for several result fields (`version` and `target_versions`)
@@ -38,6 +38,8 @@ def ensure_query_allowed(
                 f"OpenProject work package field '{hidden}' is hidden by OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS "
                 f"and cannot be used to {use} ('{name}')."
             )
+    for use, column in [("sort", name) for name in sort_fields] + ([("group", group_by)] if group_by else []):
+        hidden_fields.ensure_custom_field_column_usable(column, use, entity="work_package", settings=settings)
 
 
 # The summable fields OpenProject aggregates, by the result field that shows the same value. The

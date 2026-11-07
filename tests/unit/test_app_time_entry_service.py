@@ -171,8 +171,10 @@ class _FakeProjectApi:
         self._projects = projects if projects is not None else [(1, "Demo")]
         self._list_raises = list_raises
 
-    async def list(self, *, server_offset: int, server_page_size: int, search, text_limit=None):
-        from openproject_ce_mcp.app.ports.project_api import ProjectPage, ProjectRecord
+    async def list(self, *, server_offset: int, server_page_size: int, search, text_limit=None, **_):
+        from _project_record_helpers import project_record
+
+        from openproject_ce_mcp.app.ports.project_api import ProjectPage
         from openproject_ce_mcp.models import ProjectSummary
 
         if self._list_raises is not None:
@@ -180,15 +182,14 @@ class _FakeProjectApi:
         if server_offset > 1:
             return ProjectPage(records=[])
         records = [
-            ProjectRecord(
-                summary=ProjectSummary(
+            project_record(
+                ProjectSummary(
                     id=pid,
                     name=name,
                     identifier=f"proj-{pid}",
                     active=True,
                     description=None,
                 ),
-                to_detail=lambda: (_ for _ in ()).throw(AssertionError("unused")),
                 payload={"id": pid, "name": name, "_links": {"self": {"href": f"/api/v3/projects/{pid}"}}},
             )
             for pid, name in self._projects

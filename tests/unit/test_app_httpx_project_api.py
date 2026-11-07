@@ -7,6 +7,7 @@ import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_project_api import HttpxProjectApi
 from openproject_ce_mcp.app.errors import InvalidInputError, OpenProjectServerError
+from openproject_ce_mcp.app.ports.scoped_reference import VisibleReferences
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -71,7 +72,7 @@ async def test_get_fetches_by_ref_and_builds_detail_with_ancestors() -> None:
         record = await api.get("demo")
 
     assert record.summary.identifier == "demo"
-    detail = record.to_detail()
+    detail = record.scoped_detail(visible=VisibleReferences.everything())
     assert detail.ancestors == [{"href": "/api/v3/projects/1", "title": "Root", "display_id": None}]
     assert detail.ancestors_truncated is False
 
@@ -138,7 +139,7 @@ async def test_get_applies_the_requested_text_limit() -> None:
         record = await api.get("demo", text_limit=10)
 
     assert record.summary.description_truncated is True
-    assert record.to_detail().description_truncated is True
+    assert record.scoped_detail(visible=VisibleReferences.everything()).description_truncated is True
 
 
 @pytest.mark.asyncio
@@ -193,9 +194,9 @@ async def test_commit_create_posts_and_returns_normalized_detail() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
-        detail = await api.commit_create({"name": "Demo"})
+        record = await api.commit_create({"name": "Demo"})
 
-    assert detail.id == 6
+    assert record.summary.id == 6
 
 
 @pytest.mark.asyncio
@@ -207,9 +208,10 @@ async def test_commit_update_patches_and_returns_normalized_detail() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
-        detail = await api.commit_update(6, {"name": "Renamed"})
+        record = await api.commit_update(6, {"name": "Renamed"})
 
-    assert detail.name == "Renamed"
+    assert record.summary.name == "Renamed"
+    assert record.scoped_detail(visible=VisibleReferences.everything()).name == "Renamed"
 
 
 @pytest.mark.asyncio

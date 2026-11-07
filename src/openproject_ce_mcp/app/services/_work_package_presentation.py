@@ -20,6 +20,7 @@ from ..policies import hidden_fields
 from ..ports.scoped_reference import ScopedReferencesAllowedBulkCheck, VisibleReferences
 from ..ports.work_package_api import WorkPackageRecord
 from ..ports.work_package_ref import WorkPackageProjectAllowedBulkCheck
+from ._custom_field_masking import mask_custom_field_values
 from ._work_package_parents import without_uncovered_parents
 from ._work_package_references import visible_references
 from .project_scoped_list import SUBJECT_LIMIT, trim_text
@@ -30,78 +31,8 @@ WorkPackageT = TypeVar("WorkPackageT", WorkPackageSummary, WorkPackageDetail)
 _VERSION_ALIASES: dict[str, Any] = {"version": None, "target_versions": []}
 
 
-def _mask_custom_field_keys(values: dict[str, Any] | None, *, settings: Settings) -> dict[str, Any] | None:
-    """Hide-on-read for a `custom_fields` dict, matched against the raw `customField<N>` key only,
-    never the friendly name. The write path matches both, so a pattern that names only the field
-    has no effect on reads (docs/field-hiding.md).
-
-    Returns the original object when nothing was removed."""
-    if not values:
-        return values
-    if not settings.hide_custom_fields:
-        return values
-    filtered = {
-        key: value
-        for key, value in values.items()
-        if not hidden_fields.custom_field_hidden(key, key, settings=settings)
-    }
-    if len(filtered) == len(values):
-        return values
-    return filtered or None
-
-
-def _mask_custom_comments_by_hidden_field_ids(
-    comments: dict[str, str] | None,
-    *,
-    custom_fields: dict[str, Any] | None,
-    masked_custom_fields: dict[str, Any] | None,
-) -> dict[str, str] | None:
-    """Drop the `customComment<N>` entry of every `customField<N>` that masking removed. The hide
-    patterns are written against the `customField<N>` form, so a comment key cannot be matched
-    against them directly."""
-    if not comments:
-        return comments
-    if custom_fields is masked_custom_fields:
-        return comments
-    before_ids = {key[len("customField") :] for key in (custom_fields or {})}
-    after_ids = {key[len("customField") :] for key in (masked_custom_fields or {})}
-    removed_ids = before_ids - after_ids
-    if not removed_ids:
-        return comments
-    filtered = {key: value for key, value in comments.items() if key[len("customComment") :] not in removed_ids}
-    if len(filtered) == len(comments):
-        return comments
-    return filtered or None
-
-
 def _mask_custom_field_values(value: WorkPackageT, *, settings: Settings) -> WorkPackageT:
-    """Mask `custom_fields` and `custom_comments` by key, and reset their truncation flags when the
-    whole field is hidden, so the flag does not describe hidden data. A flag left unchanged after a
-    key-only mask describes data the caller configured the hide for, so it discloses nothing new."""
-    custom_fields = _mask_custom_field_keys(value.custom_fields, settings=settings)
-    custom_comments = _mask_custom_comments_by_hidden_field_ids(
-        value.custom_comments, custom_fields=value.custom_fields, masked_custom_fields=custom_fields
-    )
-    custom_fields_truncated = value.custom_fields_truncated
-    custom_comments_truncated = value.custom_comments_truncated
-    if hidden_fields.field_hidden("work_package", "custom_fields", settings=settings):
-        custom_fields_truncated = False
-    if hidden_fields.field_hidden("work_package", "custom_comments", settings=settings):
-        custom_comments_truncated = False
-    if (
-        custom_fields is value.custom_fields
-        and custom_comments is value.custom_comments
-        and custom_fields_truncated == value.custom_fields_truncated
-        and custom_comments_truncated == value.custom_comments_truncated
-    ):
-        return value
-    return dataclasses.replace(
-        value,
-        custom_fields=custom_fields,
-        custom_comments=custom_comments,
-        custom_fields_truncated=custom_fields_truncated,
-        custom_comments_truncated=custom_comments_truncated,
-    )
+    return mask_custom_field_values(value, entity="work_package", settings=settings)
 
 
 def stamp_summary(summary: WorkPackageSummary, *, settings: Settings) -> WorkPackageSummary:

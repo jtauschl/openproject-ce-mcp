@@ -47,7 +47,7 @@ def test_list_projects_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_projects"]
     assert (
         tool.description
-        == "List visible projects with optional name or identifier search.\n\nUnder a restrictive OPENPROJECT_READ_PROJECTS, total reflects only the allowed projects already scanned to fill\nthis page, not a full count of all matches; the search stops as soon as it has enough, so an exact total would\nneed an extra full walk. Page until next_offset is null."
+        == "List visible projects with optional name or identifier search.\n\nUnder a restrictive OPENPROJECT_READ_PROJECTS, total reflects only the allowed projects already scanned to fill\nthis page, not a full count of all matches; the search stops as soon as it has enough, so an exact total would\nneed an extra full walk. Page until next_offset is null.\n\nEach row carries the project attributes the token may see as `custom_fields`, keyed by customField<N>\n(see get_project); select leaves them out. custom_field_filters and sort_by take a project attribute\nas cf_<N>."
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -68,8 +68,23 @@ def test_list_projects_schema() -> None:
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: active, can_delete, can_update, created_at, description, description_length, description_truncated, favorited, id, identifier, name, parent_id, parent_name, public, status, status_explanation, status_explanation_length, status_explanation_truncated, updated_at.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: active, can_delete, can_update, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, description, description_length, description_truncated, favorited, id, identifier, name, parent_id, parent_name, public, status, status_explanation, status_explanation_length, status_explanation_truncated, updated_at.",
                 "title": "Select",
+            },
+            "custom_field_filters": {
+                "anyOf": [
+                    {"additionalProperties": {"additionalProperties": True, "type": "object"}, "type": "object"},
+                    {"type": "null"},
+                ],
+                "default": None,
+                "description": 'Filter by custom field values: {"cf_<N>": {"operator": "=", "values": ["x"]}}, N from a customField<N> key. The operators a field takes depend on its format (docs/filters.md). At most 20 filters, 100 values each. A project matches only where the token may see the field.',
+                "title": "Custom Field Filters",
+            },
+            "sort_by": {
+                "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                "default": None,
+                "description": 'Sort criteria as "field:direction" or "field-direction" (e.g. ["name:desc", "created_at-asc"]); the direction defaults to asc. Fields: created_at, id, identifier, latest_activity_at, lft, name, project_status, public, required_disk_space, typeahead, updated_at, a custom field\'s cf_<id> (not a text field), or project_phase_<id>. Newer columns need an OpenProject release: updated_at 16.5+.',
+                "title": "Sort By",
             },
         },
         "title": "list_projectsArguments",
@@ -77,178 +92,46 @@ def test_list_projects_schema() -> None:
         "additionalProperties": False,
     }
     # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["search", "offset", "limit", "select"]
+    assert list(tool.parameters["properties"]) == [
+        "search",
+        "offset",
+        "limit",
+        "select",
+        "custom_field_filters",
+        "sort_by",
+    ]
 
 
 def test_get_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_project"]
     assert (
         tool.description
-        == "Get a project by id, identifier or name, including its ancestor chain.\n\ndescription/status_explanation are returned in full by default (single projects\nare not truncated). Pass ``text_limit`` to cap them at that many characters; when\ncut, ``description_truncated``/``status_explanation_truncated`` are true and\n``description_length``/``status_explanation_length`` report the real length.\n"
+        == "Get a project by id, identifier or name, including its ancestor chain.\n\ndescription/status_explanation are returned in full by default (single projects\nare not truncated). Pass ``text_limit`` to cap them at that many characters; when\ncut, ``description_truncated``/``status_explanation_truncated`` are true and\n``description_length``/``status_explanation_length`` report the real length.\n\n``custom_fields`` holds the project attributes the token may see, keyed by customField<N>: a link\nvalue (list, user, version) as its title or a list of titles, a text value capped by ``text_limit``,\na version defined outside OPENPROJECT_READ_PROJECTS as null. From OpenProject 17.2\n``custom_comments`` holds a field's comment under the same key. ``custom_fields_truncated`` is true\nwhen more than 50 entries or a long value were cut.\n"
     )
     assert tool.output_schema == {
         "properties": {
-            "id": {
-                "title": "Id",
-                "type": "integer",
-            },
-            "name": {
-                "title": "Name",
-                "type": "string",
-            },
-            "identifier": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Identifier",
-            },
-            "active": {
-                "anyOf": [
-                    {
-                        "type": "boolean",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Active",
-            },
-            "description": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Description",
-            },
-            "public": {
-                "anyOf": [
-                    {
-                        "type": "boolean",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Public",
-            },
-            "status": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Status",
-            },
+            "id": {"title": "Id", "type": "integer"},
+            "name": {"title": "Name", "type": "string"},
+            "identifier": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Identifier"},
+            "active": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "title": "Active"},
+            "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"},
+            "public": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "default": None, "title": "Public"},
+            "status": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Status"},
             "status_explanation": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
+                "anyOf": [{"type": "string"}, {"type": "null"}],
                 "default": None,
                 "title": "Status Explanation",
             },
-            "parent_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Parent Id",
-            },
-            "parent_name": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Parent Name",
-            },
-            "created_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Created At",
-            },
-            "updated_at": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Updated At",
-            },
-            "can_update": {
-                "default": False,
-                "title": "Can Update",
-                "type": "boolean",
-            },
-            "can_delete": {
-                "default": False,
-                "title": "Can Delete",
-                "type": "boolean",
-            },
-            "favorited": {
-                "anyOf": [
-                    {
-                        "type": "boolean",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "default": None,
-                "title": "Favorited",
-            },
-            "description_truncated": {
-                "default": False,
-                "title": "Description Truncated",
-                "type": "boolean",
-            },
+            "parent_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Parent Id"},
+            "parent_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Parent Name"},
+            "created_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Created At"},
+            "updated_at": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Updated At"},
+            "can_update": {"default": False, "title": "Can Update", "type": "boolean"},
+            "can_delete": {"default": False, "title": "Can Delete", "type": "boolean"},
+            "favorited": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "default": None, "title": "Favorited"},
+            "description_truncated": {"default": False, "title": "Description Truncated", "type": "boolean"},
             "description_length": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
+                "anyOf": [{"type": "integer"}, {"type": "null"}],
                 "default": None,
                 "title": "Description Length",
             },
@@ -258,47 +141,37 @@ def test_get_project_schema() -> None:
                 "type": "boolean",
             },
             "status_explanation_length": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
+                "anyOf": [{"type": "integer"}, {"type": "null"}],
                 "default": None,
                 "title": "Status Explanation Length",
             },
+            "custom_fields": {
+                "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                "default": None,
+                "title": "Custom Fields",
+            },
+            "custom_fields_truncated": {"default": False, "title": "Custom Fields Truncated", "type": "boolean"},
+            "custom_comments": {
+                "anyOf": [{"additionalProperties": {"type": "string"}, "type": "object"}, {"type": "null"}],
+                "default": None,
+                "title": "Custom Comments",
+            },
+            "custom_comments_truncated": {"default": False, "title": "Custom Comments Truncated", "type": "boolean"},
             "ancestors": {
                 "anyOf": [
                     {
                         "items": {
-                            "additionalProperties": {
-                                "anyOf": [
-                                    {
-                                        "type": "string",
-                                    },
-                                    {
-                                        "type": "null",
-                                    },
-                                ],
-                            },
+                            "additionalProperties": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                             "type": "object",
                         },
                         "type": "array",
                     },
-                    {
-                        "type": "null",
-                    },
+                    {"type": "null"},
                 ],
                 "default": None,
                 "title": "Ancestors",
             },
-            "ancestors_truncated": {
-                "default": False,
-                "title": "Ancestors Truncated",
-                "type": "boolean",
-            },
+            "ancestors_truncated": {"default": False, "title": "Ancestors Truncated", "type": "boolean"},
         },
         "required": ["id", "name", "identifier", "active", "description"],
         "title": "ProjectDetail",
@@ -333,32 +206,9 @@ def test_get_project_admin_context_schema() -> None:
         "$defs": {
             "OptionValue": {
                 "properties": {
-                    "id": {
-                        "anyOf": [
-                            {
-                                "type": "integer",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Id",
-                    },
-                    "title": {
-                        "title": "Title",
-                        "type": "string",
-                    },
-                    "href": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Href",
-                    },
+                    "id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Id"},
+                    "title": {"title": "Title", "type": "string"},
+                    "href": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Href"},
                 },
                 "required": ["id", "title", "href"],
                 "title": "OptionValue",
@@ -366,52 +216,15 @@ def test_get_project_admin_context_schema() -> None:
             },
             "ProjectFieldSchema": {
                 "properties": {
-                    "key": {
-                        "title": "Key",
-                        "type": "string",
-                    },
-                    "name": {
-                        "title": "Name",
-                        "type": "string",
-                    },
-                    "type": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Type",
-                    },
-                    "required": {
-                        "title": "Required",
-                        "type": "boolean",
-                    },
-                    "writable": {
-                        "title": "Writable",
-                        "type": "boolean",
-                    },
-                    "has_default": {
-                        "title": "Has Default",
-                        "type": "boolean",
-                    },
-                    "location": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Location",
-                    },
+                    "key": {"title": "Key", "type": "string"},
+                    "name": {"title": "Name", "type": "string"},
+                    "type": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Type"},
+                    "required": {"title": "Required", "type": "boolean"},
+                    "writable": {"title": "Writable", "type": "boolean"},
+                    "has_default": {"title": "Has Default", "type": "boolean"},
+                    "location": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Location"},
                     "allowed_values": {
-                        "items": {
-                            "$ref": "#/$defs/OptionValue",
-                        },
+                        "items": {"$ref": "#/$defs/OptionValue"},
                         "title": "Allowed Values",
                         "type": "array",
                     },
@@ -431,25 +244,9 @@ def test_get_project_admin_context_schema() -> None:
             },
             "ProjectRef": {
                 "properties": {
-                    "id": {
-                        "title": "Id",
-                        "type": "integer",
-                    },
-                    "identifier": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Identifier",
-                    },
-                    "name": {
-                        "title": "Name",
-                        "type": "string",
-                    },
+                    "id": {"title": "Id", "type": "integer"},
+                    "identifier": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Identifier"},
+                    "name": {"title": "Name", "type": "string"},
                 },
                 "required": ["id", "identifier", "name"],
                 "title": "ProjectRef",
@@ -457,167 +254,48 @@ def test_get_project_admin_context_schema() -> None:
             },
             "ProjectSummary": {
                 "properties": {
-                    "id": {
-                        "title": "Id",
-                        "type": "integer",
-                    },
-                    "name": {
-                        "title": "Name",
-                        "type": "string",
-                    },
-                    "identifier": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Identifier",
-                    },
-                    "active": {
-                        "anyOf": [
-                            {
-                                "type": "boolean",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Active",
-                    },
-                    "description": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "title": "Description",
-                    },
-                    "public": {
-                        "anyOf": [
-                            {
-                                "type": "boolean",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "default": None,
-                        "title": "Public",
-                    },
-                    "status": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
-                        "default": None,
-                        "title": "Status",
-                    },
+                    "id": {"title": "Id", "type": "integer"},
+                    "name": {"title": "Name", "type": "string"},
+                    "identifier": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Identifier"},
+                    "active": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "title": "Active"},
+                    "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"},
+                    "public": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "default": None, "title": "Public"},
+                    "status": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Status"},
                     "status_explanation": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
                         "default": None,
                         "title": "Status Explanation",
                     },
                     "parent_id": {
-                        "anyOf": [
-                            {
-                                "type": "integer",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
                         "default": None,
                         "title": "Parent Id",
                     },
                     "parent_name": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
                         "default": None,
                         "title": "Parent Name",
                     },
                     "created_at": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
                         "default": None,
                         "title": "Created At",
                     },
                     "updated_at": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
                         "default": None,
                         "title": "Updated At",
                     },
-                    "can_update": {
-                        "default": False,
-                        "title": "Can Update",
-                        "type": "boolean",
-                    },
-                    "can_delete": {
-                        "default": False,
-                        "title": "Can Delete",
-                        "type": "boolean",
-                    },
+                    "can_update": {"default": False, "title": "Can Update", "type": "boolean"},
+                    "can_delete": {"default": False, "title": "Can Delete", "type": "boolean"},
                     "favorited": {
-                        "anyOf": [
-                            {
-                                "type": "boolean",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "boolean"}, {"type": "null"}],
                         "default": None,
                         "title": "Favorited",
                     },
-                    "description_truncated": {
-                        "default": False,
-                        "title": "Description Truncated",
-                        "type": "boolean",
-                    },
+                    "description_truncated": {"default": False, "title": "Description Truncated", "type": "boolean"},
                     "description_length": {
-                        "anyOf": [
-                            {
-                                "type": "integer",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
                         "default": None,
                         "title": "Description Length",
                     },
@@ -627,16 +305,29 @@ def test_get_project_admin_context_schema() -> None:
                         "type": "boolean",
                     },
                     "status_explanation_length": {
-                        "anyOf": [
-                            {
-                                "type": "integer",
-                            },
-                            {
-                                "type": "null",
-                            },
-                        ],
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
                         "default": None,
                         "title": "Status Explanation Length",
+                    },
+                    "custom_fields": {
+                        "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                        "default": None,
+                        "title": "Custom Fields",
+                    },
+                    "custom_fields_truncated": {
+                        "default": False,
+                        "title": "Custom Fields Truncated",
+                        "type": "boolean",
+                    },
+                    "custom_comments": {
+                        "anyOf": [{"additionalProperties": {"type": "string"}, "type": "object"}, {"type": "null"}],
+                        "default": None,
+                        "title": "Custom Comments",
+                    },
+                    "custom_comments_truncated": {
+                        "default": False,
+                        "title": "Custom Comments Truncated",
+                        "type": "boolean",
                     },
                 },
                 "required": ["id", "name", "identifier", "active", "description"],
@@ -645,37 +336,18 @@ def test_get_project_admin_context_schema() -> None:
             },
         },
         "properties": {
-            "project": {
-                "anyOf": [
-                    {
-                        "$ref": "#/$defs/ProjectSummary",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-            },
+            "project": {"anyOf": [{"$ref": "#/$defs/ProjectSummary"}, {"type": "null"}]},
             "available_statuses": {
-                "items": {
-                    "$ref": "#/$defs/OptionValue",
-                },
+                "items": {"$ref": "#/$defs/OptionValue"},
                 "title": "Available Statuses",
                 "type": "array",
             },
             "available_parent_projects": {
-                "items": {
-                    "$ref": "#/$defs/ProjectRef",
-                },
+                "items": {"$ref": "#/$defs/ProjectRef"},
                 "title": "Available Parent Projects",
                 "type": "array",
             },
-            "fields": {
-                "items": {
-                    "$ref": "#/$defs/ProjectFieldSchema",
-                },
-                "title": "Fields",
-                "type": "array",
-            },
+            "fields": {"items": {"$ref": "#/$defs/ProjectFieldSchema"}, "title": "Fields", "type": "array"},
         },
         "required": ["project", "available_statuses", "available_parent_projects", "fields"],
         "title": "ProjectAdminContext",
@@ -853,7 +525,7 @@ def test_create_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_project"]
     assert (
         tool.description
-        == "Create a project.\n\nOmitted optional fields are not sent, so OpenProject's defaults apply.\n`parent_target` names the project `parent` resolved to.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
+        == "Create a project.\n\nOmitted optional fields are not sent, so OpenProject's defaults apply.\n`parent_target` names the project `parent` resolved to.\n`custom_fields` sets project attributes; one the token may not edit comes back in `validation_errors`.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -900,6 +572,12 @@ def test_create_project_schema() -> None:
                 "description": "Parent project identifier, id, or name; omit for a top-level project.",
                 "title": "Parent",
             },
+            "custom_fields": {
+                "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                "default": None,
+                "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
+                "title": "Custom Fields",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -922,6 +600,7 @@ def test_create_project_schema() -> None:
         "status",
         "status_explanation",
         "parent",
+        "custom_fields",
         "confirm",
     ]
 
@@ -930,7 +609,7 @@ def test_copy_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["copy_project"]
     assert (
         tool.description
-        == "Copy an existing project into a new project.\n\nname, identifier and the optional fields describe the new project. A confirmed\ncopy starts a background job; poll get_job_status with the returned job_status_id.\n`parent_target` names the project `parent` resolved to.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
+        == "Copy an existing project into a new project.\n\nname, identifier and the optional fields describe the new project. A confirmed\ncopy starts a background job; poll get_job_status with the returned job_status_id.\n`parent_target` names the project `parent` resolved to.\n`custom_fields` sets project attributes; one the token may not edit comes back in `validation_errors`.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -982,6 +661,12 @@ def test_copy_project_schema() -> None:
                 "description": "Parent project identifier, id, or name; omit for a top-level project.",
                 "title": "Parent",
             },
+            "custom_fields": {
+                "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                "default": None,
+                "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
+                "title": "Custom Fields",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -1005,6 +690,7 @@ def test_copy_project_schema() -> None:
         "status",
         "status_explanation",
         "parent",
+        "custom_fields",
         "confirm",
     ]
 
@@ -1148,7 +834,7 @@ def test_update_project_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_project"]
     assert (
         tool.description
-        == "Update a project.\n\nOmitted fields stay unchanged.\n`parent_target` names the project `parent` resolved to.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
+        == "Update a project.\n\nOmitted fields stay unchanged.\n`parent_target` names the project `parent` resolved to.\n`custom_fields` sets project attributes; one the token may not edit comes back in `validation_errors`.\nA rejected validation preview is not a tool error; inspect `ready` and\n`validation_errors` in the result rather than the MCP error envelope.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1206,6 +892,12 @@ def test_update_project_schema() -> None:
                 "description": "Parent project identifier, id, or name; 'none' makes the project top-level.",
                 "title": "Parent",
             },
+            "custom_fields": {
+                "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                "default": None,
+                "description": "Custom field values by customField<N> key or field name, at most 50. Text, number or boolean as is; list, user and version fields take an option id or title (a list for several values); null clears.",
+                "title": "Custom Fields",
+            },
             "confirm": {
                 "default": False,
                 "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
@@ -1229,6 +921,7 @@ def test_update_project_schema() -> None:
         "status",
         "status_explanation",
         "parent",
+        "custom_fields",
         "confirm",
     ]
 

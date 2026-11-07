@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from _client_test_helpers import _base_settings
+from _project_record_helpers import project_record
 
 from openproject_ce_mcp.app.call_scope import tool_call
 from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError, TransportError
@@ -33,7 +34,7 @@ def _no_detail() -> ProjectDetail:
 
 def _record(project_id: int, identifier: str, name: str, active: bool = True) -> ProjectRecord:
     summary = ProjectSummary(id=project_id, name=name, identifier=identifier, active=active, description=None)
-    return ProjectRecord(summary=summary, to_detail=_no_detail, payload={})
+    return project_record(summary)
 
 
 class _FakeProjectApi:

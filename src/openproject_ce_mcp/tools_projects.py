@@ -29,6 +29,7 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import Context
 from pydantic import Field
 
+from . import project_columns
 from .client import CLEAR
 from .models import (
     FavoriteWriteResult,
@@ -50,15 +51,26 @@ from .models import (
     ProjectWorkPackageContext,
     ProjectWriteResult,
 )
-from .tool_params import Confirm, Limit, Offset, OptionalProjectRef, ProjectRef, select_field
+from .tool_params import (
+    Confirm,
+    CustomFieldFilters,
+    CustomFieldValues,
+    Limit,
+    Offset,
+    OptionalProjectRef,
+    ProjectRef,
+    select_field,
+)
 from .tool_types import IdOrName
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     _clearable_ref,
     _require_at_least_one,
+    _validate_custom_field_filters,
     _validate_limit,
     _validate_list_query_params,
     _validate_offset,
+    _validate_optional_custom_fields,
     _validate_optional_project_identifier,
     _validate_optional_project_ref,
     _validate_optional_query,
@@ -69,6 +81,7 @@ from .tools_validation import (
     _validate_positive_int,
     _validate_project_identifier,
     _validate_project_ref,
+    _validate_project_sort_by,
     _validate_required_query,
     _validate_required_text,
     _validate_select,
@@ -88,16 +101,30 @@ async def list_projects(
     offset: Offset = 1,
     limit: Limit = None,
     select: Annotated[list[str] | None, select_field(ProjectSummary)] = None,
+    custom_field_filters: CustomFieldFilters = None,
+    sort_by: Annotated[list[str] | None, Field(description=project_columns.sort_by_description())] = None,
 ) -> ProjectListResult:
     """List visible projects with optional name or identifier search.
 
     Under a restrictive OPENPROJECT_READ_PROJECTS, total reflects only the allowed projects already scanned to fill
     this page, not a full count of all matches; the search stops as soon as it has enough, so an exact total would
-    need an extra full walk. Page until next_offset is null."""
+    need an extra full walk. Page until next_offset is null.
+
+    Each row carries the project attributes the token may see as `custom_fields`, keyed by customField<N>
+    (see get_project); select leaves them out. custom_field_filters and sort_by take a project attribute
+    as cf_<N>."""
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=ProjectSummary)
-    return await _run_tool(client.project.list(search=safe_search, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(
+        client.project.list(
+            search=safe_search,
+            offset=safe_offset,
+            limit=safe_limit,
+            custom_field_filters=_validate_custom_field_filters(custom_field_filters),
+            sort_by=_validate_project_sort_by(sort_by),
+        )
+    )
 
 
 @register_tool
@@ -112,6 +139,12 @@ async def get_project(
     are not truncated). Pass ``text_limit`` to cap them at that many characters; when
     cut, ``description_truncated``/``status_explanation_truncated`` are true and
     ``description_length``/``status_explanation_length`` report the real length.
+
+    ``custom_fields`` holds the project attributes the token may see, keyed by customField<N>: a link
+    value (list, user, version) as its title or a list of titles, a text value capped by ``text_limit``,
+    a version defined outside OPENPROJECT_READ_PROJECTS as null. From OpenProject 17.2
+    ``custom_comments`` holds a field's comment under the same key. ``custom_fields_truncated`` is true
+    when more than 50 entries or a long value were cut.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -175,16 +208,19 @@ async def create_project(
     parent: Annotated[
         IdOrName | None, Field(description="Parent project identifier, id, or name; omit for a top-level project.")
     ] = None,
+    custom_fields: CustomFieldValues = None,
     confirm: Confirm = False,
 ) -> ProjectWriteResult:
     """Create a project.
 
     Omitted optional fields are not sent, so OpenProject's defaults apply.
     `parent_target` names the project `parent` resolved to.
+    `custom_fields` sets project attributes; one the token may not edit comes back in `validation_errors`.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """
     client = _client_from_context(ctx)
+    safe_custom_fields = _validate_optional_custom_fields(custom_fields)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
     safe_identifier = _validate_project_identifier(identifier)
     common = _validate_project_descriptive_fields(
@@ -200,6 +236,7 @@ async def create_project(
             status=common["status"],
             status_explanation=common["status_explanation"],
             parent=common["parent"],
+            custom_fields=safe_custom_fields,
             confirm=confirm,
         )
     )
@@ -219,6 +256,7 @@ async def copy_project(
     parent: Annotated[
         IdOrName | None, Field(description="Parent project identifier, id, or name; omit for a top-level project.")
     ] = None,
+    custom_fields: CustomFieldValues = None,
     confirm: Confirm = False,
 ) -> ProjectCopyResult:
     """Copy an existing project into a new project.
@@ -226,10 +264,12 @@ async def copy_project(
     name, identifier and the optional fields describe the new project. A confirmed
     copy starts a background job; poll get_job_status with the returned job_status_id.
     `parent_target` names the project `parent` resolved to.
+    `custom_fields` sets project attributes; one the token may not edit comes back in `validation_errors`.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """
     client = _client_from_context(ctx)
+    safe_custom_fields = _validate_optional_custom_fields(custom_fields)
     safe_source_project = _validate_project_ref(source_project, field_name="source_project")
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
     safe_identifier = _validate_project_identifier(identifier)
@@ -247,6 +287,7 @@ async def copy_project(
             status=common["status"],
             status_explanation=common["status_explanation"],
             parent=common["parent"],
+            custom_fields=safe_custom_fields,
             confirm=confirm,
         )
     )
@@ -282,16 +323,19 @@ async def update_project(
         IdOrName | None,
         Field(description="Parent project identifier, id, or name; 'none' makes the project top-level."),
     ] = None,
+    custom_fields: CustomFieldValues = None,
     confirm: Confirm = False,
 ) -> ProjectWriteResult:
     """Update a project.
 
     Omitted fields stay unchanged.
     `parent_target` names the project `parent` resolved to.
+    `custom_fields` sets project attributes; one the token may not edit comes back in `validation_errors`.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """
     client = _client_from_context(ctx)
+    safe_custom_fields = _validate_optional_custom_fields(custom_fields)
     safe_project = _validate_project_ref(project)
     safe_name = _validate_optional_query(name, field_name="name", max_length=255)
     safe_identifier = _validate_optional_project_identifier(identifier)
@@ -311,6 +355,7 @@ async def update_project(
         safe_status,
         safe_status_explanation,
         safe_parent,
+        safe_custom_fields or None,
         message="At least one field to update is required.",
     )
     return await _run_tool(
@@ -324,6 +369,7 @@ async def update_project(
             status=safe_status,
             status_explanation=safe_status_explanation,
             parent=safe_parent,
+            custom_fields=safe_custom_fields,
             confirm=confirm,
         )
     )

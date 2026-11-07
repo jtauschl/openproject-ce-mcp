@@ -153,6 +153,8 @@ class MembershipService:
         form = await self._api.create_form(payload)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="membership",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"membership_id": None, "project": _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)},
@@ -185,6 +187,8 @@ class MembershipService:
         form = await self._api.update_form(membership_id, payload)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="membership",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"membership_id": membership_id, "project": current.summary.project_name},

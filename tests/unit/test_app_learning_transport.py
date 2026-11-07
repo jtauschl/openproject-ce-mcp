@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from _client_test_helpers import _base_settings
+from _project_record_helpers import project_record
 
 from openproject_ce_mcp.app.errors import PermissionDeniedError, TransportError
 from openproject_ce_mcp.app.policies.scope import ensure_project_link_allowed
@@ -153,7 +154,7 @@ class _GatedProjects:
 
 def _record(project_id: int, identifier: str, name: str) -> ProjectRecord:
     summary = ProjectSummary(id=project_id, name=name, identifier=identifier, active=True, description=None)
-    return ProjectRecord(summary=summary, to_detail=_no_detail, payload={})
+    return project_record(summary)
 
 
 def _no_detail() -> ProjectDetail:

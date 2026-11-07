@@ -336,7 +336,9 @@ def _presenting_functions(source: str | None = None) -> set[str]:
         )
 
     found = matching_nodes(calls_presenter, directories=(SERVICES,), source=source)
-    return {name for name in found if not name.startswith("_work_package_presentation.py:")} - {
+    return {
+        name for name in found if not name.startswith(("_work_package_presentation.py:", "project_service.py:"))
+    } - {
         "work_package_service.py:_present",
         "work_package_service.py:_detail_of",
     }

@@ -11,9 +11,14 @@ and 0.2.0 the first one published to PyPI.
 ### Added
 
 - `get_project_phase` returns the `active` flag.
+- Project custom fields: `get_project` and `list_projects` read them, `create_project`, `update_project` and `copy_project` write them, `list_projects` filters and sorts by them.
 
 ### Fixed
 
+- Work package writes can clear a list, user or version custom field with `null`; the client refused it before.
+- Long text custom fields on projects and work packages are stored; OpenProject dropped a plain string without an error before.
+- `copy_project` no longer fails with HTTP 500 on a project with a commented attribute; naming a comment in a copy is refused.
+- Write previews no longer echo hidden custom field values; a hidden `custom_fields` also refuses writes and hidden `cf_<N>` sort or group columns.
 - The server instructions fit the 4,096 characters Claude Code reads; the opt-in tool groups and the rule for clearing a field were cut off.
 - Writes that take a work package reference show the resolved work package in `target`, so a misread bare number is visible before `confirm`.
 - `update_work_package` and `bulk_update_work_packages` show the work package a given `parent` resolved to in `parent_target`, before and after `confirm`.

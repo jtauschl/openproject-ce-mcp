@@ -664,3 +664,25 @@ async def test_unlock_commits_when_confirmed() -> None:
     assert result.action == "unlock"
     assert result.state == "confirmed"
     assert api.commit_unlock_calls == [5]
+
+
+@pytest.mark.asyncio
+async def test_a_preview_and_a_rejection_hide_the_custom_field_the_form_echoes_and_names() -> None:
+    class _EchoingApi(_FakeUserApi):
+        async def create_form(self, payload: dict) -> UserFormResult:
+            return UserFormResult(
+                payload={**payload, "customField4": "SECRET", "customField5": "visible"},
+                validation_errors=self.validation_errors,
+            )
+
+    api = _EchoingApi()
+    service = _service(api, settings=_admin_settings(hide_custom_fields=("customField4",)))
+
+    preview = await service.create(login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace")
+    api.validation_errors = {"customField4": "Secret can't be blank", "email": "is invalid"}
+    rejected = await service.create(login="ada", email="bad", firstname="Ada", lastname="Lovelace")
+
+    assert preview.payload["customField5"] == "visible" and "customField4" not in preview.payload
+    assert "customField4" not in rejected.payload
+    assert rejected.validation_errors["email"] == "is invalid"
+    assert "Secret" not in rejected.validation_errors["customField4"]

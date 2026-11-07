@@ -4,8 +4,13 @@ import dataclasses
 
 import pytest
 from _client_test_helpers import make_settings
+from _project_record_helpers import project_record
 
-from openproject_ce_mcp.app.adapters.httpx_project_api import normalize_project_detail, normalize_project_field_schema
+from openproject_ce_mcp.app.adapters.httpx_project_api import (
+    HttpxProjectApi,
+    normalize_project_detail,
+    normalize_project_field_schema,
+)
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.project_api import (
     ProjectCopyFormResult,
@@ -17,9 +22,10 @@ from openproject_ce_mcp.app.ports.project_api import (
     ProjectRef,
     ProjectSchemaResult,
 )
+from openproject_ce_mcp.app.ports.scoped_reference import ScopedReference, VisibleReferences
 from openproject_ce_mcp.app.resolvers.project_resolver import ProjectResolver
 from openproject_ce_mcp.app.services.project_service import ProjectAdminService, ProjectService
-from openproject_ce_mcp.models import ProjectDetail, ProjectPhase, ProjectSummary
+from openproject_ce_mcp.models import ProjectPhase, ProjectSummary, SortCriterion
 from openproject_ce_mcp.presentation import _to_payload
 
 
@@ -50,17 +56,23 @@ def _summary(project_id: int = 6, name: str = "Demo Project", identifier: str = 
 
 def _record(project_id: int = 6, name: str = "Demo Project", identifier: str = "demo") -> ProjectRecord:
     summary = _summary(project_id, name, identifier)
-    return ProjectRecord(
-        summary=summary,
-        to_detail=lambda: ProjectDetail(**vars(summary)),
-        payload=_payload(project_id, name, identifier),
-    )
+    return project_record(summary, payload=_payload(project_id, name, identifier))
+
+
+def _written_record(payload: dict) -> ProjectRecord:
+    detail = normalize_project_detail(payload)
+    return project_record(detail, detail=detail, payload=payload)
 
 
 class _FakeProjectApi:
     def __init__(self, records: list[ProjectRecord] | None = None) -> None:
         self._records = records or [_record()]
         self.get_calls: list[str] = []
+        self.list_calls: list[dict] = []
+        self.list_raises: Exception | None = None
+        self.copy_schema: dict | None = None
+        self.copy_form_calls: list[dict] = []
+        self.update_form_calls: list[dict] = []
         self.configuration: dict = {"maximumAttachmentFileSize": 100}
         self.schema: dict = {"status": {"name": "Status", "writable": True, "_embedded": {"allowedValues": []}}}
         # None (default) means get_schema() derives fields from self.schema, as
@@ -73,6 +85,9 @@ class _FakeProjectApi:
         self.phase_record: ProjectPhaseRecord | None = None
         self.validation_errors: dict[str, str] = {}
         self.copy_validation_errors: dict[str, str] = {}
+        # What the real forms add to the echoed payload: the whole project, attributes included.
+        self.form_echo: dict = {}
+        self.schema_reads: list[dict] = []
         self.commit_create_calls: list[dict] = []
         self.commit_update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
@@ -81,8 +96,11 @@ class _FakeProjectApi:
         self.job_status_url: str | None = "https://op.example.com/api/v3/projects/6/copy/status/1"
 
     async def list(
-        self, *, server_offset: int, server_page_size: int, search: str | None, text_limit=None
+        self, *, server_offset: int, server_page_size: int, search: str | None, text_limit=None, **query
     ) -> ProjectPage:
+        self.list_calls.append(query)
+        if self.list_raises is not None:
+            raise self.list_raises
         return ProjectPage(records=self._records, server_total=len(self._records), exhausted=True)
 
     async def get(self, project_ref: str, *, text_limit=None) -> ProjectRecord:
@@ -93,23 +111,25 @@ class _FakeProjectApi:
         raise AssertionError(f"no fake record for ref {project_ref}")
 
     async def create_form(self, payload) -> ProjectFormResult:
-        return ProjectFormResult(payload=payload, validation_errors=self.validation_errors)
+        return ProjectFormResult(payload={**self.form_echo, **payload}, validation_errors=self.validation_errors)
 
     async def update_form(self, project_id, payload) -> ProjectFormResult:
-        return ProjectFormResult(payload=payload, validation_errors=self.validation_errors)
+        self.update_form_calls.append(payload)
+        return ProjectFormResult(payload={**self.form_echo, **payload}, validation_errors=self.validation_errors)
 
-    async def commit_create(self, payload) -> ProjectDetail:
+    async def commit_create(self, payload) -> ProjectRecord:
         self.commit_create_calls.append(payload)
-        return normalize_project_detail(_payload(name=payload.get("name", "Demo Project")))
+        return _written_record(_payload(name=payload.get("name", "Demo Project")))
 
-    async def commit_update(self, project_id, payload) -> ProjectDetail:
+    async def commit_update(self, project_id, payload) -> ProjectRecord:
         self.commit_update_calls.append((project_id, payload))
-        return normalize_project_detail(_payload(project_id=project_id, name=payload.get("name", "Demo Project")))
+        return _written_record(_payload(project_id=project_id, name=payload.get("name", "Demo Project")))
 
     async def delete(self, project_id) -> None:
         self.delete_calls.append(project_id)
 
-    async def get_schema(self, *, project_id, draft_payload) -> ProjectSchemaResult:
+    async def get_schema(self, *, project_id, draft_payload, **kwargs) -> ProjectSchemaResult:
+        self.schema_reads.append(kwargs)
         if self.fields is not None:
             fields = self.fields
         else:
@@ -139,8 +159,20 @@ class _FakeProjectApi:
     async def set_favorite(self, project_id, *, favorite) -> None:
         self.favorite_calls.append((project_id, favorite))
 
+    async def get_copy_schema(self, project_id, *, draft_payload, **kwargs) -> ProjectSchemaResult:
+        assert self.copy_schema is not None, "the copy schema was not expected to be read"
+        fields = tuple(
+            normalize_project_field_schema(key, entry)
+            for key, entry in self.copy_schema.items()
+            if isinstance(entry, dict)
+        )
+        return ProjectSchemaResult(schema=self.copy_schema, fields=fields)
+
     async def copy_form(self, project_id, payload) -> ProjectCopyFormResult:
-        return ProjectCopyFormResult(payload=payload, validation_errors=self.copy_validation_errors)
+        self.copy_form_calls.append(payload)
+        return ProjectCopyFormResult(
+            payload={**self.form_echo, **payload}, validation_errors=self.copy_validation_errors
+        )
 
     async def commit_copy(self, project_id, payload) -> str | None:
         self.commit_copy_calls.append((project_id, payload))
@@ -151,7 +183,11 @@ def _resolver(api: _FakeProjectApi, *, settings=None) -> ProjectResolver:
     return ProjectResolver(api=api, settings=settings or make_settings())
 
 
-def _service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectService:
+async def _all_references_allowed(references):
+    return dict.fromkeys(references, True)
+
+
+def _service(api: _FakeProjectApi | None = None, *, settings=None, references_allowed=None) -> ProjectService:
     api = api or _FakeProjectApi()
     settings = settings or make_settings()
     return ProjectService(
@@ -159,6 +195,7 @@ def _service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectSer
         settings=settings,
         project_id_to_identifier={},
         resolver=_resolver(api, settings=settings),
+        references_allowed=references_allowed or _all_references_allowed,
         api_prefix="/api/v3/",
     )
 
@@ -184,7 +221,9 @@ async def test_get_description_hidden_by_project_scope_not_project_configuration
     assert getattr(result_project_hidden, "_hidden_keys", frozenset()) == {"description"}
 
 
-def _admin_service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectAdminService:
+def _admin_service(
+    api: _FakeProjectApi | None = None, *, settings=None, references_allowed=None
+) -> ProjectAdminService:
     api = api or _FakeProjectApi()
     settings = settings or make_settings()
     return ProjectAdminService(
@@ -192,6 +231,7 @@ def _admin_service(api: _FakeProjectApi | None = None, *, settings=None) -> Proj
         settings=settings,
         project_id_to_identifier={},
         resolver=_resolver(api, settings=settings),
+        references_allowed=references_allowed or _all_references_allowed,
     )
 
 
@@ -656,6 +696,7 @@ async def test_update_builds_parent_href_from_this_service_s_own_api_prefix() ->
         settings=settings,
         project_id_to_identifier={},
         resolver=resolver,
+        references_allowed=_all_references_allowed,
         api_prefix="/custom/v9/",
     )
 
@@ -673,6 +714,7 @@ async def test_create_preview_does_not_write_to_the_cache() -> None:
         settings=make_settings(),
         project_id_to_identifier=project_id_to_identifier,
         resolver=_resolver(api),
+        references_allowed=_all_references_allowed,
         api_prefix="/api/v3/",
     )
 
@@ -691,6 +733,7 @@ async def test_update_preview_does_not_write_to_the_cache() -> None:
         settings=settings,
         project_id_to_identifier=project_id_to_identifier,
         resolver=_resolver(api, settings=settings),
+        references_allowed=_all_references_allowed,
         api_prefix="/api/v3/",
     )
 
@@ -947,7 +990,7 @@ def _record_below(parent: tuple[int, str] | None, ancestors: list[tuple[int, str
         links["ancestors"] = [{"href": f"/api/v3/projects/{pid}", "title": title} for pid, title in ancestors]
     payload = _payload(_links=links)
     detail = normalize_project_detail(payload)
-    return ProjectRecord(summary=detail, to_detail=lambda: detail, payload=payload)
+    return project_record(detail, detail=detail, payload=payload)
 
 
 def _scoped_service(record: ProjectRecord, *, read, known=None) -> ProjectService:
@@ -958,6 +1001,7 @@ def _scoped_service(record: ProjectRecord, *, read, known=None) -> ProjectServic
         settings=settings,
         project_id_to_identifier={6: "demo", **(known or {})},
         resolver=_resolver(api, settings=settings),
+        references_allowed=_all_references_allowed,
         api_prefix="/api/v3/",
     )
 
@@ -1021,6 +1065,7 @@ async def test_admin_context_leaves_out_an_uncovered_parent_of_its_project() -> 
         settings=settings,
         project_id_to_identifier={6: "demo"},
         resolver=_resolver(api, settings=settings),
+        references_allowed=_all_references_allowed,
     )
 
     context = await service.get_admin_context("demo")
@@ -1077,6 +1122,7 @@ async def test_admin_context_leaves_out_versions_defined_in_projects_the_read_sc
         settings=settings,
         project_id_to_identifier={6: "demo"},
         resolver=_resolver(api, settings=settings),
+        references_allowed=_all_references_allowed,
     )
 
     context = await service.get_admin_context("demo")
@@ -1088,8 +1134,8 @@ async def test_admin_context_leaves_out_versions_defined_in_projects_the_read_sc
 @pytest.mark.asyncio
 async def test_a_cut_ancestor_chain_does_not_stay_flagged_truncated_once_entries_are_left_out() -> None:
     record = _record_below((3, "Secret Branch"), _BELOW_SECRET)
-    detail = dataclasses.replace(record.to_detail(), ancestors_truncated=True)
-    record = ProjectRecord(summary=detail, to_detail=lambda: detail, payload=record.payload)
+    detail = dataclasses.replace(record.scoped_detail(visible=VisibleReferences.everything()), ancestors_truncated=True)
+    record = project_record(detail, detail=detail, payload=record.payload)
 
     kept_nothing_out = await _scoped_service(record, read=("*",)).get("demo")
     left_some_out = await _scoped_service(record, read=("demo", "open-middle"), known={2: "open-middle"}).get("demo")
@@ -1103,7 +1149,7 @@ async def test_an_ancestor_without_an_id_stays_under_every_project_scope() -> No
     links = {"ancestors": [{"href": "urn:openproject-org:api:v3:undisclosed", "title": "Hidden"}]}
     payload = _payload(_links=links)
     detail = normalize_project_detail(payload)
-    record = ProjectRecord(summary=detail, to_detail=lambda: detail, payload=payload)
+    record = project_record(detail, detail=detail, payload=payload)
 
     project = await _scoped_service(record, read=("*",)).get("demo")
 
@@ -1119,3 +1165,556 @@ async def test_list_checks_read_enabled() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_PROJECT_READ"):
         await service.list()
+
+
+# --- project attributes (custom fields): read masking, scope, write, list query -------------------------
+
+_SECRET_VERSION = ScopedReference("version", 7)
+
+
+def _attribute_record(project_id: int = 6, identifier: str = "demo", **extra) -> ProjectRecord:
+    """A record built by the real adapter from a payload that carries project attributes."""
+    payload = _payload(project_id=project_id, identifier=identifier, **extra)
+    payload["customField1"] = "Alpha"
+    payload["customField2"] = "Beta"
+    payload["customComment1"] = "why alpha"
+    payload["customComment2"] = "why beta"
+    payload["_links"] = {
+        "self": {"href": f"/api/v3/projects/{project_id}"},
+        "customField11": {"href": "/api/v3/versions/7", "title": "Secret release"},
+        "customField12": {"href": "/api/v3/versions/8", "title": "Own release"},
+    }
+    api = HttpxProjectApi(None, base_url="https://op.example.com")  # type: ignore[arg-type]
+    return api._record(payload)
+
+
+async def _only_visible_versions(references):
+    return {reference: reference != _SECRET_VERSION for reference in references}
+
+
+def _calls(counter: list[list]):
+    async def check(references):
+        references = list(references)
+        counter.append(references)
+        return {reference: reference != _SECRET_VERSION for reference in references}
+
+    return check
+
+
+def _hiding(**hidden) -> object:
+    """Settings under a restricted read scope: a version link is only judged when the scope can exclude it."""
+    return dataclasses.replace(make_settings(), **{"read_projects": ("demo",), **hidden})
+
+
+@pytest.mark.asyncio
+async def test_get_shows_the_attributes_with_a_version_outside_the_scope_as_null() -> None:
+    service = _service(
+        _FakeProjectApi([_attribute_record()]), settings=_hiding(), references_allowed=_only_visible_versions
+    )
+
+    detail = await service.get("demo")
+
+    assert detail.custom_fields is not None
+    assert detail.custom_fields["customField11"] is None
+    assert detail.custom_fields["customField12"] == "Own release"
+    assert "Secret release" not in repr(detail)
+
+
+@pytest.mark.asyncio
+async def test_a_hidden_custom_field_takes_its_comment_with_it_on_get_and_list() -> None:
+    settings = _hiding(hide_custom_fields=("customField1",))
+    service = _service(_FakeProjectApi([_attribute_record()]), settings=settings)
+
+    detail = await service.get("demo")
+    listed = (await service.list()).results[0]
+
+    for shown in (detail, listed):
+        assert shown.custom_fields is not None and "customField1" not in shown.custom_fields
+        assert "customField2" in shown.custom_fields
+        assert shown.custom_comments == {"customComment2": "<user-content>why beta</user-content>"}
+
+
+@pytest.mark.asyncio
+async def test_a_hide_pattern_written_as_a_name_has_no_effect_on_a_read() -> None:
+    settings = _hiding(hide_custom_fields=("Alpha",))
+    service = _service(_FakeProjectApi([_attribute_record()]), settings=settings)
+
+    detail = await service.get("demo")
+
+    assert detail.custom_fields is not None and "customField1" in detail.custom_fields
+
+
+@pytest.mark.asyncio
+async def test_hiding_custom_fields_as_a_whole_removes_both_dicts_and_the_flags() -> None:
+    settings = _hiding(hidden_fields={"project": ("custom_fields", "custom_comments")})
+    service = _service(_FakeProjectApi([_attribute_record()]), settings=settings)
+
+    for shown in (await service.get("demo"), (await service.list()).results[0]):
+        assert shown.custom_fields_truncated is False and shown.custom_comments_truncated is False
+        assert shown.custom_comments is None
+        assert {"custom_fields", "custom_comments"} <= set(getattr(shown, "_hidden_keys", ()))
+        assert not {"custom_fields", "custom_comments"} & set(_to_payload(shown))
+
+
+@pytest.mark.asyncio
+async def test_a_page_of_projects_asks_for_the_scope_of_its_versions_once() -> None:
+    calls: list[list] = []
+    records = [_attribute_record(project_id=n, identifier=f"p{n}") for n in (6, 7, 8)]
+    service = _service(
+        _FakeProjectApi(records), settings=_hiding(read_projects=("demo", "p*")), references_allowed=_calls(calls)
+    )
+
+    result = await service.list()
+
+    assert len(calls) == 1
+    assert set(calls[0]) == {_SECRET_VERSION, ScopedReference("version", 8)}
+    assert all(row.custom_fields["customField11"] is None for row in result.results)
+
+
+@pytest.mark.asyncio
+async def test_a_hidden_field_costs_no_scope_lookup() -> None:
+    calls: list[list] = []
+    settings = _hiding(hide_custom_fields=("customField11",))
+    service = _service(_FakeProjectApi([_attribute_record()]), settings=settings, references_allowed=_calls(calls))
+
+    await service.get("demo")
+
+    assert [reference for batch in calls for reference in batch] == [ScopedReference("version", 8)]
+
+
+@pytest.mark.asyncio
+async def test_the_admin_context_names_no_out_of_scope_version_in_its_project_and_hides_hidden_definitions() -> None:
+    api = _FakeProjectApi([_attribute_record()])
+    api.schema = {
+        "customField1": {"name": "Alpha", "type": "String", "writable": True, "location": "customField1"},
+        "customField2": {"name": "Beta", "type": "String", "writable": True, "location": "customField2"},
+        "status": {"name": "Status", "writable": True, "_embedded": {"allowedValues": []}},
+    }
+    settings = _hiding(hide_custom_fields=("Alpha",))
+    service = _admin_service(api, settings=settings, references_allowed=_only_visible_versions)
+
+    context = await service.get_admin_context("demo")
+
+    assert context.project.custom_fields is not None
+    assert context.project.custom_fields["customField11"] is None
+    assert [field.key for field in context.fields if field.key.startswith("customField")] == ["customField2"]
+
+
+@pytest.mark.asyncio
+async def test_the_admin_context_offers_no_custom_field_definition_when_custom_fields_are_hidden() -> None:
+    api = _FakeProjectApi([_attribute_record()])
+    api.schema = {"customField1": {"name": "Alpha", "type": "String", "writable": True}}
+    service = _admin_service(api, settings=_hiding(hidden_fields={"project": ("custom_fields",)}))
+
+    context = await service.get_admin_context("demo")
+
+    assert [field.key for field in context.fields] == []
+
+
+def _enabled_settings(**extra):
+    return dataclasses.replace(
+        make_settings(), enable_project_write=True, read_projects=("demo*",), write_projects=("*",), **extra
+    )
+
+
+_ATTRIBUTE_SCHEMA = {
+    "customField1": {"name": "Alpha", "type": "String", "writable": True, "location": "customField1"},
+    "customField11": {
+        "name": "Release",
+        "type": "Version",
+        "writable": True,
+        "location": "_links",
+        "_embedded": {
+            "allowedValues": [
+                {"name": "Secret release", "_links": {"self": {"href": "/api/v3/versions/7"}}},
+                {"name": "Own release", "_links": {"self": {"href": "/api/v3/versions/8"}}},
+            ]
+        },
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_create_sends_the_attributes_the_form_will_validate() -> None:
+    api = _FakeProjectApi()
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings(), references_allowed=_only_visible_versions)
+
+    result = await service.create(
+        name="Demo N", identifier="demo-n", custom_fields={"alpha": "x", "Release": "Own release"}, confirm=True
+    )
+
+    assert api.commit_create_calls == [
+        {
+            "name": "Demo N",
+            "identifier": "demo-n",
+            "customField1": "x",
+            "_links": {"customField11": {"href": "/api/v3/versions/8"}},
+        }
+    ]
+    assert result.state == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_create_cannot_name_a_version_outside_the_scope() -> None:
+    api = _FakeProjectApi()
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings(), references_allowed=_only_visible_versions)
+
+    with pytest.raises(InvalidInputError, match="'Secret release' is not allowed"):
+        await service.create(
+            name="Demo N", identifier="demo-n", custom_fields={"Release": "Secret release"}, confirm=True
+        )
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "hidden, given",
+    [
+        ({"hide_custom_fields": ("customField1",)}, {"customField1": "x"}),
+        ({"hide_custom_fields": ("customField1",)}, {"Alpha": "x"}),
+        ({"hide_custom_fields": ("Alpha",)}, {"customField1": "x"}),
+        ({"hidden_fields": {"project": ("custom_fields",)}}, {"customField1": "x"}),
+    ],
+)
+async def test_a_hidden_attribute_is_refused_by_key_or_by_name_before_any_form(hidden, given) -> None:
+    api = _FakeProjectApi()
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings(**hidden))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE"):
+        await service.create(name="Demo N", identifier="demo-n", custom_fields=given, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_with_only_custom_fields_validates_and_writes_them() -> None:
+    api = _FakeProjectApi()
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings())
+
+    await service.update(project_ref="demo", custom_fields={"customField1": None}, confirm=True)
+
+    assert api.commit_update_calls == [(6, {"customField1": None})]
+
+
+@pytest.mark.asyncio
+async def test_update_clears_a_link_attribute_with_a_null_link() -> None:
+    api = _FakeProjectApi()
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings())
+
+    await service.update(project_ref="demo", custom_fields={"Release": None}, confirm=True)
+
+    assert api.commit_update_calls == [(6, {"_links": {"customField11": {"href": None}}})]
+
+
+@pytest.mark.asyncio
+async def test_update_refuses_to_replace_a_version_the_result_cannot_name() -> None:
+    api = _FakeProjectApi([_attribute_record()])
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings(), references_allowed=_only_visible_versions)
+
+    with pytest.raises(InvalidInputError, match="1 version custom field value"):
+        await service.update(project_ref="demo", custom_fields={"Release": "Own release"}, confirm=True)
+    with pytest.raises(InvalidInputError, match="1 version custom field value"):
+        await service.update(project_ref="demo", custom_fields={"Release": None}, confirm=True)
+
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_may_change_an_attribute_next_to_a_version_it_does_not_touch() -> None:
+    api = _FakeProjectApi([_attribute_record()])
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings(), references_allowed=_only_visible_versions)
+
+    await service.update(project_ref="demo", custom_fields={"Alpha": "new"}, confirm=True)
+
+    assert api.commit_update_calls == [(6, {"customField1": "new"})]
+
+
+@pytest.mark.asyncio
+async def test_copy_resolves_the_attributes_against_the_schema_of_the_copy_form() -> None:
+    api = _FakeProjectApi()
+    api.copy_schema = {"customField1": _ATTRIBUTE_SCHEMA["customField1"]}
+    service = _service(api, settings=_enabled_settings())
+
+    await service.copy(
+        source_project="demo", name="Demo N", identifier="demo-n", custom_fields={"Alpha": "x"}, confirm=False
+    )
+
+    assert api.copy_form_calls == [{"name": "Demo N", "identifier": "demo-n", "customField1": "x"}]
+
+
+@pytest.mark.asyncio
+async def test_copy_without_attributes_reads_no_copy_schema() -> None:
+    api = _FakeProjectApi()
+    service = _service(api, settings=_enabled_settings())
+
+    await service.copy(source_project="demo", name="Demo N", identifier="demo-n", confirm=False)
+
+    assert api.copy_form_calls == [{"name": "Demo N", "identifier": "demo-n"}]
+
+
+@pytest.mark.asyncio
+async def test_a_write_result_shows_the_attributes_of_the_committed_project_scoped_like_a_read() -> None:
+    settings = _enabled_settings(hide_custom_fields=("customField2",))
+    api = _FakeProjectApi([_attribute_record()])
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+
+    async def commit_update(project_id, payload):
+        return _attribute_record()
+
+    api.commit_update = commit_update  # type: ignore[method-assign]
+    service = _service(api, settings=settings, references_allowed=_only_visible_versions)
+
+    result = await service.update(project_ref="demo", custom_fields={"Alpha": "new"}, confirm=True)
+
+    assert result.result is not None and result.result.custom_fields is not None
+    assert "customField2" not in result.result.custom_fields
+    assert result.result.custom_fields["customField11"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_passes_the_custom_field_filters_and_the_order_to_the_api() -> None:
+    api = _FakeProjectApi()
+    service = _service(api)
+
+    await service.list(
+        custom_field_filters={"cf_3": {"operator": "=", "values": ["x"]}},
+        sort_by=[SortCriterion(field="cf_3", direction="desc")],
+    )
+
+    assert api.list_calls == [
+        {
+            "custom_field_filters": [{"cf_3": {"operator": "=", "values": ["x"]}}],
+            "sort_by": [SortCriterion(field="cf_3", direction="desc")],
+        }
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "settings, query",
+    [
+        (
+            {"hide_custom_fields": ("customField3",)},
+            {"custom_field_filters": {"cf_3": {"operator": "=", "values": ["x"]}}},
+        ),
+        ({"hide_custom_fields": ("cf_3",)}, {"sort_by": [SortCriterion("cf_3", "asc")]}),
+        ({"hidden_fields": {"project": ("custom_fields",)}}, {"sort_by": [SortCriterion("cf_3", "asc")]}),
+        (
+            {"hidden_fields": {"project": ("custom_fields",)}},
+            {"custom_field_filters": {"cf_3": {"operator": "=", "values": ["x"]}}},
+        ),
+        ({"hidden_fields": {"project": ("status",)}}, {"sort_by": [SortCriterion("project_status", "asc")]}),
+        ({"hidden_fields": {"project": ("name",)}}, {"sort_by": [SortCriterion("name", "asc")]}),
+        ({"hidden_fields": {"project": ("name",)}}, {"search": "demo"}),
+    ],
+)
+async def test_a_hidden_field_cannot_be_used_to_filter_or_to_sort(settings, query) -> None:
+    api = _FakeProjectApi()
+    service = _service(api, settings=_hiding(**settings))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE"):
+        await service.list(**query)
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_sort_column_a_release_lacks_names_the_release_that_has_it() -> None:
+    api = _FakeProjectApi()
+    api.list_raises = InvalidInputError("Order updated_at does not exist.")
+    service = _service(api)
+
+    with pytest.raises(InvalidInputError, match=r"Order updated_at does not exist\..*updated_at.*16\.5"):
+        await service.list(sort_by=[SortCriterion(field="updated_at", direction="asc")])
+
+
+@pytest.mark.asyncio
+async def test_a_sort_column_every_release_has_adds_no_release_hint() -> None:
+    api = _FakeProjectApi()
+    api.list_raises = InvalidInputError("Bad filter.")
+    service = _service(api)
+
+    with pytest.raises(InvalidInputError) as raised:
+        await service.list(sort_by=[SortCriterion(field="name", direction="asc")])
+
+    assert str(raised.value) == "Bad filter."
+
+
+_FORM_ECHO = {
+    "customField2": "SECRET VALUE",
+    "customComment2": "SECRET NOTE",
+    "customField3": "visible",
+    "_links": {"customField2": {"href": "/api/v3/users/9", "title": "Secret Person"}},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_a_write_preview_and_result_drop_the_hidden_attributes_the_form_echoes(confirm: bool) -> None:
+    api = _FakeProjectApi()
+    api.form_echo = _FORM_ECHO
+    service = _service(api, settings=dataclasses.replace(_enabled_settings(), hide_custom_fields=("customField2",)))
+
+    update = await service.update(project_ref="demo", name="Renamed", confirm=confirm)
+    create = await service.create(name="Demo N", identifier="demo-n", confirm=confirm)
+
+    for result in (update, create):
+        assert result.payload["customField3"] == "visible"
+        assert "customField2" not in result.payload and "customComment2" not in result.payload
+        assert "customField2" not in result.payload.get("_links", {})
+
+
+@pytest.mark.asyncio
+async def test_a_copy_preview_drops_the_hidden_attributes_the_form_echoes() -> None:
+    api = _FakeProjectApi()
+    api.form_echo = _FORM_ECHO
+    service = _service(api, settings=dataclasses.replace(_enabled_settings(), hide_custom_fields=("customField2",)))
+
+    result = await service.copy(source_project="demo", name="Copy", identifier="demo-copy", confirm=False)
+
+    assert result.payload["customField3"] == "visible"
+    assert "customField2" not in result.payload and "customComment2" not in result.payload
+    assert "customField2" not in result.payload.get("_links", {})
+
+
+@pytest.mark.asyncio
+async def test_a_copy_request_carries_no_custom_field_comment_key() -> None:
+    api = _FakeProjectApi()
+    api.form_echo = _FORM_ECHO
+    service = _service(api, settings=_enabled_settings())
+
+    preview = await service.copy(source_project="demo", name="Copy", identifier="demo-copy", confirm=False)
+    await service.copy(source_project="demo", name="Copy", identifier="demo-copy", confirm=True)
+
+    assert "customComment2" not in preview.payload
+    assert preview.payload["customField3"] == "visible"
+    [(_, committed)] = api.commit_copy_calls
+    assert "customComment2" not in committed and committed["customField3"] == "visible"
+
+
+@pytest.mark.asyncio
+async def test_a_copy_refuses_to_set_a_custom_field_comment() -> None:
+    api = _FakeProjectApi()
+    service = _service(api, settings=_enabled_settings())
+
+    with pytest.raises(InvalidInputError, match="update_project"):
+        await service.copy(
+            source_project="demo",
+            name="Copy",
+            identifier="demo-copy",
+            custom_fields={"customComment2": "x"},
+            confirm=True,
+        )
+
+    assert api.commit_copy_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_a_copy_rejection_does_not_name_a_hidden_attribute(confirm: bool) -> None:
+    api = _FakeProjectApi()
+    api.copy_validation_errors = {"customField2": "Secret can't be blank", "name": "too short"}
+    service = _service(api, settings=dataclasses.replace(_enabled_settings(), hide_custom_fields=("customField2",)))
+
+    result = await service.copy(source_project="demo", name="Copy", identifier="demo-copy", confirm=confirm)
+
+    assert result.validation_errors["name"] == "too short"
+    assert "Secret" not in repr(result.validation_errors)
+    assert set(result.validation_errors) == {"customField2", "name"}
+
+
+@pytest.mark.asyncio
+async def test_the_members_behind_a_user_attribute_are_read_only_to_resolve_a_written_value() -> None:
+    api = _FakeProjectApi()
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    service = _service(api, settings=_enabled_settings())
+    admin = _admin_service(api, settings=_enabled_settings())
+
+    await admin.get_admin_context("demo")
+    await service.update(project_ref="demo", name="Renamed", confirm=False)
+    await service.update(project_ref="demo", custom_fields={"customField1": None}, confirm=False)
+
+    assert [bool(read.get("custom_field_options")) for read in api.schema_reads] == [False, False, True]
+
+
+_DEFINING_PROJECT_LINKS = {
+    1: {"definingProject": {"href": "/api/v3/projects/1"}},
+    2: {"definingProject": {"href": "/api/v3/projects/9"}},
+    3: {},
+    4: {"definingProject": {"href": "urn:openproject-org:api:v3:undisclosed"}},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("read_projects", [("demo",), ("*",)])
+async def test_the_write_path_and_the_admin_context_offer_the_same_versions(read_projects: tuple[str, ...]) -> None:
+    from types import SimpleNamespace
+
+    from openproject_ce_mcp.app.resolvers.scoped_reference_resolver import ScopedReferenceResolver
+    from openproject_ce_mcp.app.resource_href import ResourceLinks
+    from openproject_ce_mcp.app.services._scoped_references import field_with_visible_options
+
+    settings = dataclasses.replace(make_settings(), read_projects=read_projects)
+    known = {1: "demo", 9: "secret"}
+
+    class _Versions:
+        async def get(self, version_id: int):
+            link = _DEFINING_PROJECT_LINKS[version_id].get("definingProject")
+            return SimpleNamespace(defining_project_link=link)
+
+    resolver = ScopedReferenceResolver(
+        version_api=_Versions(),  # type: ignore[arg-type]
+        sprint_api=None,  # type: ignore[arg-type]
+        backlog_bucket_api=None,  # type: ignore[arg-type]
+        settings=settings,
+        project_id_to_identifier=known,
+    )
+    options = [
+        {
+            "_type": "Version",
+            "name": f"V{number}",
+            "_links": {"self": {"href": f"/api/v3/versions/{number}"}, **links},
+        }
+        for number, links in _DEFINING_PROJECT_LINKS.items()
+    ]
+    schema_field = {
+        "name": "Release",
+        "type": "Version",
+        "writable": True,
+        "location": "_links",
+        "_embedded": {"allowedValues": options},
+    }
+    api = _FakeProjectApi()
+    api.schema = {"customField11": schema_field}
+    admin = ProjectAdminService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier=known,
+        resolver=_resolver(api, settings=settings),
+        references_allowed=resolver.references_allowed,
+    )
+
+    context = await admin.get_admin_context("demo")
+    on_admin_context = {value.href for field in context.fields for value in field.allowed_values}
+    written = await field_with_visible_options(
+        schema_field,
+        links=ResourceLinks("https://op.example.com"),
+        settings=settings,
+        check=resolver.references_allowed,
+    )
+    on_write_path = {option["_links"]["self"]["href"] for option in written["_embedded"]["allowedValues"]}
+
+    assert on_admin_context == on_write_path
+    assert on_write_path == (
+        {"/api/v3/versions/1"}
+        if read_projects == ("demo",)
+        else {f"/api/v3/versions/{number}" for number in _DEFINING_PROJECT_LINKS}
+    )

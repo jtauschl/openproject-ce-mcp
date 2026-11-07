@@ -106,6 +106,10 @@ class ProjectSummary:
     description_length: int | None = None
     status_explanation_truncated: bool = False
     status_explanation_length: int | None = None
+    custom_fields: dict[str, Any] | None = None
+    custom_fields_truncated: bool = False
+    custom_comments: dict[str, str] | None = None
+    custom_comments_truncated: bool = False
 
 
 @dataclass

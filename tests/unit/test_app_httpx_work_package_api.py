@@ -6,10 +6,12 @@ from functools import partial
 import httpx
 import pytest
 
-from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
+from openproject_ce_mcp.app.adapters._custom_fields import (
     CUSTOM_FIELD_LIST_ITEM_LIMIT,
     CUSTOM_FIELD_SCALAR_LIMIT,
     CUSTOM_FIELD_VALUE_LIMIT,
+)
+from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
     HttpxWorkPackageApi,
     normalize_work_package_detail,
     normalize_work_package_summary,
@@ -407,11 +409,12 @@ async def test_parse_form_dereferences_linked_allowed_values() -> None:
         return httpx.Response(
             200,
             json={
+                "total": 1,
                 "_embedded": {
                     "elements": [
                         {"id": 15, "name": "Stefania Iran", "_links": {"self": {"href": "/api/v3/users/15"}}},
                     ]
-                }
+                },
             },
             request=request,
         )
@@ -450,6 +453,38 @@ async def test_parse_form_dereferences_linked_allowed_values() -> None:
     # The input form's schema is untouched -- parse_form must not mutate in place.
     assert "_embedded" not in form["_embedded"]["schema"]["responsible"]
 
+    await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_parse_form_reads_every_page_of_a_linked_allowed_values_collection() -> None:
+    users = [{"id": n, "name": f"User {n}", "_links": {"self": {"href": f"/api/v3/users/{n}"}}} for n in range(1, 131)]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        offset, size = int(request.url.params["offset"]), int(request.url.params["pageSize"])
+        elements = users[(offset - 1) * size : offset * size]
+        return httpx.Response(200, json={"total": len(users), "_embedded": {"elements": elements}}, request=request)
+
+    http_client = _client(handler)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    form = {
+        "_embedded": {
+            "payload": {},
+            "validationErrors": {},
+            "schema": {
+                "responsible": {
+                    "name": "Accountable",
+                    "type": "User",
+                    "location": "_links",
+                    "_links": {"allowedValues": {"href": "/api/v3/principals?filters=x"}},
+                }
+            },
+        }
+    }
+
+    result = await api.parse_form(form, resolve_links=True)
+
+    assert len(result.schema["responsible"]["_embedded"]["allowedValues"]) == 130
     await http_client.aclose()
 
 
@@ -495,7 +530,7 @@ async def test_parse_form_populates_the_allowed_values_cache_on_a_miss() -> None
         requested_paths.append(request.url.path)
         return httpx.Response(
             200,
-            json={"_embedded": {"elements": [{"id": 15, "name": "Stefania Iran"}]}},
+            json={"total": 1, "_embedded": {"elements": [{"id": 15, "name": "Stefania Iran"}]}},
             request=request,
         )
 
@@ -537,7 +572,7 @@ async def test_parse_form_two_different_hrefs_never_share_a_cache_entry() -> Non
         user_id = 15 if "7" in request.url.path else 22
         return httpx.Response(
             200,
-            json={"_embedded": {"elements": [{"id": user_id, "name": f"User {user_id}"}]}},
+            json={"total": 1, "_embedded": {"elements": [{"id": user_id, "name": f"User {user_id}"}]}},
             request=request,
         )
 
@@ -833,10 +868,10 @@ def test_custom_field_raw_entries_tolerates_malformed_links_container() -> None:
     guarded with an isinstance(..., dict) check, independent of the rest of
     normalize_work_package_summary's own (pre-existing, unrelated)
     assumption that `links` is always a dict once resolved by its caller."""
-    from openproject_ce_mcp.app.adapters.httpx_work_package_api import _custom_field_raw_entries
+    from openproject_ce_mcp.app.adapters._custom_fields import custom_field_raw_entries
 
     payload = {"customField1": "value"}
-    entries = _custom_field_raw_entries(payload, None)  # type: ignore[arg-type]
+    entries = custom_field_raw_entries(payload, None)  # type: ignore[arg-type]
 
     assert entries == {"customField1": "value"}
 
