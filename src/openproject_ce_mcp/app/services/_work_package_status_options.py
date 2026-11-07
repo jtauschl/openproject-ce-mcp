@@ -1,6 +1,6 @@
 """The statuses a work package's update form offers, as `OptionValue`s.
 
-Read-side counterpart to `_work_package_write_helpers.with_offered_status_values`:
+Read-side counterpart to `_schema_write_helpers.with_offered_status_values`:
 both read `schema.status._embedded.allowedValues` of the same form response.
 """
 
@@ -10,7 +10,7 @@ from typing import Any
 
 from ...models import OptionValue
 from ..errors import OpenProjectServerError
-from ._work_package_write_helpers import _id_from_href, _option_title
+from ._schema_write_helpers import _id_from_href, _option_title
 
 
 def allowed_status_options(schema: dict[str, Any]) -> list[OptionValue]:

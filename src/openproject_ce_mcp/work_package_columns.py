@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from . import column_floors
+
 # assignee, estimated_time, remaining_time and percentage_done are OpenProject's
 # aliases of assigned_to, estimated_hours, remaining_hours and done_ratio.
 SORTABLE_FIELDS = frozenset(
@@ -85,18 +87,11 @@ COLUMN_FLOORS = {
 
 def floors_used(sort_fields: Iterable[str], group_field: str | None) -> list[tuple[str, str]]:
     """The (column, release) pairs a request uses, oldest release first."""
-    used = {field for field in (*sort_fields, group_field) if field in COLUMN_FLOORS}
-    return sorted(((field, COLUMN_FLOORS[field]) for field in used), key=lambda pair: _release_key(pair[1]))
-
-
-def _release_key(release: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in release.split("."))
+    return column_floors.floors_used((*sort_fields, group_field), COLUMN_FLOORS)
 
 
 def describe_floors() -> str:
-    return ", ".join(
-        f"{field} {floor}+" for field, floor in sorted(COLUMN_FLOORS.items(), key=lambda p: _release_key(p[1]))
-    )
+    return column_floors.describe_floors(COLUMN_FLOORS)
 
 
 def sort_by_description() -> str:

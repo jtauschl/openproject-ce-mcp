@@ -165,7 +165,7 @@ def test_create_time_entry_schema() -> None:
     tool = _tools(create_app(_make_settings()))["create_time_entry"]
     assert (
         tool.description
-        == "Create a time entry.\n\nhours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).\nstart_time is an ISO 8601 date-time and requires the instance setting \"allow\ntracking of start and end times\"; ignored otherwise. No end_time parameter --\nOpenProject derives it read-only from start_time + hours. Use\ncreate_time_entry_until to specify an end time instead of hours directly.\n"
+        == "Create a time entry.\n\nhours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours). A day in a duration string is 24 hours, so write 'PT8H' for a working day.\nstart_time is an ISO 8601 date-time and requires the instance setting \"allow\ntracking of start and end times\"; ignored otherwise. No end_time parameter --\nOpenProject derives it read-only from start_time + hours. Use\ncreate_time_entry_until to specify an end time instead of hours directly.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -231,7 +231,7 @@ def test_update_time_entry_schema() -> None:
     tool = _tools(create_app(_make_settings()))["update_time_entry"]
     assert (
         tool.description
-        == "Update a time entry.\n\nhours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).\nstart_time is an ISO 8601 date-time. No end_time parameter -- OpenProject\nderives it read-only from start_time + hours. Use update_time_entry_until\nto specify an end time instead of hours directly.\n"
+        == "Update a time entry.\n\nhours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours). A day in a duration string is 24 hours, so write 'PT8H' for a working day.\nstart_time is an ISO 8601 date-time. No end_time parameter -- OpenProject\nderives it read-only from start_time + hours. Use update_time_entry_until\nto specify an end time instead of hours directly.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

@@ -171,6 +171,8 @@ class WikiPageLinkService:
             return self._stamp(record)
 
         outcome = await _finalize_write(
+            entity="wiki_page_link",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -216,6 +218,8 @@ class WikiPageLinkService:
             )
 
         outcome = await _finalize_write(
+            entity="wiki_page_link",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

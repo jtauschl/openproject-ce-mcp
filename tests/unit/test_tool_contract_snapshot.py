@@ -243,16 +243,37 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_create_work_packages": {
-        "description_hash": "b649d89646003bb898ec1cbe505841b11eda92fdeebd3aa51a06a6b814ac2062",
+        "description_hash": "21e147a8c1ab990482239956277d4409a7f77328efcf2dd6cf06dfed2a7fa00d",
         "input_schema": {
             "$defs": {
                 "BulkCreateWorkPackageItem": {
                     "additionalProperties": False,
-                    "description": "One work package of `bulk_create_work_packages`; a key outside this list is rejected, and so is\na value of the wrong JSON type (a boolean for a subject, a number for a description).",
+                    "description": "One work package of "
+                    "`bulk_create_work_packages`; "
+                    "a key outside this list "
+                    "is rejected, and so is\n"
+                    "a value of the wrong "
+                    "JSON type (a boolean for "
+                    "a subject, a number for "
+                    "a description).",
                     "properties": {
                         "project": {
                             "anyOf": [{"type": "integer"}, {"type": "string"}],
-                            "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                            "description": "Project "
+                            "identifier, "
+                            "id, "
+                            "or "
+                            "name; "
+                            "a "
+                            "unique "
+                            "part "
+                            "of "
+                            "a "
+                            "name "
+                            "or "
+                            "identifier "
+                            "also "
+                            "matches.",
                             "title": "Project",
                         },
                         "type": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Type"},
@@ -298,6 +319,42 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         },
                         "custom_fields": {
                             "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                            "description": "Custom "
+                            "field "
+                            "values "
+                            "by "
+                            "customField<N> "
+                            "key "
+                            "or "
+                            "field "
+                            "name, "
+                            "at "
+                            "most "
+                            "50. "
+                            "Text, "
+                            "number "
+                            "or "
+                            "boolean "
+                            "as "
+                            "is; "
+                            "list, "
+                            "user "
+                            "and "
+                            "version "
+                            "fields "
+                            "take "
+                            "an "
+                            "option "
+                            "id "
+                            "or "
+                            "title "
+                            "(a "
+                            "list "
+                            "for "
+                            "several "
+                            "values); "
+                            "null "
+                            "clears.",
                             "title": "Custom Fields",
                         },
                         "parent": {
@@ -306,12 +363,38 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         },
                         "parent_work_package_id": {
                             "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
-                            "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                            "description": "Work "
+                            "package "
+                            "id "
+                            "(e.g. "
+                            "952) "
+                            "or "
+                            "display "
+                            "id "
+                            "(e.g. "
+                            '"PROJ-51"), '
+                            "not "
+                            "the "
+                            "bare "
+                            "number "
+                            "51.",
                             "title": "Parent Work Package Id",
                         },
                         "expect_parent_display_id": {
                             "anyOf": [{"type": "string"}, {"type": "null"}],
-                            "description": 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.',
+                            "description": "Display "
+                            "id "
+                            "of "
+                            "the "
+                            "parent "
+                            "you "
+                            "mean, "
+                            "e.g. "
+                            '"PROJ-51"; '
+                            "see "
+                            "the "
+                            "server "
+                            "instructions.",
                             "title": "Expect Parent Display Id",
                         },
                         "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Start Date"},
@@ -330,12 +413,49 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: "
+                    "action, error, index, message, "
+                    "parent_target, payload, project, "
+                    "ready, result, state, success, target, "
+                    "validation_errors, work_package_id; "
+                    "result.<field> for allowed_statuses, "
+                    "ancestors, ancestors_truncated, "
+                    "assignee, author, category, children, "
+                    "children_truncated, created_at, "
+                    "custom_comments, "
+                    "custom_comments_truncated, "
+                    "custom_fields, "
+                    "custom_fields_truncated, "
+                    "derived_due_date, "
+                    "derived_estimated_time, "
+                    "derived_percentage_done, "
+                    "derived_remaining_time, "
+                    "derived_start_date, description, "
+                    "description_length, "
+                    "description_truncated, display_id, "
+                    "due_date, duration, estimated_time, "
+                    "has_project_attributes, id, "
+                    "ignore_non_working_days, lock_version, "
+                    "observed_in_versions, "
+                    "parent_display_id, parent_id, "
+                    "percentage_done, priority, project, "
+                    "project_phase, readonly, "
+                    "remaining_time, responsible, "
+                    "schedule_manually, spent_time, sprint, "
+                    "start_date, status, subject, "
+                    "target_versions, type, updated_at, "
+                    "version.",
                     "title": "Select",
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview of every item, nothing changes. true: attempts every item; get the user's approval of the preview first. Failed items are reported per item; items already written are not undone.",
+                    "description": "false: preview of every item, nothing "
+                    "changes. true: attempts every item; "
+                    "get the user's approval of the "
+                    "preview first. Failed items are "
+                    "reported per item; items already "
+                    "written are not undone.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -352,16 +472,36 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "bulk_update_work_packages": {
-        "description_hash": "50355db3477f1662df4eec2e18860fe68488a21e14d69bba91e319b70c3e8d8d",
+        "description_hash": "2e7081bf8f168b2a991f5cc6aaa8f74b9d15d813094165a8401ff9f67952cdd6",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
                     "additionalProperties": False,
-                    "description": "One change of `bulk_update_work_packages`; a key outside this list is rejected, and so is a\nvalue of the wrong JSON type.",
+                    "description": "One change of "
+                    "`bulk_update_work_packages`; "
+                    "a key outside this list "
+                    "is rejected, and so is "
+                    "a\n"
+                    "value of the wrong JSON "
+                    "type.",
                     "properties": {
                         "work_package_id": {
                             "anyOf": [{"type": "integer"}, {"type": "string"}],
-                            "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                            "description": "Work "
+                            "package "
+                            "id "
+                            "(e.g. "
+                            "952) "
+                            "or "
+                            "display "
+                            "id "
+                            "(e.g. "
+                            '"PROJ-51"), '
+                            "not "
+                            "the "
+                            "bare "
+                            "number "
+                            "51.",
                             "title": "Work Package Id",
                         },
                         "subject": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Subject"},
@@ -424,6 +564,42 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         },
                         "custom_fields": {
                             "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                            "description": "Custom "
+                            "field "
+                            "values "
+                            "by "
+                            "customField<N> "
+                            "key "
+                            "or "
+                            "field "
+                            "name, "
+                            "at "
+                            "most "
+                            "50. "
+                            "Text, "
+                            "number "
+                            "or "
+                            "boolean "
+                            "as "
+                            "is; "
+                            "list, "
+                            "user "
+                            "and "
+                            "version "
+                            "fields "
+                            "take "
+                            "an "
+                            "option "
+                            "id "
+                            "or "
+                            "title "
+                            "(a "
+                            "list "
+                            "for "
+                            "several "
+                            "values); "
+                            "null "
+                            "clears.",
                             "title": "Custom Fields",
                         },
                         "parent": {
@@ -432,12 +608,38 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         },
                         "parent_work_package_id": {
                             "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
-                            "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                            "description": "Work "
+                            "package "
+                            "id "
+                            "(e.g. "
+                            "952) "
+                            "or "
+                            "display "
+                            "id "
+                            "(e.g. "
+                            '"PROJ-51"), '
+                            "not "
+                            "the "
+                            "bare "
+                            "number "
+                            "51.",
                             "title": "Parent Work Package Id",
                         },
                         "expect_parent_display_id": {
                             "anyOf": [{"type": "string"}, {"type": "null"}],
-                            "description": 'Display id of the parent you mean, e.g. "PROJ-51"; see the server instructions.',
+                            "description": "Display "
+                            "id "
+                            "of "
+                            "the "
+                            "parent "
+                            "you "
+                            "mean, "
+                            "e.g. "
+                            '"PROJ-51"; '
+                            "see "
+                            "the "
+                            "server "
+                            "instructions.",
                             "title": "Expect Parent Display Id",
                         },
                         "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Start Date"},
@@ -451,7 +653,20 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                         },
                         "expect_display_id": {
                             "anyOf": [{"type": "string"}, {"type": "null"}],
-                            "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                            "description": "Display "
+                            "id "
+                            "of "
+                            "the "
+                            "work "
+                            "package "
+                            "you "
+                            "mean, "
+                            "e.g. "
+                            '"PROJ-51"; '
+                            "see "
+                            "the "
+                            "server "
+                            "instructions.",
                             "title": "Expect Display Id",
                         },
                     },
@@ -475,12 +690,49 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: "
+                    "action, error, index, message, "
+                    "parent_target, payload, project, "
+                    "ready, result, state, success, target, "
+                    "validation_errors, work_package_id; "
+                    "result.<field> for allowed_statuses, "
+                    "ancestors, ancestors_truncated, "
+                    "assignee, author, category, children, "
+                    "children_truncated, created_at, "
+                    "custom_comments, "
+                    "custom_comments_truncated, "
+                    "custom_fields, "
+                    "custom_fields_truncated, "
+                    "derived_due_date, "
+                    "derived_estimated_time, "
+                    "derived_percentage_done, "
+                    "derived_remaining_time, "
+                    "derived_start_date, description, "
+                    "description_length, "
+                    "description_truncated, display_id, "
+                    "due_date, duration, estimated_time, "
+                    "has_project_attributes, id, "
+                    "ignore_non_working_days, lock_version, "
+                    "observed_in_versions, "
+                    "parent_display_id, parent_id, "
+                    "percentage_done, priority, project, "
+                    "project_phase, readonly, "
+                    "remaining_time, responsible, "
+                    "schedule_manually, spent_time, sprint, "
+                    "start_date, status, subject, "
+                    "target_versions, type, updated_at, "
+                    "version.",
                     "title": "Select",
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview of every item, nothing changes. true: attempts every item; get the user's approval of the preview first. Failed items are reported per item; items already written are not undone.",
+                    "description": "false: preview of every item, nothing "
+                    "changes. true: attempts every item; "
+                    "get the user's approval of the "
+                    "preview first. Failed items are "
+                    "reported per item; items already "
+                    "written are not undone.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -526,12 +778,14 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     },
     "copy_project": {
-        "description_hash": "6ad98fa4a354a493abe4c44b5c87906cf51226fe6ef95b8cc98739756e0382eb",
+        "description_hash": "79b1529dcfd7c102d33a5e91780bb41efc067733589bb758e40ed1e0474a1574",
         "input_schema": {
             "properties": {
                 "source_project": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                    "description": "Project identifier, id, or "
+                    "name; a unique part of a name "
+                    "or identifier also matches.",
                     "title": "Source Project",
                 },
                 "name": {"description": "Display name, at most 255 characters.", "title": "Name", "type": "string"},
@@ -561,7 +815,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "status": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Status title, any case, as listed in get_project_admin_context's available_statuses.",
+                    "description": "Status title, any case, as listed in "
+                    "get_project_admin_context's "
+                    "available_statuses.",
                     "title": "Status",
                 },
                 "status_explanation": {
@@ -576,9 +832,23 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Parent project identifier, id, or name; omit for a top-level project.",
                     "title": "Parent",
                 },
+                "custom_fields": {
+                    "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Custom field values by "
+                    "customField<N> key or field "
+                    "name, at most 50. Text, number "
+                    "or boolean as is; list, user "
+                    "and version fields take an "
+                    "option id or title (a list for "
+                    "several values); null clears.",
+                    "title": "Custom Fields",
+                },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -1024,14 +1294,16 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
             "properties": {
                 "project": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                    "description": "Project identifier, id, or name; a "
+                    "unique part of a name or identifier "
+                    "also matches.",
                     "title": "Project",
                 },
                 "title": {"description": "At most 255 characters.", "title": "Title", "type": "string"},
                 "summary": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Short plain text, at most 500 characters.",
+                    "description": "Short plain text, at most 255 characters.",
                     "title": "Summary",
                 },
                 "description": {
@@ -1042,7 +1314,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -1064,7 +1338,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
     },
     "create_project": {
-        "description_hash": "bf3e271a6bb42fb82a7a0f67fbdab609adaf35545ee4a452fb4641c79b2b69a9",
+        "description_hash": "b072183f1139cd9b222f7f4c76bd9d21772031b99d9b982a45438600d9271866",
         "input_schema": {
             "properties": {
                 "name": {"description": "Display name, at most 255 characters.", "title": "Name", "type": "string"},
@@ -1094,7 +1368,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "status": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Status title, any case, as listed in get_project_admin_context's available_statuses.",
+                    "description": "Status title, any case, as listed in "
+                    "get_project_admin_context's "
+                    "available_statuses.",
                     "title": "Status",
                 },
                 "status_explanation": {
@@ -1109,9 +1385,23 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Parent project identifier, id, or name; omit for a top-level project.",
                     "title": "Parent",
                 },
+                "custom_fields": {
+                    "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Custom field values by "
+                    "customField<N> key or field "
+                    "name, at most 50. Text, number "
+                    "or boolean as is; list, user "
+                    "and version fields take an "
+                    "option id or title (a list for "
+                    "several values); null clears.",
+                    "title": "Custom Fields",
+                },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -1319,6 +1609,13 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "custom_fields": {
                     "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
                     "default": None,
+                    "description": "Custom field values by "
+                    "customField<N> key or field "
+                    "name, at most 50. Text, number "
+                    "or boolean as is; list, user "
+                    "and version fields take an "
+                    "option id or title (a list for "
+                    "several values); null clears.",
                     "title": "Custom Fields",
                 },
                 "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Date"},
@@ -1331,7 +1628,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -1348,7 +1647,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
     },
     "create_time_entry": {
-        "description_hash": "c155819f20714231f24cd9faae2fa3d5f6dd3289dbede442481def06e7520022",
+        "description_hash": "ed34fc34996d9591df30ba218f6d53ae46d742cdffa29efa2b0c42d7befc01c9",
         "input_schema": {
             "properties": {
                 "activity": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Activity"},
@@ -1357,7 +1656,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "project": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                    "description": "Project identifier, id, or name; a "
+                    "unique part of a name or identifier "
+                    "also matches.",
                     "title": "Project",
                 },
                 "work_package_id": {
@@ -1377,12 +1678,17 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "expect_display_id": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "description": "Display id of the work "
+                    "package you mean, e.g. "
+                    '"PROJ-51"; see the server '
+                    "instructions.",
                     "title": "Expect Display Id",
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -1692,12 +1998,14 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "create_work_package": {
-        "description_hash": "4908fa1c386ed88c3ac68f98ad3c91dc3e77c9efb972156baaf1e182cfa00ea3",
+        "description_hash": "7e9a1d1029185839da66bd6b95d5f99ccb16c2b64192ff5aab1bf12dbe79a583",
         "input_schema": {
             "properties": {
                 "project": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                    "description": "Project identifier, id, or name; a "
+                    "unique part of a name or identifier "
+                    "also matches.",
                     "title": "Project",
                 },
                 "type": {"anyOf": [{"type": "integer"}, {"type": "string"}], "title": "Type"},
@@ -1756,12 +2064,21 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "custom_fields": {
                     "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
                     "default": None,
+                    "description": "Custom field values by "
+                    "customField<N> key or field "
+                    "name, at most 50. Text, number "
+                    "or boolean as is; list, user "
+                    "and version fields take an "
+                    "option id or title (a list for "
+                    "several values); null clears.",
                     "title": "Custom Fields",
                 },
                 "parent": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": 'Parent work package: id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "description": "Parent work package: id (e.g. 952) or "
+                    'display id (e.g. "PROJ-51"), not the '
+                    "bare number 51.",
                     "title": "Parent",
                 },
                 "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Date"},
@@ -1785,7 +2102,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -3079,12 +3398,14 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
     },
     "get_project": {
-        "description_hash": "e0a3caddaac3ee8310a5771577421fdb74d446b40ca2a9ae2df0eb595bdd5796",
+        "description_hash": "f6b09d9b63321e8cb216a1acbae5e23837b504476a4a5653ca5b8b4c27386700",
         "input_schema": {
             "properties": {
                 "project": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                    "description": "Project identifier, id, or name; a "
+                    "unique part of a name or identifier "
+                    "also matches.",
                     "title": "Project",
                 },
                 "text_limit": {
@@ -4430,7 +4751,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
     },
     "list_projects": {
-        "description_hash": "8f73aefca78d24234811a481827d6819457df2eb11a034db10b65a945172ffe4",
+        "description_hash": "3a46c65a2ee8e6502201f9e61d4651e39fadb5cbba9d0cc01b4a555517b0a5cf",
         "input_schema": {
             "properties": {
                 "search": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Search"},
@@ -4449,8 +4770,60 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: active, can_delete, can_update, created_at, description, description_length, description_truncated, favorited, id, identifier, name, parent_id, parent_name, public, status, status_explanation, status_explanation_length, status_explanation_truncated, updated_at.",
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: "
+                    "active, can_delete, can_update, "
+                    "created_at, custom_comments, "
+                    "custom_comments_truncated, "
+                    "custom_fields, "
+                    "custom_fields_truncated, description, "
+                    "description_length, "
+                    "description_truncated, favorited, id, "
+                    "identifier, name, parent_id, "
+                    "parent_name, public, status, "
+                    "status_explanation, "
+                    "status_explanation_length, "
+                    "status_explanation_truncated, "
+                    "updated_at.",
                     "title": "Select",
+                },
+                "custom_field_filters": {
+                    "anyOf": [
+                        {"additionalProperties": {"additionalProperties": True, "type": "object"}, "type": "object"},
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                    "description": "Filter by custom field "
+                    'values: {"cf_<N>": '
+                    '{"operator": "=", '
+                    '"values": ["x"]}}, N '
+                    "from a customField<N> "
+                    "key. The operators a "
+                    "field takes depend on "
+                    "its format "
+                    "(docs/filters.md). At "
+                    "most 20 filters, 100 "
+                    "values each. A project "
+                    "matches only where the "
+                    "token may see the field.",
+                    "title": "Custom Field Filters",
+                },
+                "sort_by": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Sort criteria as "field:direction" or '
+                    '"field-direction" (e.g. ["name:desc", '
+                    '"created_at-asc"]); the direction '
+                    "defaults to asc. Fields: created_at, "
+                    "id, identifier, latest_activity_at, "
+                    "lft, name, project_status, public, "
+                    "required_disk_space, typeahead, "
+                    "updated_at, a custom field's cf_<id> "
+                    "(not a text field), or "
+                    "project_phase_<id>. Newer columns "
+                    "need an OpenProject release: "
+                    "updated_at 16.5+.",
+                    "title": "Sort By",
                 },
             },
             "title": "list_projectsArguments",
@@ -6331,7 +6704,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "summary": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": 'Short plain text, at most 500 characters; "" clears it.',
+                    "description": 'Short plain text, at most 255 characters; "" clears it.',
                     "title": "Summary",
                 },
                 "description": {
@@ -6353,7 +6726,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -6370,7 +6745,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
     },
     "update_project": {
-        "description_hash": "2181e66a1db1fc7aa8790af436eee80d291a750d6381d4b3119fc468235d19ae",
+        "description_hash": "ee98e34e0036103f90453c391c89ed05abda6ef3d3a05a7a60060ae99e0c020f",
         "input_schema": {
             "$defs": {
                 "TextReplace": {
@@ -6387,7 +6762,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
             "properties": {
                 "project": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                    "description": "Project identifier, id, or name; a "
+                    "unique part of a name or identifier "
+                    "also matches.",
                     "title": "Project",
                 },
                 "name": {
@@ -6434,7 +6811,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "status": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Status title, any case, as listed in get_project_admin_context's available_statuses.",
+                    "description": "Status title, any case, as listed in "
+                    "get_project_admin_context's "
+                    "available_statuses.",
                     "title": "Status",
                 },
                 "status_explanation": {
@@ -6460,9 +6839,23 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Parent project identifier, id, or name; 'none' makes the project top-level.",
                     "title": "Parent",
                 },
+                "custom_fields": {
+                    "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Custom field values by "
+                    "customField<N> key or field "
+                    "name, at most 50. Text, number "
+                    "or boolean as is; list, user "
+                    "and version fields take an "
+                    "option id or title (a list for "
+                    "several values); null clears.",
+                    "title": "Custom Fields",
+                },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -6629,7 +7022,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_ADMIN_WRITE", "OPENPROJECT_ENABLE_ADMIN_READ"),
     },
     "update_time_entry": {
-        "description_hash": "0c63281fdae87cc4ad88e58324120efa69ab35fb49902c5d999b4740a026affd",
+        "description_hash": "48bb6e8a752be006405cb9c9dd6a0ed560d8dda241d1d2517be3f957286080a0",
         "input_schema": {
             "properties": {
                 "time_entry_id": {"title": "Time Entry Id", "type": "integer"},
@@ -6650,7 +7043,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "ongoing": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "default": None, "title": "Ongoing"},
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -6961,7 +7356,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     },
     "update_work_package": {
-        "description_hash": "45e4fe6d538c1df7fc70cd32eaab16fde4660df8c59206473746631c823ab3b6",
+        "description_hash": "0fcf88938db92df9ff41275ad7c8ed27a0693e54e04e2a31175ea66e051927ca",
         "input_schema": {
             "$defs": {
                 "TextReplace": {
@@ -7062,12 +7457,21 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "custom_fields": {
                     "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
                     "default": None,
+                    "description": "Custom field values by "
+                    "customField<N> key or field "
+                    "name, at most 50. Text, number "
+                    "or boolean as is; list, user "
+                    "and version fields take an "
+                    "option id or title (a list for "
+                    "several values); null clears.",
                     "title": "Custom Fields",
                 },
                 "parent": {
                     "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": 'Parent work package: id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "description": "Parent work package: id (e.g. 952) or "
+                    'display id (e.g. "PROJ-51"), not the '
+                    "bare number 51.",
                     "title": "Parent",
                 },
                 "start_date": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Start Date"},
@@ -7091,7 +7495,10 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "expect_display_id": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": 'Display id of the work package you mean, e.g. "PROJ-51"; see the server instructions.',
+                    "description": "Display id of the work "
+                    "package you mean, e.g. "
+                    '"PROJ-51"; see the server '
+                    "instructions.",
                     "title": "Expect Display Id",
                 },
                 "expect_parent_display_id": {
@@ -7102,7 +7509,9 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 },
                 "confirm": {
                     "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "description": "false: preview only, nothing changes. "
+                    "true: applies it; get the user's "
+                    "approval of the preview first.",
                     "title": "Confirm",
                     "type": "boolean",
                 },
@@ -7392,7 +7801,10 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Fields to return; a requested unset "
                     "field comes back as null. Allowed: "
                     "active, can_delete, can_update, "
-                    "created_at, description, "
+                    "created_at, custom_comments, "
+                    "custom_comments_truncated, "
+                    "custom_fields, "
+                    "custom_fields_truncated, description, "
                     "description_length, "
                     "description_truncated, favorited, id, "
                     "identifier, name, parent_id, "
@@ -7487,7 +7899,10 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Fields to return; a requested unset "
                     "field comes back as null. Allowed: "
                     "active, can_delete, can_update, "
-                    "created_at, description, "
+                    "created_at, custom_comments, "
+                    "custom_comments_truncated, "
+                    "custom_fields, "
+                    "custom_fields_truncated, description, "
                     "description_length, "
                     "description_truncated, favorited, id, "
                     "identifier, name, parent_id, "

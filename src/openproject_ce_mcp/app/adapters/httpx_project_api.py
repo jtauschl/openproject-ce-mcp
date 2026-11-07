@@ -17,8 +17,9 @@ shared via `app/adapters/_text.py`. `PROJECT_ANCESTORS_LIMIT` stays local
 
 from __future__ import annotations
 
+import dataclasses
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -30,6 +31,7 @@ from ...models import (
     ProjectPhaseDefinition,
     ProjectRef,
     ProjectSummary,
+    SortCriterion,
 )
 from ..errors import OpenProjectServerError
 from ..pagination import page_is_last
@@ -41,8 +43,18 @@ from ..ports.project_api import (
     ProjectRecord,
     ProjectSchemaResult,
 )
+from ..ports.scoped_reference import VisibleReferences
+from ..resource_href import ResourceLinks
 from ..transport.protocol import Transport
+from ._custom_fields import (
+    ScopedTitles,
+    custom_field_references,
+    extract_custom_comments,
+    extract_custom_fields,
+    is_custom_field_key,
+)
 from ._filters import escape_like
+from ._linked_options import read_linked_options
 from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
@@ -95,6 +107,24 @@ def normalize_project(payload: dict[str, Any], *, text_limit: int | None = FORMA
         can_delete="delete" in links,
         favorited=payload.get("favorited"),
     )
+
+
+def normalize_project_custom_fields(
+    payload: dict[str, Any], *, text_limit: int | None, visible: VisibleReferences, resource_links: ResourceLinks
+) -> dict[str, Any]:
+    """The custom field fields of a project summary, naming only the references `visible` contains.
+    Hide-on-read masking is a Service concern, applied after this returns."""
+    links = payload.get("_links", {})
+    custom_fields, custom_fields_truncated = extract_custom_fields(
+        payload, links, text_limit=text_limit, scoped=ScopedTitles(visible, resource_links)
+    )
+    custom_comments, custom_comments_truncated = extract_custom_comments(payload)
+    return {
+        "custom_fields": custom_fields,
+        "custom_fields_truncated": custom_fields_truncated,
+        "custom_comments": custom_comments,
+        "custom_comments_truncated": custom_comments_truncated,
+    }
 
 
 def normalize_project_detail(
@@ -155,6 +185,10 @@ def normalize_project_detail(
         can_update=summary.can_update,
         can_delete=summary.can_delete,
         favorited=summary.favorited,
+        custom_fields=summary.custom_fields,
+        custom_fields_truncated=summary.custom_fields_truncated,
+        custom_comments=summary.custom_comments,
+        custom_comments_truncated=summary.custom_comments_truncated,
         ancestors=ancestors,
         ancestors_truncated=ancestors_truncated,
     )
@@ -252,6 +286,7 @@ class HttpxProjectApi:
         self._base_url = base_url
         self._origin = _origin_from_url(base_url)
         self._api_prefix = api_prefix
+        self._resource_links = ResourceLinks(base_url)
 
     def _link_to_api_path(self, href: str) -> str:
         """Same-origin-checked href -> API-relative path (with the API prefix
@@ -289,21 +324,30 @@ class HttpxProjectApi:
 
     def _record(self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectRecord:
         summary = normalize_project(payload, text_limit=text_limit)
+        resource_links = self._resource_links
+
+        def scoped_summary(visible: VisibleReferences) -> ProjectSummary:
+            return dataclasses.replace(
+                summary,
+                **normalize_project_custom_fields(
+                    payload, text_limit=text_limit, visible=visible, resource_links=resource_links
+                ),
+            )
+
+        # Lazy: most callers (ProjectResolver.resolve()/resolve_id(), used by every domain's
+        # project-reference resolution) never read the detail. The closure captures only `payload`,
+        # `text_limit` and `summary` (small, per-record), not `self`, so it does not keep a whole
+        # adapter/transport alive. Description and status_explanation are re-extracted independently
+        # inside normalize_project_detail (preserve_newlines=True is a genuinely different extraction).
+        def scoped_detail(visible: VisibleReferences) -> ProjectDetail:
+            return normalize_project_detail(payload, text_limit=text_limit, summary=scoped_summary(visible))
+
         return ProjectRecord(
             summary=summary,
-            # Lazy: most callers (ProjectResolver.resolve()/resolve_id(), used
-            # by every domain's project-reference resolution; ProjectService.
-            # list()) never read this. The closure captures only
-            # `payload`/`text_limit`/`summary` (small, per-record), not `self`
-            # -- it does not keep a whole adapter/transport alive. Passing
-            # `summary` through avoids re-deriving every OTHER field (id,
-            # name, identifier, status, parent, ...) a second time;
-            # description/status_explanation are still re-extracted
-            # independently inside normalize_project_detail regardless
-            # (preserve_newlines=True there is a genuinely different
-            # extraction, not just a truncation-limit divergence).
-            to_detail=lambda: normalize_project_detail(payload, text_limit=text_limit, summary=summary),
+            references=custom_field_references(payload.get("_links", {}), resource_links),
             payload=payload,
+            summary_factory=scoped_summary,
+            detail_factory=scoped_detail,
         )
 
     async def list(
@@ -315,6 +359,8 @@ class HttpxProjectApi:
         text_limit: int | None = FORMATTABLE_LIMIT,
         ids: Sequence[int] | None = None,
         ancestor_id: int | None = None,
+        custom_field_filters: Sequence[Mapping[str, Any]] = (),
+        sort_by: Sequence[SortCriterion] | None = None,
     ) -> ProjectPage:
         filters: list[dict[str, Any]] = []
         if search:
@@ -323,14 +369,17 @@ class HttpxProjectApi:
             filters.append({"id": {"operator": "=", "values": [str(project_id) for project_id in ids]}})
         if ancestor_id is not None:
             filters.append({"ancestor": {"operator": "=", "values": [str(ancestor_id)]}})
-        payload = await self._transport.get_json(
-            "projects",
-            params={
-                "offset": str(server_offset),
-                "pageSize": str(server_page_size),
-                "filters": json.dumps(filters, separators=(",", ":")),
-            },
-        )
+        filters.extend(dict(fragment) for fragment in custom_field_filters)
+        params = {
+            "offset": str(server_offset),
+            "pageSize": str(server_page_size),
+            "filters": json.dumps(filters, separators=(",", ":")),
+        }
+        if sort_by:
+            params["sortBy"] = json.dumps(
+                [[criterion.field, criterion.direction] for criterion in sort_by], separators=(",", ":")
+            )
+        payload = await self._transport.get_json("projects", params=params)
         elements = payload.get("_embedded", {}).get("elements", [])
         records = [
             self._record(item, text_limit=text_limit)
@@ -402,27 +451,58 @@ class HttpxProjectApi:
     async def update_form(self, project_id: int, payload: dict[str, Any]) -> ProjectFormResult:
         return self._form_result(await self._transport.post_json(f"projects/{project_id}/form", json_body=payload))
 
-    async def commit_create(self, payload: dict[str, Any]) -> ProjectDetail:
-        response = await self._transport.post_json("projects", json_body=payload)
-        return normalize_project_detail(response)
+    async def commit_create(self, payload: dict[str, Any]) -> ProjectRecord:
+        return self._record(await self._transport.post_json("projects", json_body=payload))
 
-    async def commit_update(self, project_id: int, payload: dict[str, Any]) -> ProjectDetail:
-        response = await self._transport.patch_json(f"projects/{project_id}", json_body=payload)
-        return normalize_project_detail(response)
+    async def commit_update(self, project_id: int, payload: dict[str, Any]) -> ProjectRecord:
+        return self._record(await self._transport.patch_json(f"projects/{project_id}", json_body=payload))
 
     async def delete(self, project_id: int) -> None:
         await self._transport.delete(f"projects/{project_id}")
 
-    async def get_schema(self, *, project_id: int | None, draft_payload: dict[str, Any]) -> ProjectSchemaResult:
+    async def get_schema(
+        self, *, project_id: int | None, draft_payload: dict[str, Any], custom_field_options: bool = False
+    ) -> ProjectSchemaResult:
         if project_id is None:
             form = await self._transport.post_json("projects/form", json_body=draft_payload)
         else:
             form = await self._transport.post_json(f"projects/{project_id}/form", json_body=draft_payload)
+        return await self._schema_result(form, custom_field_options=custom_field_options)
+
+    async def get_copy_schema(
+        self, project_id: int, *, draft_payload: dict[str, Any], custom_field_options: bool = False
+    ) -> ProjectSchemaResult:
+        form = await self._transport.post_json(f"projects/{project_id}/copy/form", json_body=draft_payload)
+        return await self._schema_result(form, custom_field_options=custom_field_options)
+
+    async def _schema_result(self, form: dict[str, Any], *, custom_field_options: bool) -> ProjectSchemaResult:
         schema = form.get("_embedded", {}).get("schema", {})
+        if custom_field_options:
+            schema = await self._with_custom_field_options(schema)
         fields = tuple(
             normalize_project_field_schema(key, entry) for key, entry in schema.items() if isinstance(entry, dict)
         )
         return ProjectSchemaResult(schema=schema, fields=fields)
+
+    async def _with_custom_field_options(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """A user-format custom field links its options (the members of the project) instead of embedding
+        them; read them so a name or id can be resolved. The built-in fields keep their links: a parent
+        or status list is read by the code that needs it."""
+        resolved = dict(schema)
+        read_by_href: dict[str, list[dict[str, Any]]] = {}
+        for key, field in schema.items():
+            if not is_custom_field_key(key) or not isinstance(field, dict):
+                continue
+            if (field.get("_embedded") or {}).get("allowedValues") is not None:
+                continue
+            href = ((field.get("_links") or {}).get("allowedValues") or {}).get("href")
+            if not isinstance(href, str) or not href:
+                continue
+            if href not in read_by_href:
+                read_by_href[href] = await read_linked_options(self._transport, self._link_to_api_path(href))
+            elements = read_by_href[href]
+            resolved[key] = {**field, "_embedded": {**(field.get("_embedded") or {}), "allowedValues": elements}}
+        return resolved
 
     async def list_available_parent_projects(self, project_id: int, *, schema: dict[str, Any]) -> Sequence[ProjectRef]:
         parent_field = schema.get("parent")

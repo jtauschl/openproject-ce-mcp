@@ -150,6 +150,8 @@ class NewsService:
             return self._stamp(await self._api.commit_create(p))  # type: ignore[no-any-return]
 
         outcome = await _finalize_write(
+            entity="news",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -203,6 +205,8 @@ class NewsService:
             return self._stamp(await self._api.commit_update(news_id, p))  # type: ignore[no-any-return]
 
         outcome = await _finalize_write(
+            entity="news",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -232,6 +236,8 @@ class NewsService:
             return detail
 
         outcome = await _finalize_write(
+            entity="news",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

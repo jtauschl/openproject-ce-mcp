@@ -213,6 +213,8 @@ class MeetingOutcomeService:
             return self._stamp(record.summary)
 
         write_outcome = await _finalize_write(
+            entity="meeting_outcome",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -267,6 +269,8 @@ class MeetingOutcomeService:
             return self._stamp(record.summary)
 
         write_outcome = await _finalize_write(
+            entity="meeting_outcome",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -292,6 +296,8 @@ class MeetingOutcomeService:
             return outcome_summary
 
         write_outcome = await _finalize_write(
+            entity="meeting_outcome",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

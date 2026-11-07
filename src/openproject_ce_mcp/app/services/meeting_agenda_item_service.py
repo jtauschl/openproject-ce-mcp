@@ -268,6 +268,8 @@ class MeetingAgendaItemService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="meeting_agenda_item",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -337,6 +339,8 @@ class MeetingAgendaItemService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="meeting_agenda_item",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -370,6 +374,8 @@ class MeetingAgendaItemService:
             return item
 
         outcome = await _finalize_write(
+            entity="meeting_agenda_item",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

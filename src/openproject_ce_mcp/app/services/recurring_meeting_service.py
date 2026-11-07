@@ -248,6 +248,8 @@ class RecurringMeetingService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="recurring_meeting",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -307,6 +309,8 @@ class RecurringMeetingService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="recurring_meeting",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -337,6 +341,8 @@ class RecurringMeetingService:
             return recurring_meeting
 
         outcome = await _finalize_write(
+            entity="recurring_meeting",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -370,6 +376,8 @@ class RecurringMeetingService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="recurring_meeting",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -447,6 +455,8 @@ class RecurringMeetingService:
             return hidden_fields.apply_hidden_fields("meeting", meeting, settings=self._settings)  # type: ignore[no-any-return]
 
         outcome = await _finalize_write(
+            entity="recurring_meeting",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -477,6 +487,8 @@ class RecurringMeetingService:
             )
 
         outcome = await _finalize_write(
+            entity="recurring_meeting",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

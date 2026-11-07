@@ -73,7 +73,7 @@ even though the adapter's own extraction is not hidden-field-aware by design
 (masking is a Service concern in this layered architecture).
 
 `search()`/`list()`'s `custom_field_filters` parameter is applied
-by `_apply_custom_field_filters`, a synchronous, network-free helper: it
+by `append_custom_field_filters`, a synchronous, network-free helper: it
 normalizes `cf_<N>`/`customField<N>` keys, rejects hidden fields, and appends
 the resulting filter fragments -- deliberately WITHOUT probing a live schema
 to validate operator legality against a specific field's actual format (see
@@ -163,25 +163,25 @@ from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated
 from . import _stored_text_edit
+from ._custom_field_filters import append_custom_field_filters
+from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
+from ._schema_write_helpers import (
+    VERSION_ERROR_KEYS,
+    resolve_schema_option_href,
+    resolve_wp_ref_id,
+    with_offered_status_values,
+    with_offered_version_values,
+)
+from ._scoped_references import field_with_visible_options
 from ._work_package_parents import parent_href, without_parent_unless
 from ._work_package_presentation import present_detail, present_summaries, present_target, stamp_detail
 from ._work_package_references import (
-    field_with_visible_options,
     groups_for_result,
     hidden_references_replaced,
     visible_references,
 )
 from ._work_package_status_options import allowed_status_options
 from ._work_package_target import resolved_target, write_target
-from ._work_package_write_helpers import (
-    VERSION_ERROR_KEYS,
-    resolve_custom_field_key,
-    resolve_custom_field_links,
-    resolve_schema_option_href,
-    resolve_wp_ref_id,
-    with_offered_status_values,
-    with_offered_version_values,
-)
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 LOGGER = logging.getLogger(__name__)
@@ -199,7 +199,7 @@ FORMATTABLE_LIMIT = 1_200
 # strategies override table), custom_fields/{list_optional,user,bool}.rb, and
 # strategies/{string,text,date,cf_integer,cf_float,cf_list_optional,
 # boolean_list}.rb. This dict is used ONLY as documentation-in-code plus a
-# defensive fallback (see _apply_custom_field_filters) -- this Service has no
+# defensive fallback (see append_custom_field_filters) -- this Service has no
 # cheap, network-free way to learn a given cf_<N>'s actual field_format (the
 # write path's per-project+type schema probe does not apply to list/search,
 # which have no such single-context guarantee -- see the module docstring
@@ -246,12 +246,6 @@ CUSTOM_FIELD_FILTER_UNSUPPORTED_FORMATS = frozenset({"hierarchy", "weighted_item
 # either -- documented as a known constraint, callers should pass project
 # whenever filtering on a user/version-format custom field.
 CUSTOM_FIELD_FILTER_PROJECT_ONLY_FORMATS = frozenset({"user", "version"})
-
-# Re-validates the key shape tools_validation.py's _validate_custom_field_filters
-# already checked -- kept here too so a direct OpenProjectClient/Service caller
-# that bypasses the MCP tool layer entirely still gets a clean InvalidInputError
-# instead of silently building a malformed filter.
-_CF_FILTER_KEY_RE = re.compile(r"^(cf_|customField)([1-9]\d*)$", re.ASCII)
 
 # A date such as 2026-10-15 is also the display id of a work package in a
 # project whose classic identifier is "2026-10". Such identifiers are rare and
@@ -911,73 +905,6 @@ class WorkPackageService:
         if due_within_days is not None:
             filters.append({"due_date": {"operator": "<t+", "values": [str(due_within_days)]}})
 
-    def _apply_custom_field_filters(
-        self,
-        filters: list[dict[str, Any]],
-        *,
-        custom_field_filters: dict[str, dict[str, Any]] | None,
-    ) -> None:
-        """Append cf_<N> filter fragments for custom_field_filters.
-
-        Synchronous and network-free: keys are already normalized to cf_<N>
-        by tools_validation.py's _validate_custom_field_filters (or, for a
-        direct OpenProjectClient caller bypassing the MCP tool layer,
-        re-validated for shape here -- see the isinstance/regex/dict checks
-        below, which reject anything the tool layer would also have rejected
-        on the axes checked here, so this Service does not crash when called
-        directly and not just through the MCP tool layer. This is a narrower
-        guarantee than "every tool-layer rejection is reproduced here": the
-        operator allowlist, the 20-entry/100-value/1000-char limits, and
-        duplicate-key (cf_1 + customField1) detection are tool-layer-only
-        conveniences, not re-enforced here -- an out-of-range value that
-        skips them still reaches OpenProject and gets its own clean 400, just
-        without the earlier, more specific local error message the tool
-        layer would have given.
-
-        The check performed here is cheap and local: OPENPROJECT_HIDE_CUSTOM_FIELDS
-        rejection (both cf_<N> and the equivalent customField<N> spelling are
-        checked, since a hide pattern might have been configured using
-        either form -- unlike hidden_fields.custom_field_hidden's normal
-        dual-match against a resolved schema name plus the raw key, there is
-        no schema name available here without a network call, so both of the
-        field's own two canonical spellings are checked explicitly instead).
-
-        Per-field operator/format legality, and the user/version-format
-        project-only constraint (see CUSTOM_FIELD_FILTER_PROJECT_ONLY_FORMATS's
-        module-level docstring), are deliberately NOT validated here: this
-        Service has no cheap, network-free way to learn a given cf_<N>'s
-        actual field_format, so neither can be checked precisely without a
-        schema probe this ticket deliberately does not add (see module-level
-        constant docstrings for the full rationale). Both surface as
-        OpenProject's own clean 400 (InvalidQuery), mapped to
-        InvalidInputError by app/transport/errors.py, when they occur.
-        """
-        if not custom_field_filters:
-            return
-        for raw_key, spec in custom_field_filters.items():
-            match = _CF_FILTER_KEY_RE.match(str(raw_key))
-            if not match:
-                raise InvalidInputError(
-                    f"custom_field_filters key '{raw_key}' must be of the form 'cf_<N>' or 'customField<N>'."
-                )
-            cf_id = match.group(2)
-            cf_key = f"cf_{cf_id}"
-            camel_key = f"customField{cf_id}"
-            if hidden_fields.custom_field_hidden(cf_key, camel_key, settings=self._settings):
-                raise InvalidInputError(
-                    f"OpenProject custom field '{cf_key}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS "
-                    "and cannot be filtered."
-                )
-            if not isinstance(spec, dict):
-                raise InvalidInputError(f"custom_field_filters['{raw_key}'] must be an object.")
-            operator = spec.get("operator")
-            values = spec.get("values")
-            if not isinstance(operator, str) or not operator:
-                raise InvalidInputError(f"custom_field_filters['{raw_key}'].operator must be a non-empty string.")
-            if not isinstance(values, list):
-                raise InvalidInputError(f"custom_field_filters['{raw_key}'].values must be a list.")
-            filters.append({cf_key: {"operator": operator, "values": list(values)}})
-
     async def search(
         self,
         *,
@@ -1035,7 +962,7 @@ class WorkPackageService:
         # status/assignee/priority), so a rejection (hidden field, malformed
         # spec) fails fast without wasted round-trips -- matches the tool
         # docstring's "rejected before any network call" claim.
-        self._apply_custom_field_filters(other_filters, custom_field_filters=custom_field_filters)
+        append_custom_field_filters(other_filters, custom_field_filters, settings=self._settings)
         project_id: int | None = None
         read_everywhere = scope_allows_all(self._settings.read_projects)
         total_is_scope_safe = read_everywhere
@@ -1191,7 +1118,7 @@ class WorkPackageService:
         # field, malformed spec) fails fast without wasted round-trips --
         # matches the tool docstring's "rejected before any network call"
         # claim.
-        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
+        append_custom_field_filters(filters, custom_field_filters, settings=self._settings)
         project_id: int | None = None
         # Bounded to this single call: avoids re-fetching/re-checking the same
         # project when both type and version filters are given alongside
@@ -1543,33 +1470,6 @@ class WorkPackageService:
         form = await self._api.validate_create(project, schema_payload)
         return (await self._api.parse_form(form, resolve_links=True, allowed_values_cache=allowed_values_cache)).schema
 
-    async def _apply_custom_fields(
-        self,
-        payload: dict[str, Any],
-        links: dict[str, Any],
-        schema: dict[str, Any],
-        custom_fields: dict[str, Any],
-    ) -> None:
-        for raw_key, raw_value in custom_fields.items():
-            hidden_fields.ensure_custom_field_input_writable(raw_key, settings=self._settings)
-            schema_key = resolve_custom_field_key(schema, raw_key)
-            field = schema[schema_key]
-            hidden_fields.ensure_custom_field_writable(
-                _trim_text(field.get("name")) or schema_key, schema_key, settings=self._settings
-            )
-            location = field.get("location")
-            if location == "_links":
-                field = await field_with_visible_options(
-                    field, links=self._resource_links, settings=self._settings, check=self._references_allowed
-                )
-                hrefs = resolve_custom_field_links(field, raw_value, schema_key)
-                if len(hrefs) == 1:
-                    links[schema_key] = {"href": hrefs[0]}
-                else:
-                    links[schema_key] = [{"href": href} for href in hrefs]
-            else:
-                payload[schema_key] = raw_value
-
     async def _version_links(
         self,
         refs: builtins.list[str],
@@ -1629,8 +1529,7 @@ class WorkPackageService:
         links: dict[str, Any] = {}
 
         if custom_fields:
-            for raw_key in custom_fields:
-                hidden_fields.ensure_custom_field_input_writable(raw_key, settings=self._settings)
+            ensure_custom_fields_input_writable("work_package", custom_fields, settings=self._settings)
 
         if subject is not None:
             hidden_fields.ensure_field_writable("work_package", "subject", settings=self._settings)
@@ -1787,7 +1686,16 @@ class WorkPackageService:
                 hidden_fields.ensure_field_writable("work_package", "project_phase", settings=self._settings)
                 links["projectPhase"] = {"href": resolve_schema_option_href(schema, "projectPhase", project_phase)}
             if custom_fields:
-                await self._apply_custom_fields(payload, links, schema, custom_fields)
+                await apply_custom_fields(
+                    payload,
+                    links,
+                    schema,
+                    custom_fields,
+                    subject="work package",
+                    settings=self._settings,
+                    resource_links=self._resource_links,
+                    check=self._references_allowed,
+                )
 
         if links:
             payload["_links"] = links
@@ -1983,6 +1891,8 @@ class WorkPackageService:
             _ensure_observed_in_versions_offered(parsed.payload)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="work_package",
+            settings=self._settings,
             payload=parsed.payload,
             validation_errors=await self._with_offered_versions(
                 parsed, requested=version is not None or target_versions is not None
@@ -2069,6 +1979,8 @@ class WorkPackageService:
         parent_title = _trim_text(parent_project_link.get("title") if parent_project_link else None)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="work_package",
+            settings=self._settings,
             payload=parsed.payload,
             validation_errors=await self._with_offered_versions(
                 parsed, requested=version is not None or target_versions is not None
@@ -2371,6 +2283,8 @@ class WorkPackageService:
         project_name = _trim_text(current.get("_links", {}).get("project", {}).get("title"))
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="work_package",
+            settings=self._settings,
             payload=parsed.payload,
             validation_errors=validation_errors,
             identity={"work_package_id": ref, "project": project_name},
@@ -2490,6 +2404,8 @@ class WorkPackageService:
             await self._api.delete(ref)
 
         outcome = await _finalize_write(
+            entity="work_package",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

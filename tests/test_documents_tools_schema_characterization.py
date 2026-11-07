@@ -286,7 +286,7 @@ def test_create_news_schema() -> None:
             "summary": {
                 "anyOf": [{"type": "string"}, {"type": "null"}],
                 "default": None,
-                "description": "Short plain text, at most 500 characters.",
+                "description": "Short plain text, at most 255 characters.",
                 "title": "Summary",
             },
             "description": {
@@ -345,7 +345,7 @@ def test_update_news_schema() -> None:
             "summary": {
                 "anyOf": [{"type": "string"}, {"type": "null"}],
                 "default": None,
-                "description": 'Short plain text, at most 500 characters; "" clears it.',
+                "description": 'Short plain text, at most 255 characters; "" clears it.',
                 "title": "Summary",
             },
             "description": {

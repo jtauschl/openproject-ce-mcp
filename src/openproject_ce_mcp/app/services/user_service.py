@@ -48,6 +48,7 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.user_api import UserApi
+from ._custom_field_masking import redacted_validation_errors, without_hidden_custom_fields
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -163,6 +164,8 @@ class UserService:
             return await self._api.commit_create(commit_payload)
 
         outcome = await _finalize_write(
+            entity="user",
+            settings=self._settings,
             confirm=confirm,
             payload=form.payload,
             validation_errors=form.validation_errors,
@@ -209,6 +212,8 @@ class UserService:
             payload["language"] = language
         form = await self._api.update_form(user_id, payload)
         outcome = await _finalize_write(
+            entity="user",
+            settings=self._settings,
             confirm=confirm,
             payload=form.payload,
             validation_errors=form.validation_errors,
@@ -233,6 +238,8 @@ class UserService:
             await self._api.commit_delete(user_id)
 
         outcome = await _finalize_write(
+            entity="user",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -329,8 +336,8 @@ class UserService:
             ready=ready,
             message=message,
             user_id=user_id,
-            payload=payload,
-            validation_errors=validation_errors,
+            payload=without_hidden_custom_fields(payload, entity="user", settings=self._settings),
+            validation_errors=redacted_validation_errors(validation_errors, entity="user", settings=self._settings),
             result=self._stamp(result) if result is not None else None,
         )
 

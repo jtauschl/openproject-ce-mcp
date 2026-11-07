@@ -273,8 +273,8 @@ UNNAMED_WRAPPED_SITES = Counter(
     {
         "httpx_activity_api.py:normalize_activity": 2,
         "httpx_notification_api.py:normalize_notification_detail": 1,
-        "httpx_work_package_api.py:_normalize_custom_field_entry": 2,
-        "httpx_work_package_api.py:_extract_custom_comments": 1,
+        "_custom_fields.py:normalize_custom_field_entry": 2,
+        "_custom_fields.py:extract_custom_comments": 1,
     }
 )
 

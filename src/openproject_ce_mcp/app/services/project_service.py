@@ -17,11 +17,13 @@ identity part only.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 from urllib.parse import unquote
 
+from ... import project_columns
 from ...config import Settings
 from ...models import (
     FavoriteWriteResult,
@@ -38,20 +40,32 @@ from ...models import (
     ProjectSummary,
     ProjectWriteResult,
     ResolvedParentProject,
+    SortCriterion,
 )
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError
 from ..link_titles import without_foreign_capable_titles
 from ..pagination import clamp_limit
-from ..policies import access, hidden_fields
+from ..policies import access, hidden_fields, project_query_policy
 from ..policies import project_policy as project_policy_module
 from ..policies import scope as scope_policy
 from ..policies.scope import ensure_project_link_allowed, payload_allowed
-from ..ports.project_api import ProjectApi
-from ..resolvers.project_query import fetch_project_page
+from ..ports.project_api import ProjectApi, ProjectRecord
+from ..ports.scoped_reference import ScopedReferencesAllowedBulkCheck
+from ..resolvers.project_query import fetch_project_records
 from ..resolvers.project_resolver import ProjectResolver
-from ..version_gate import call_version_gated
+from ..resource_href import ResourceLinks
+from ..version_gate import call_query_version_gated, call_version_gated
 from . import _stored_text_edit
+from ._custom_field_filters import append_custom_field_filters
+from ._custom_field_masking import (
+    is_custom_comment_key,
+    mask_custom_field_values,
+    redacted_validation_errors,
+    without_hidden_custom_fields,
+)
+from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
+from ._project_presentation import hidden_references_replaced, present_detail, present_summaries
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 SUBJECT_LIMIT = 255
@@ -140,6 +154,7 @@ def _stamp_project(value: Any, *, settings: Settings, project_id_to_identifier: 
     # identical treatment, not just a bare apply_hidden_fields call).
     if isinstance(value, ProjectSummary):
         value = _without_uncovered_parents(value, settings=settings, project_id_to_identifier=project_id_to_identifier)
+        value = mask_custom_field_values(value, entity="project", settings=settings)
         if hidden_fields.field_hidden("project", "description", settings=settings):
             value = replace(value, description_truncated=False, description_length=None)
         if hidden_fields.field_hidden("project", "status_explanation", settings=settings):
@@ -155,34 +170,66 @@ class ProjectService:
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
         resolver: ProjectResolver,
+        references_allowed: ScopedReferencesAllowedBulkCheck,
         api_prefix: str,
     ) -> None:
         self._api = api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
         self._resolver = resolver
+        self._references_allowed = references_allowed
+        self._resource_links = ResourceLinks(settings.base_url)
         self._api_prefix = api_prefix
 
     def _stamp(self, value: Any) -> Any:
         return _stamp_project(value, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier)
 
-    async def list(self, *, search: str | None = None, offset: int = 1, limit: int | None = None) -> ProjectListResult:
+    async def list(
+        self,
+        *,
+        search: str | None = None,
+        offset: int = 1,
+        limit: int | None = None,
+        custom_field_filters: dict[str, dict[str, Any]] | None = None,
+        sort_by: list[SortCriterion] | None = None,
+    ) -> ProjectListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        project_query_policy.ensure_query_allowed(
+            settings=self._settings,
+            filters=[
+                name for name, value in (("search", search), ("custom_field_filters", custom_field_filters)) if value
+            ],
+            sort_fields=[criterion.field for criterion in sort_by or []],
+        )
+        filter_fragments: list[dict[str, Any]] = []
+        append_custom_field_filters(filter_fragments, custom_field_filters, settings=self._settings)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,
             max_page_size=self._settings.max_page_size,
             max_results=self._settings.max_results,
         )
-        page_results, total, next_offset, truncated = await fetch_project_page(
+        fetch = functools.partial(
+            fetch_project_records,
             api=self._api,
             settings=self._settings,
             search=search,
             offset=offset,
             limit=effective_limit,
             text_limit=self._settings.text_limit,
+            custom_field_filters=filter_fragments,
+            sort_by=sort_by,
         )
-        stamped = [self._stamp(item) for item in page_results]
+        # One hint per newer column, oldest release innermost, so a rejection names every release that
+        # could be the cause.
+        call = fetch
+        for column, floor in project_columns.floors_used(criterion.field for criterion in sort_by or []):
+            call = functools.partial(call_query_version_gated, call, feature=f"the {column} column", floor=floor)
+        page_records, total, next_offset, truncated = await call()
+        summaries = await present_summaries(
+            page_records, settings=self._settings, references_allowed=self._references_allowed
+        )
+        stamped = [self._stamp(item) for item in summaries]
         return ProjectListResult(
             offset=offset,
             limit=effective_limit,
@@ -199,7 +246,9 @@ class ProjectService:
         # to read it, so nothing is cut unless the caller asks for a smaller cap.
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._resolver.resolve_record(project_ref, write=False, text_limit=text_limit)
-        return self._stamp(record.to_detail())
+        return self._stamp(
+            await present_detail(record, settings=self._settings, references_allowed=self._references_allowed)
+        )
 
     async def get_configuration(self, project_ref: str) -> ProjectConfiguration:
         access.ensure_read_enabled("project", settings=self._settings)
@@ -247,6 +296,7 @@ class ProjectService:
         status: str | None = None,
         status_explanation: str | None = None,
         parent: str | object | None = None,
+        custom_fields: dict[str, Any] | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
         project_policy_module.ensure_project_create_target_allowed(identifier=identifier, settings=self._settings)
@@ -259,22 +309,25 @@ class ProjectService:
             status=status,
             status_explanation=status_explanation,
             parent=parent,
+            custom_fields=custom_fields,
             project_id=None,
         )
         form = await self._api.create_form(built.payload)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="project",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"project_id": None, "project": None},
             ensure_write_enabled=lambda: access.ensure_write_enabled("project", settings=self._settings),
             commit=self._api.commit_create,
-            committed_identity=lambda d: {"project_id": d.id, "project": d.name},
+            committed_identity=lambda r: {"project_id": r.summary.id, "project": r.summary.name},
             rejected_message="OpenProject rejected the proposed project changes. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the project. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Project created successfully.",
         )
-        return self._to_write_result("create", outcome, built.parent_target)
+        return await self._to_write_result("create", outcome, built.parent_target)
 
     async def update(
         self,
@@ -292,6 +345,7 @@ class ProjectService:
         status_explanation_append: str | None = None,
         status_explanation_replace: Mapping[str, str] | None = None,
         parent: str | object | None = None,
+        custom_fields: dict[str, Any] | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
         record = await self._resolver.resolve_record(project_ref, write=True)
@@ -324,17 +378,29 @@ class ProjectService:
             status=status,
             status_explanation=status_explanation,
             parent=parent,
+            custom_fields=custom_fields,
             project_id=project.id,
         )
+        hidden_replaced = await hidden_references_replaced(
+            record, built.payload.get("_links", {}), settings=self._settings, check=self._references_allowed
+        )
+        if hidden_replaced:
+            raise InvalidInputError(
+                f"Project {project.identifier} has {hidden_replaced} version custom field value(s) in a project "
+                "OPENPROJECT_READ_PROJECTS does not cover or the token cannot see, which this change would replace or remove. "
+                "Leave the version custom fields unchanged."
+            )
         form = await self._api.update_form(project.id, built.payload)
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="project",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"project_id": project.id, "project": project.name},
             ensure_write_enabled=lambda: access.ensure_write_enabled("project", settings=self._settings),
             commit=lambda p: self._api.commit_update(project.id, p),
-            committed_identity=lambda d: {"project_id": d.id, "project": d.name},
+            committed_identity=lambda r: {"project_id": r.summary.id, "project": r.summary.name},
             rejected_message="OpenProject rejected the proposed project changes. Fix the validation errors before confirming.",
             preview_message=_stored_text_edit.with_sentence(
                 "OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
@@ -342,7 +408,7 @@ class ProjectService:
             ),
             success_message=_stored_text_edit.with_sentence("Project updated successfully.", sentence),
         )
-        return self._to_write_result("update", outcome, built.parent_target)
+        return await self._to_write_result("update", outcome, built.parent_target)
 
     async def delete(self, *, project_ref: str, confirm: bool = False) -> ProjectWriteResult:
         record = await self._resolver.resolve_record(project_ref, write=True)
@@ -353,6 +419,8 @@ class ProjectService:
             await self._api.delete(project.id)
 
         outcome = await _finalize_write(
+            entity="project",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -389,6 +457,7 @@ class ProjectService:
         status: str | None = None,
         status_explanation: str | None = None,
         parent: str | object | None = None,
+        custom_fields: dict[str, Any] | None = None,
         confirm: bool = False,
     ) -> ProjectCopyResult:
         source_record = await self._resolver.resolve_record(source_project, write=True)
@@ -396,6 +465,11 @@ class ProjectService:
         # the read/write allowlist (the source being allowed is not sufficient).
         project_policy_module.ensure_project_create_target_allowed(identifier=identifier, settings=self._settings)
         project = source_record.summary
+        if any(is_custom_comment_key(key) for key in custom_fields or ()):
+            raise InvalidInputError(
+                "copy_project cannot set a custom field comment: OpenProject answers a copy request that names one "
+                "with HTTP 500. Copy the project, then set the comment with update_project."
+            )
         built = await self._build_write_payload(
             name=name,
             identifier=identifier,
@@ -405,11 +479,19 @@ class ProjectService:
             status=status,
             status_explanation=status_explanation,
             parent=parent,
+            custom_fields=custom_fields,
             project_id=None,
+            copy_of=project.id,
         )
         form = await self._api.copy_form(project.id, built.payload)
-        shown = without_foreign_capable_titles(form.payload)
+        # The form echoes a comment key for every commented attribute, and OpenProject answers a copy request
+        # that carries one with HTTP 500 (its copy job cannot serialize the comment's numeric key).
+        copy_payload = {key: value for key, value in form.payload.items() if not is_custom_comment_key(key)}
+        shown = without_hidden_custom_fields(
+            without_foreign_capable_titles(copy_payload), entity="project", settings=self._settings
+        )
         ready = not form.validation_errors
+        errors = redacted_validation_errors(form.validation_errors, entity="project", settings=self._settings)
         if not confirm:
             return ProjectCopyResult(
                 action="copy",
@@ -423,7 +505,7 @@ class ProjectService:
                 source_project_id=project.id,
                 source_project=project.name,
                 payload=shown,
-                validation_errors=form.validation_errors,
+                validation_errors=errors,
                 job_status_id=None,
                 parent_target=built.parent_target,
             )
@@ -436,12 +518,12 @@ class ProjectService:
                 source_project_id=project.id,
                 source_project=project.name,
                 payload=shown,
-                validation_errors=form.validation_errors,
+                validation_errors=errors,
                 job_status_id=None,
                 parent_target=built.parent_target,
             )
         access.ensure_write_enabled("project", settings=self._settings)
-        job_status_url = await self._api.commit_copy(project.id, form.payload)
+        job_status_url = await self._api.commit_copy(project.id, copy_payload)
         return ProjectCopyResult(
             action="copy",
             state="confirmed",
@@ -508,12 +590,18 @@ class ProjectService:
         status: str | None,
         status_explanation: str | None,
         parent: str | object | None,
+        custom_fields: dict[str, Any] | None,
         project_id: int | None,
+        copy_of: int | None = None,
     ) -> _ProjectWritePayload:
+        if custom_fields:
+            ensure_custom_fields_input_writable("project", custom_fields, settings=self._settings)
         payload: dict[str, Any] = {}
         parent_target: ResolvedParentProject | None = None
         links: dict[str, dict[str, str | None]] = {}
-        schema_result = await self._api.get_schema(project_id=project_id, draft_payload=payload)
+        schema_result = await self._api.get_schema(
+            project_id=project_id, draft_payload=payload, custom_field_options=bool(custom_fields)
+        )
         schema = schema_result.schema
 
         if name is not None:
@@ -556,6 +644,22 @@ class ProjectService:
                     id=parent_summary.id, identifier=parent_summary.identifier, name=parent_summary.name
                 )
             )
+        if custom_fields:
+            if copy_of is not None:
+                # The copy form offers its own options (versions assignable to the new project).
+                schema = (
+                    await self._api.get_copy_schema(copy_of, draft_payload=payload, custom_field_options=True)
+                ).schema
+            await apply_custom_fields(
+                payload,
+                links,
+                schema,
+                custom_fields,
+                subject="project",
+                settings=self._settings,
+                resource_links=self._resource_links,
+                check=self._references_allowed,
+            )
         if links:
             payload["_links"] = links
         return _ProjectWritePayload(payload, parent_target)
@@ -574,12 +678,17 @@ class ProjectService:
                 return href
         raise InvalidInputError(f"OpenProject project status '{raw_value}' is not allowed.")
 
-    def _to_write_result(
+    async def _to_write_result(
         self,
         action: str,
-        outcome: _WriteOutcome[ProjectDetail],
+        outcome: _WriteOutcome[ProjectRecord],
         parent_target: ResolvedParentProject | None = None,
     ) -> ProjectWriteResult:
+        detail = (
+            await present_detail(outcome.detail, settings=self._settings, references_allowed=self._references_allowed)
+            if outcome.detail
+            else None
+        )
         return ProjectWriteResult(
             action=action,
             state=outcome.state,
@@ -587,7 +696,7 @@ class ProjectService:
             message=outcome.message,
             payload=outcome.payload,
             validation_errors=outcome.validation_errors,
-            result=self._stamp(outcome.detail) if outcome.detail else None,
+            result=self._stamp(detail) if detail else None,
             parent_target=parent_target,
             **outcome.identity,
         )
@@ -619,11 +728,21 @@ class ProjectAdminService:
         settings: Settings,
         project_id_to_identifier: Mapping[int, str],
         resolver: ProjectResolver,
+        references_allowed: ScopedReferencesAllowedBulkCheck,
     ) -> None:
         self._api = api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
         self._resolver = resolver
+        self._references_allowed = references_allowed
+
+    def _custom_field_definition_hidden(self, field: ProjectFieldSchema) -> bool:
+        """A hidden custom field is not offered for writing either: its name would give it away."""
+        if not field.key.startswith("customField"):
+            return False
+        return hidden_fields.field_hidden("project", "custom_fields", settings=self._settings) or (
+            hidden_fields.custom_field_hidden(field.name, field.key, settings=self._settings)
+        )
 
     def _without_uncovered_options(
         self, fields: Sequence[ProjectFieldSchema], schema: Mapping[str, Any]
@@ -648,8 +767,11 @@ class ProjectAdminService:
     async def get_admin_context(self, project_ref: str) -> ProjectAdminContext:
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._resolver.resolve_record(project_ref, write=False)
+        [scoped] = await present_summaries(
+            [record], settings=self._settings, references_allowed=self._references_allowed
+        )
         project = _stamp_project(
-            record.summary, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+            scoped, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         schema_result = await self._api.get_schema(project_id=project.id, draft_payload={"name": project.name})
         schema = schema_result.schema
@@ -681,7 +803,11 @@ class ProjectAdminService:
         ]
         # Non-writable/internal schema entries (id, timestamps, lockVersion, ...)
         # aren't useful to an agent discovering what it can set here.
-        writable_fields = [field for field in self._without_uncovered_options(fields, schema) if field.writable]
+        writable_fields = [
+            field
+            for field in self._without_uncovered_options(fields, schema)
+            if field.writable and not self._custom_field_definition_hidden(field)
+        ]
         return hidden_fields.apply_hidden_fields(
             "project_admin_context",
             ProjectAdminContext(

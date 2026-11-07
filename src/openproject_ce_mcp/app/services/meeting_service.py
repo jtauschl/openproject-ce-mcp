@@ -258,6 +258,8 @@ class MeetingService:
         identity_project = form.payload.get("_links", {}).get("project", {}).get("title") or project_payload.get("name")
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="meeting",
+            settings=self._settings,
             payload=_with_participants(form.payload, payload),
             validation_errors=form.validation_errors,
             identity={"meeting_id": None, "project": identity_project},
@@ -313,6 +315,8 @@ class MeetingService:
         identity_project = form.payload.get("_links", {}).get("project", {}).get("title") or current.summary.project
         outcome = await _finalize_write(
             confirm=confirm,
+            entity="meeting",
+            settings=self._settings,
             payload=form.payload,
             validation_errors=form.validation_errors,
             identity={"meeting_id": meeting_id, "project": identity_project},
@@ -348,6 +352,8 @@ class MeetingService:
             return meeting
 
         outcome = await _finalize_write(
+            entity="meeting",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

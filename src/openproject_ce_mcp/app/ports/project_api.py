@@ -12,7 +12,7 @@ normalization is avoided without a second HTTP round-trip).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -23,8 +23,10 @@ from ...models import (
     ProjectPhaseDefinition,
     ProjectRef,
     ProjectSummary,
+    SortCriterion,
 )
 from ..form_result import FormResult
+from .scoped_reference import ScopedReference, VisibleReferences
 
 # Deliberately duplicated from httpx_version_api.py's constant of the same
 # name -- needed here as the Protocol's default text_limit value.
@@ -33,34 +35,33 @@ FORMATTABLE_LIMIT = 1_200
 
 @dataclass(frozen=True)
 class ProjectRecord:
-    """One project as read from the API: the normalized summary, a LAZY
-    `to_detail` thunk for the richer single-item shape (detail carries fields
-    summary doesn't -- ancestors, an independently text_limit'd
-    description/status_explanation -- so it is a real second normalization,
-    not derivable from summary alone; see normalize_project_detail's
-    ancestors-from-_links.ancestors logic), plus the unmodified raw HAL
-    payload (including ``_links``). The raw payload must be carried, not just
-    the normalized fields, because several callers
-    (list_project_memberships, get_my_project_access, ...) read arbitrary raw
-    ``_links``/fields off a resolved project payload, a contract
-    ProjectResolver.resolve() must keep honoring.
+    """One project as read from the API.
 
-    `to_detail` is a callable, not a precomputed `ProjectDetail` field,
-    because most `ProjectRecord` consumers never read it: `ProjectResolver.
-    resolve()`/`resolve_id()` (used by every domain's project-reference
-    resolution, including via the `ProjectRefResolver` seam) only ever read
-    `.payload`, and `ProjectService.list()` only ever reads `.summary`.
-    Precomputing detail
-    eagerly on every `_record()` build would run a second, independent
-    text-extraction pass over every resolved/listed project's description
-    AND status_explanation, plus rebuild its ancestors list, for a value
-    almost no caller reads. Only `ProjectService.get()` (the single-item
-    read path) calls `to_detail()`.
+    `summary` is the identity-grade summary every reader of a project reference uses (id, identifier,
+    name, active, status, parent, descriptions): it never carries custom field values, because their
+    link titles are decided per result, once the service has judged `references`. A result that shows
+    custom fields is built with `scoped_summary` / `scoped_detail`, like `WorkPackageRecord`; the detail
+    is a LAZY factory too (a second, independent text extraction with the ancestor chain), called only
+    by `get_project` and the write results.
+
+    `references` maps each `customField<N>` that names a version to the references it names, so a
+    field a hide setting removes costs no lookup. The raw HAL `payload` (including ``_links``) is carried
+    because several callers (list_project_memberships, get_my_project_access, ...) read arbitrary raw
+    ``_links``/fields off a resolved project payload, a contract ProjectResolver.resolve() must keep
+    honoring.
     """
 
     summary: ProjectSummary
-    to_detail: Callable[[], ProjectDetail]
+    references: Mapping[str, frozenset[ScopedReference]]
     payload: dict[str, Any]
+    summary_factory: Callable[[VisibleReferences], ProjectSummary]
+    detail_factory: Callable[[VisibleReferences], ProjectDetail]
+
+    def scoped_summary(self, *, visible: VisibleReferences) -> ProjectSummary:
+        return self.summary_factory(visible)
+
+    def scoped_detail(self, *, visible: VisibleReferences) -> ProjectDetail:
+        return self.detail_factory(visible)
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,8 @@ class ProjectApi(Protocol):
         server_page_size: int,
         search: str | None,
         text_limit: int | None = FORMATTABLE_LIMIT,
+        custom_field_filters: Sequence[Mapping[str, Any]] = (),
+        sort_by: Sequence[SortCriterion] | None = None,
     ) -> ProjectPage: ...
     async def list_for_version(
         self,
@@ -136,10 +139,12 @@ class ProjectApi(Protocol):
     async def get(self, project_ref: str, *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectRecord: ...
     async def create_form(self, payload: dict[str, Any]) -> ProjectFormResult: ...
     async def update_form(self, project_id: int, payload: dict[str, Any]) -> ProjectFormResult: ...
-    async def commit_create(self, payload: dict[str, Any]) -> ProjectDetail: ...
-    async def commit_update(self, project_id: int, payload: dict[str, Any]) -> ProjectDetail: ...
+    async def commit_create(self, payload: dict[str, Any]) -> ProjectRecord: ...
+    async def commit_update(self, project_id: int, payload: dict[str, Any]) -> ProjectRecord: ...
     async def delete(self, project_id: int) -> None: ...
-    async def get_schema(self, *, project_id: int | None, draft_payload: dict[str, Any]) -> ProjectSchemaResult: ...
+    async def get_schema(
+        self, *, project_id: int | None, draft_payload: dict[str, Any], custom_field_options: bool = False
+    ) -> ProjectSchemaResult: ...
     async def list_available_parent_projects(
         self, project_id: int, *, schema: dict[str, Any]
     ) -> Sequence[ProjectRef]: ...
@@ -148,5 +153,8 @@ class ProjectApi(Protocol):
     async def get_phase_definition(self, phase_definition_id: int) -> ProjectPhaseDefinition: ...
     async def get_phase(self, phase_id: int) -> ProjectPhaseRecord: ...
     async def set_favorite(self, project_id: int, *, favorite: bool) -> None: ...
+    async def get_copy_schema(
+        self, project_id: int, *, draft_payload: dict[str, Any], custom_field_options: bool = False
+    ) -> ProjectSchemaResult: ...
     async def copy_form(self, project_id: int, payload: dict[str, Any]) -> ProjectCopyFormResult: ...
     async def commit_copy(self, project_id: int, payload: dict[str, Any]) -> str | None: ...

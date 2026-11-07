@@ -704,6 +704,8 @@ class AttachmentService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="attachment",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -735,6 +737,8 @@ class AttachmentService:
             await self._api.delete(attachment_id)
 
         outcome = await _finalize_write(
+            entity="attachment",
+            settings=self._settings,
             confirm=confirm,
             payload=preview_payload,
             validation_errors={},

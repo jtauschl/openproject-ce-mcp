@@ -169,6 +169,8 @@ class UserWorkingHoursService:
             return self._stamp(record)
 
         outcome = await _finalize_write(
+            entity="user_working_hours",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -232,6 +234,8 @@ class UserWorkingHoursService:
             return self._stamp(record)
 
         outcome = await _finalize_write(
+            entity="user_working_hours",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -260,6 +264,8 @@ class UserWorkingHoursService:
             )
 
         outcome = await _finalize_write(
+            entity="user_working_hours",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

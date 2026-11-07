@@ -704,6 +704,10 @@ FREE_FORM_OBJECT_PARAMETERS = {
     ("create_work_package", "custom_fields"),
     ("create_subtask", "custom_fields"),
     ("update_work_package", "custom_fields"),
+    ("list_projects", "custom_field_filters"),
+    ("create_project", "custom_fields"),
+    ("copy_project", "custom_fields"),
+    ("update_project", "custom_fields"),
 }
 
 

@@ -137,3 +137,17 @@ def test_the_sum_of_a_hidden_custom_field_is_left_out(settings) -> None:
 
     assert "customField5" not in sums_without_hidden_fields(SUMS, settings=settings)  # type: ignore[operator]
     assert "estimatedTime" in sums_without_hidden_fields(SUMS, settings=settings)  # type: ignore[operator]
+
+
+@pytest.mark.parametrize("pattern", ["customField4", "cf_4", "customField*"])
+@pytest.mark.parametrize(("sort", "group"), [(["cf_4"], None), ([], "cf_4")])
+def test_a_hidden_custom_field_closes_its_sort_and_group_column(pattern: str, sort, group) -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=(pattern,))
+
+    with pytest.raises(InvalidInputError, match="custom field 'cf_4' is hidden"):
+        ensure_query_allowed(settings=settings, filters=[], sort_fields=sort, group_by=group)
+
+
+def test_the_custom_fields_hide_setting_of_work_packages_closes_every_custom_field_column() -> None:
+    with pytest.raises(InvalidInputError, match="custom field 'cf_9' is hidden"):
+        ensure_query_allowed(settings=_hiding("custom_fields"), filters=[], sort_fields=["cf_9"], group_by=None)

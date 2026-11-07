@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.link_titles import KEPT_LINK_NAMES, without_foreign_capable_titles
 from openproject_ce_mcp.app.services._write_outcome import _finalize_write
@@ -90,6 +91,8 @@ async def test_every_write_outcome_shows_the_reduced_payload_while_the_commit_ge
 
     outcome = await _finalize_write(
         confirm=confirm,
+        entity="project",
+        settings=make_settings(),
         payload=payload,
         validation_errors=errors,
         identity={},

@@ -21,16 +21,17 @@ happens mid-page -- every call re-scans from server page 1, skipping the first
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any
 
 from ...config import Settings
-from ...models import ProjectSummary
+from ...models import ProjectSummary, SortCriterion
 from ..policies import project_policy
 from ..policies.scope import payload_allowed
 from ..ports.project_api import FORMATTABLE_LIMIT, ProjectApi, ProjectPage, ProjectRecord
 
 
-async def fetch_project_page(
+async def fetch_project_records(
     *,
     api: ProjectApi,
     settings: Settings,
@@ -38,15 +39,22 @@ async def fetch_project_page(
     offset: int,
     limit: int,
     text_limit: int | None = FORMATTABLE_LIMIT,
-) -> tuple[list[ProjectSummary], int, int | None, bool]:
-    """Raw, unmasked project-summary page: (page_results, total, next_offset, truncated).
+    custom_field_filters: Sequence[Mapping[str, Any]] = (),
+    sort_by: Sequence[SortCriterion] | None = None,
+) -> tuple[list[ProjectRecord], int, int | None, bool]:
+    """Raw, unmasked project-record page: (page_results, total, next_offset, truncated).
 
     The project read gate belongs to the tool's service, not to this lookup, which a write of
     another domain also uses to resolve a project name.
     """
     return await fetch_allowed_project_page(
         fetch_page=lambda server_offset, server_page_size: api.list(
-            server_offset=server_offset, server_page_size=server_page_size, search=search, text_limit=text_limit
+            server_offset=server_offset,
+            server_page_size=server_page_size,
+            search=search,
+            text_limit=text_limit,
+            custom_field_filters=custom_field_filters,
+            sort_by=sort_by,
         ),
         settings=settings,
         offset=offset,
@@ -60,13 +68,13 @@ async def fetch_allowed_project_page(
     settings: Settings,
     offset: int,
     limit: int,
-) -> tuple[list[ProjectSummary], int, int | None, bool]:
+) -> tuple[list[ProjectRecord], int, int | None, bool]:
     """The allowlist-filtered, paginated walk over any server-paged project collection."""
     effective_limit = min(limit, settings.max_page_size, settings.max_results)
 
     skip_count = (offset - 1) * effective_limit
     skipped = 0
-    results: list[ProjectSummary] = []
+    results: list[ProjectRecord] = []
     server_offset = 1
     server_page_size = settings.max_page_size
 
@@ -94,7 +102,7 @@ async def fetch_allowed_project_page(
             if skipped < skip_count:
                 skipped += 1
                 continue
-            results.append(record.summary)
+            results.append(record)
             if len(results) > effective_limit:
                 break
 
@@ -110,3 +118,20 @@ async def fetch_allowed_project_page(
     total = len(results)
     next_offset = offset + 1 if truncated else None
     return results, total, next_offset, truncated
+
+
+async def fetch_project_page(
+    *,
+    api: ProjectApi,
+    settings: Settings,
+    search: str | None,
+    offset: int,
+    limit: int,
+    text_limit: int | None = FORMATTABLE_LIMIT,
+) -> tuple[list[ProjectSummary], int, int | None, bool]:
+    """The same page as identity-grade summaries, for the callers that resolve a project name or walk the
+    projects without showing them: custom field values are never part of these."""
+    records, total, next_offset, truncated = await fetch_project_records(
+        api=api, settings=settings, search=search, offset=offset, limit=limit, text_limit=text_limit
+    )
+    return [record.summary for record in records], total, next_offset, truncated

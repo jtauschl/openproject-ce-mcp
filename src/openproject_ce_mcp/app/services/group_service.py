@@ -141,6 +141,8 @@ class GroupService:
             return self._stamp(await self._api.commit_create(body))  # type: ignore[no-any-return]
 
         outcome = await _finalize_write(
+            entity="group",
+            settings=self._settings,
             confirm=confirm,
             payload=payload_preview,
             validation_errors={},
@@ -203,6 +205,8 @@ class GroupService:
             return self._stamp(await self._api.commit_update(group_id, body))  # type: ignore[no-any-return]
 
         outcome = await _finalize_write(
+            entity="group",
+            settings=self._settings,
             confirm=confirm,
             payload=payload_preview,
             validation_errors={},
@@ -228,6 +232,8 @@ class GroupService:
             await self._api.commit_delete(group_id)
 
         outcome = await _finalize_write(
+            entity="group",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

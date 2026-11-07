@@ -108,6 +108,8 @@ class UserNonWorkingTimeService:
             return self._stamp(record)
 
         outcome = await _finalize_write(
+            entity="user_non_working_time",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -151,6 +153,8 @@ class UserNonWorkingTimeService:
             return self._stamp(record)
 
         outcome = await _finalize_write(
+            entity="user_non_working_time",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -178,6 +182,8 @@ class UserNonWorkingTimeService:
             )
 
         outcome = await _finalize_write(
+            entity="user_non_working_time",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

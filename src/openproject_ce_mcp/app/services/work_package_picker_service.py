@@ -146,8 +146,10 @@ class WorkPackagePickerService:
             limit=page_limit,
         )
         stamped = [
-            _stamp_project(item, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier)
-            for item in page_results
+            _stamp_project(
+                record.summary, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+            )
+            for record in page_results
         ]
         return ProjectListResult(
             offset=offset,

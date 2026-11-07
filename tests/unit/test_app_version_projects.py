@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from _client_test_helpers import make_settings
+from _project_record_helpers import project_record
 
 from openproject_ce_mcp.app.errors import PermissionDeniedError
 from openproject_ce_mcp.app.ports.project_api import ProjectPage, ProjectRecord
@@ -21,11 +22,7 @@ def _project(project_id: int, *, description: str | None = "text") -> ProjectRec
     summary = ProjectSummary(
         id=project_id, name=identifier.title(), identifier=identifier, active=True, description=description
     )
-    return ProjectRecord(
-        summary=summary,
-        to_detail=lambda: pytest.fail("a list row never needs the detail shape"),
-        payload={"id": project_id, "identifier": identifier, "name": identifier.title()},
-    )
+    return project_record(summary, payload={"id": project_id, "identifier": identifier, "name": identifier.title()})
 
 
 class _FakeVersionApi:

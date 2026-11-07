@@ -298,6 +298,16 @@ even be enabled on every project in scope. Learn a field's `cf_<N>` id from any
 prior `get_work_package`/`list_work_packages` call's `custom_fields` dict keys.
 They use `customField<N>`; strip the `customField` prefix and use `cf_<N>`.
 
+### Project attributes
+
+`list_projects` takes the same `custom_field_filters` shape (`cf_<N>` or `customField<N>` keys) for
+project attributes and the same hidden-field rules. `sort_by` accepts `id`, `identifier`, `name`,
+`public`, `created_at`, `updated_at` (OpenProject 16.5+), `latest_activity_at`, `project_status`,
+`required_disk_space`, `lft`, `typeahead`, `cf_<N>` (not a text attribute: the server excludes it) and
+`project_phase_<N>`. There is no `group_by` on projects. A column that needs a newer release than the
+instance runs is refused with the release it needs. Verified against the OpenProject source trees 16.0
+to 17.9.
+
 ### Custom-field sort/group
 
 Custom fields are also sortable/groupable via their `cf_<N>` key on

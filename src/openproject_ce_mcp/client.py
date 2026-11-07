@@ -296,20 +296,6 @@ class OpenProjectClient:
             self._transport, base_url=settings.base_url, api_prefix=self._api_prefix
         )
         self._project_resolver = ProjectResolver(api=self._project_api, settings=settings)
-        self._project_service = ProjectService(
-            api=self._project_api,
-            settings=settings,
-            project_id_to_identifier=self._project_id_to_identifier,
-            resolver=self._project_resolver,
-            api_prefix=self._api_prefix,
-        )
-        self._project_admin_service = ProjectAdminService(
-            api=self._project_api,
-            settings=settings,
-            project_id_to_identifier=self._project_id_to_identifier,
-            resolver=self._project_resolver,
-        )
-
         self._version_api: VersionApi = HttpxVersionApi(self._transport)
         self._version_service = VersionService(
             api=self._version_api,
@@ -556,6 +542,21 @@ class OpenProjectClient:
             backlog_bucket_api=self._backlog_bucket_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+        self._project_service = ProjectService(
+            api=self._project_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolver=self._project_resolver,
+            references_allowed=self._scoped_reference_resolver.references_allowed,
+            api_prefix=self._api_prefix,
+        )
+        self._project_admin_service = ProjectAdminService(
+            api=self._project_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolver=self._project_resolver,
+            references_allowed=self._scoped_reference_resolver.references_allowed,
         )
         self._work_package_service = WorkPackageService(
             api=self._work_package_api,
@@ -1101,6 +1102,7 @@ class OpenProjectClient:
         status: str | None = None,
         status_explanation: str | None = None,
         parent: str | object | None = None,
+        custom_fields: dict[str, Any] | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
         return await self._project_service.create(
@@ -1112,6 +1114,7 @@ class OpenProjectClient:
             status=status,
             status_explanation=status_explanation,
             parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
+            custom_fields=custom_fields,
             confirm=confirm,
         )
 
@@ -1131,6 +1134,7 @@ class OpenProjectClient:
         status_explanation_append: str | None = None,
         status_explanation_replace: Mapping[str, str] | None = None,
         parent: str | object | None = None,
+        custom_fields: dict[str, Any] | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
         return await self._project_service.update(
@@ -1147,6 +1151,7 @@ class OpenProjectClient:
             status_explanation_append=status_explanation_append,
             status_explanation_replace=status_explanation_replace,
             parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
+            custom_fields=custom_fields,
             confirm=confirm,
         )
 

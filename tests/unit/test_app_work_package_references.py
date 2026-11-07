@@ -11,9 +11,9 @@ from openproject_ce_mcp.app.errors import TransportError
 from openproject_ce_mcp.app.ports.scoped_reference import ScopedReference, VisibleReferences
 from openproject_ce_mcp.app.ports.work_package_api import WorkPackageGroupRecord, WorkPackageRecord
 from openproject_ce_mcp.app.resource_href import ResourceLinks
+from openproject_ce_mcp.app.services._scoped_references import field_with_visible_options
 from openproject_ce_mcp.app.services._work_package_references import (
     HIDDEN_GROUP_LABEL,
-    field_with_visible_options,
     groups_for_result,
     hidden_references_replaced,
     visible_references,

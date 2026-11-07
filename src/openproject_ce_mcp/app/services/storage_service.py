@@ -208,6 +208,8 @@ class StorageService:
             return self._stamp(await self._api.commit_create(body))  # type: ignore[no-any-return]
 
         outcome = await _finalize_write(
+            entity="storage",
+            settings=self._settings,
             confirm=confirm,
             payload=payload_preview,
             validation_errors={},
@@ -270,6 +272,8 @@ class StorageService:
             return self._stamp(await self._api.commit_update(storage_id, body))  # type: ignore[no-any-return]
 
         outcome = await _finalize_write(
+            entity="storage",
+            settings=self._settings,
             confirm=confirm,
             payload=payload_preview,
             validation_errors={},
@@ -304,6 +308,8 @@ class StorageService:
             await self._api.commit_delete(storage_id)
 
         outcome = await _finalize_write(
+            entity="storage",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

@@ -135,6 +135,8 @@ class MeetingSectionService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="meeting_section",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -185,6 +187,8 @@ class MeetingSectionService:
             return self._stamp(record.summary)
 
         outcome = await _finalize_write(
+            entity="meeting_section",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -214,6 +218,8 @@ class MeetingSectionService:
             return section
 
         outcome = await _finalize_write(
+            entity="meeting_section",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},

@@ -76,7 +76,7 @@ def test_every_service_that_reads_work_packages_presents_them_through_the_presen
     assert readers <= presenters
 
 
-DECISION = "_work_package_references.py"
+DECISION = "_scoped_references.py"
 
 
 def _builds_visible_references(node: ast.AST) -> bool:

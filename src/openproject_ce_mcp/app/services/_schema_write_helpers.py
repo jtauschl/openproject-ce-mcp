@@ -1,17 +1,9 @@
-"""Pure write-payload helpers extracted from WorkPackageService.
+"""Pure write-payload helpers shared by every entity whose form schema is resolved by name or id.
 
-Only the genuinely self-free pieces of WorkPackageService's write path live
-here: resolving a schema's allowed-values href for a field, normalizing a
-custom-field key, resolving a custom field's link href(s), naming a form's
-offered status values in its status error, and the cache-then-resolve
-wrapper around a name/id resolver callable. The remaining write-
-payload helpers (`_get_write_schema`, `_apply_custom_fields`,
-`_build_write_payload`, `_to_write_result`) stay on WorkPackageService itself
--- they are genuinely coupled to `self._api`, five resolver methods,
-`self._settings` (hidden-fields policy checks), and `self._api_prefix`, so
-extracting them would either thread 8-10 extra parameters through every call
-or require a near-duplicate of WorkPackageService's own constructor
-dependencies. Not worth it for line-count reduction alone.
+Resolving a schema's allowed-values href for a field, normalizing a custom-field key, resolving a
+custom field's link href(s), and the cache-then-resolve wrapper around a name/id resolver callable.
+`subject` names the entity in the messages ("work package", "project"); the custom field write
+itself, with its clearing rules, is `_custom_field_writes`.
 """
 
 from __future__ import annotations
@@ -75,12 +67,12 @@ async def resolve_wp_ref_id(
 
 
 def _allowed_options(
-    schema: dict[str, Any], key: str, raw_value: Any
+    schema: dict[str, Any], key: str, raw_value: Any, *, subject: str
 ) -> tuple[str, list[tuple[str, int | None, str | None]]]:
     """The normalized reference and each allowed value's (href, id, title)."""
     field = schema.get(key)
     if not isinstance(field, dict):
-        raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this work package.")
+        raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this {subject}.")
     allowed_values = field.get("_embedded", {}).get("allowedValues", [])
     if not isinstance(allowed_values, list):
         raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
@@ -182,10 +174,12 @@ def _ambiguous(raw_value: Any, key: str, hrefs: builtins.list[str]) -> InvalidIn
     )
 
 
-def resolve_schema_option_href(schema: dict[str, Any], key: str, raw_value: Any) -> str:
+def resolve_schema_option_href(
+    schema: dict[str, Any], key: str, raw_value: Any, *, subject: str = "work package"
+) -> str:
     """A built-in field's allowed value: digits are its id, anything else its title; a title that
     several allowed values share is ambiguous, because writing the first one would be a guess."""
-    normalized, options = _allowed_options(schema, key, raw_value)
+    normalized, options = _allowed_options(schema, key, raw_value, subject=subject)
     if is_numeric_ref(normalized):
         matches = [href for href, item_id, _title in options if item_id == int(normalized)]
     else:
@@ -197,11 +191,11 @@ def resolve_schema_option_href(schema: dict[str, Any], key: str, raw_value: Any)
     return matches[0]
 
 
-def _resolve_custom_field_option_href(field: dict[str, Any], key: str, raw_value: Any) -> str:
+def _resolve_custom_field_option_href(field: dict[str, Any], key: str, raw_value: Any, *, subject: str) -> str:
     """A custom field's allowed value, matched by id or title in option order:
     an option list such as story points has titles made of digits. Several options with the same
     title are ambiguous."""
-    normalized, options = _allowed_options({key: field}, key, raw_value)
+    normalized, options = _allowed_options({key: field}, key, raw_value, subject=subject)
     title_matches = _title_matches(options, normalized)
     numeric = is_numeric_ref(normalized)
     if len(title_matches) > 1:
@@ -218,7 +212,7 @@ def _resolve_custom_field_option_href(field: dict[str, Any], key: str, raw_value
     raise _not_allowed(raw_value, key)
 
 
-def resolve_custom_field_key(schema: dict[str, Any], raw_key: str) -> str:
+def resolve_custom_field_key(schema: dict[str, Any], raw_key: str, *, subject: str) -> str:
     normalized = str(raw_key).strip()
     if not normalized:
         raise InvalidInputError("custom field keys must not be empty.")
@@ -238,17 +232,17 @@ def resolve_custom_field_key(schema: dict[str, Any], raw_key: str) -> str:
     ]
     if len(named) > 1:
         raise InvalidInputError(
-            f"OpenProject custom field '{raw_key}' is ambiguous for this work package (matches {', '.join(named)}). "
+            f"OpenProject custom field '{raw_key}' is ambiguous for this {subject} (matches {', '.join(named)}). "
             "Use the customField key."
         )
     if named:
         return named[0]
-    raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this work package.")
+    raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this {subject}.")
 
 
-def resolve_custom_field_links(field: dict[str, Any], raw_value: Any, key: str) -> builtins.list[str]:
+def resolve_custom_field_links(field: dict[str, Any], raw_value: Any, key: str, *, subject: str) -> builtins.list[str]:
     values = raw_value if isinstance(raw_value, list) else [raw_value]
-    hrefs = [_resolve_custom_field_option_href(field, key, value) for value in values]
+    hrefs = [_resolve_custom_field_option_href(field, key, value, subject=subject) for value in values]
     if not hrefs:
         raise InvalidInputError(f"OpenProject custom field '{key}' requires at least one value.")
     return hrefs

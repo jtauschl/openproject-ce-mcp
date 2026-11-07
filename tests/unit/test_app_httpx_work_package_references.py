@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from openproject_ce_mcp.app.adapters._custom_fields import CUSTOM_FIELD_LIST_ITEM_LIMIT
 from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
-    CUSTOM_FIELD_LIST_ITEM_LIMIT,
     HttpxWorkPackageApi,
     collect_references,
     normalize_work_package_summary,

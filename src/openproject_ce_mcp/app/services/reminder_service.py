@@ -175,6 +175,8 @@ class ReminderService:
             return self._stamp(record.summary())
 
         outcome = await _finalize_write(
+            entity="reminder",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -241,6 +243,8 @@ class ReminderService:
             return self._stamp(record.summary())
 
         outcome = await _finalize_write(
+            entity="reminder",
+            settings=self._settings,
             confirm=confirm,
             payload=payload,
             validation_errors={},
@@ -261,6 +265,8 @@ class ReminderService:
             await self._api.delete(reminder_id)
 
         outcome = await _finalize_write(
+            entity="reminder",
+            settings=self._settings,
             confirm=confirm,
             payload={},
             validation_errors={},

@@ -51,9 +51,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
+from ...config import Settings
 from ...models import WriteResultState
 from ..form_result import ValidationFailure
 from ..link_titles import without_foreign_capable_titles
+from ._custom_field_masking import redacted_validation_errors, without_hidden_custom_fields
 
 _DetailT = TypeVar("_DetailT")
 
@@ -72,6 +74,8 @@ class _WriteOutcome(Generic[_DetailT]):
 async def _finalize_write(
     *,
     confirm: bool,
+    entity: str,
+    settings: Settings,
     payload: dict[str, Any],
     validation_errors: dict[str, ValidationFailure],
     identity: dict[str, Any],
@@ -90,14 +94,14 @@ async def _finalize_write(
     See the module docstring for `gate_before_preview`/`preview_detail`."""
     if gate_before_preview:
         ensure_write_enabled()
-    shown = without_foreign_capable_titles(payload)
+    shown = without_hidden_custom_fields(without_foreign_capable_titles(payload), entity=entity, settings=settings)
     if validation_errors:
         return _WriteOutcome(
             ready=False,
             state="invalid" if confirm else "rejected",
             message=rejected_message,
             payload=shown,
-            validation_errors=validation_errors,
+            validation_errors=redacted_validation_errors(validation_errors, entity=entity, settings=settings),
             detail=None,
             identity=identity,
         )

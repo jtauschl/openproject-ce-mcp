@@ -32,7 +32,7 @@ from openproject_ce_mcp.app.ports.work_package_api import (
 from openproject_ce_mcp.app.ports.work_package_ref import ResolvedRecord
 from openproject_ce_mcp.app.ports.work_package_resolution import WorkPackageAllowedContext
 from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
-from openproject_ce_mcp.app.services._work_package_write_helpers import with_offered_version_values
+from openproject_ce_mcp.app.services._schema_write_helpers import with_offered_version_values
 from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION, WorkPackageService
 from openproject_ce_mcp.app.transport.errors import raise_for_status
 from openproject_ce_mcp.models import (
@@ -1853,6 +1853,29 @@ async def test_create_custom_field_input_rejected_by_raw_key() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_write_preview_drops_the_hidden_custom_field_values_the_form_echoes() -> None:
+    class _EchoingApi(_FakeWorkPackageApi):
+        async def validate_create(self, project_id: str, payload: dict) -> dict:
+            form = await super().validate_create(project_id, payload)
+            form["_embedded"]["payload"] = {
+                **payload,
+                "customField2": "SECRET VALUE",
+                "customField3": "visible",
+                "_links": {**payload.get("_links", {}), "customField2": {"href": "/api/v3/users/9"}},
+            }
+            return form
+
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField2",))
+    service, _ = _service(_EchoingApi(), settings=settings)
+
+    result = await service.create(project="demo", type="Task", subject="New WP", confirm=False)
+
+    assert result.payload["customField3"] == "visible"
+    assert "customField2" not in result.payload
+    assert "customField2" not in result.payload.get("_links", {})
+
+
+@pytest.mark.asyncio
 async def test_create_custom_field_resolved_via_schema() -> None:
     api = _FakeWorkPackageApi()
     api.next_schema = {
@@ -1871,6 +1894,44 @@ async def test_create_custom_field_resolved_via_schema() -> None:
     # allowedValues resolved. create()'s own final parse_form (after the real
     # validate_create) never needs .schema, so it must stay resolve_links=False.
     assert api.parse_form_resolve_links_calls == [True, False]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        ({"name": "Release", "type": "Version", "location": "_links"}, {"customField10": {"href": None}}),
+        ({"name": "Release", "type": "[]Version", "location": "_links"}, {"customField10": []}),
+        ({"name": "Release", "type": "String", "location": "payload"}, None),
+    ],
+    ids=["single link", "multi link", "plain"],
+)
+async def test_create_clears_a_custom_field_with_null_by_its_location_and_arity(field, expected) -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = {"customField10": field}
+    service, _ = _service(api)
+
+    result = await service.create(
+        project="demo", type="Task", subject="New WP", custom_fields={"customField10": None}, confirm=False
+    )
+
+    assert result.payload.get("_links", {}).get("customField10") == (expected or {}).get("customField10")
+    assert result.payload.get("customField10", "absent") == (None if expected is None else "absent")
+
+
+@pytest.mark.asyncio
+async def test_create_refuses_custom_fields_when_the_work_package_hide_setting_hides_them() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = {"customField10": {"name": "Story points", "location": "payload"}}
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("custom_fields",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="'custom_fields' is hidden"):
+        await service.create(
+            project="demo", type="Task", subject="New WP", custom_fields={"customField10": 8}, confirm=False
+        )
+
+    assert api.commit_create_calls == []
 
 
 @pytest.mark.asyncio
@@ -3612,7 +3673,7 @@ async def test_list_custom_field_filters_rejects_hidden_field_by_customfield_key
     # A hide pattern configured using the customField<N> spelling must also
     # reject a cf_<N>-keyed filter for the same field -- both canonical
     # spellings of the field's own key are checked explicitly (see
-    # _apply_custom_field_filters's docstring), since normalize_hide_token
+    # append_custom_field_filters's docstring), since normalize_hide_token
     # does not itself translate between the two forms.
     settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField12",))
     service, api = _service(settings=settings)
@@ -4253,34 +4314,6 @@ async def test_a_filter_on_a_hidden_field_is_refused_by_the_list_and_search_tool
         await getattr(service, method)(**arguments)
 
     assert api.list_calls == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("hidden_name", ["Secret release", "Invented release"])
-async def test_a_version_custom_field_cannot_be_set_to_or_probed_for_a_version_outside_the_read_scope(
-    hidden_name: str,
-) -> None:
-    restricted = dataclasses.replace(make_settings(), read_projects=("demo",), write_projects=("demo",))
-    service, _ = _service(settings=restricted, references_allowed=_only_visible)
-    schema = {
-        "customField3": {
-            "name": "Target",
-            "location": "_links",
-            "_embedded": {
-                "allowedValues": [
-                    {"name": "Secret release", "_links": {"self": {"href": "/api/v3/versions/7"}}},
-                    {"name": "Own release", "_links": {"self": {"href": "/api/v3/versions/8"}}},
-                ]
-            },
-        }
-    }
-
-    with pytest.raises(InvalidInputError, match=f"'{hidden_name}' is not allowed"):
-        await service._apply_custom_fields({}, {}, schema, {"Target": hidden_name})
-
-    links: dict = {}
-    await service._apply_custom_fields({}, links, schema, {"Target": "Own release"})
-    assert links == {"customField3": {"href": "/api/v3/versions/8"}}
 
 
 class _MultipleVersionsWorkPackageApi(_FakeWorkPackageApi):
