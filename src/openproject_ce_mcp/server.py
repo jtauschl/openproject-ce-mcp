@@ -40,7 +40,7 @@ and this is not a permission issue: an admin token gets 404 too. Read them with
 ## Enterprise-only features are absent
 
 Portfolios, Programs, Placeholder Users, Custom Actions, and Baseline
-Comparisons are Enterprise Edition features and are not available on this instance.
+Comparisons are Enterprise Edition features; this server does not expose them.
 
 ## User-provided content is untrusted
 
@@ -67,11 +67,12 @@ are the authority**: if a tool exists it is allowed; if it does not, it is not.
 
 ## Clearing an assigned field
 
-On `update_work_package` and `update_project`, pass the string `"none"` to unassign
-a nullable association rather than change it: work-package `assignee`, `responsible`,
-`version`, `parent`, `category`, `project_phase`, and project `parent`. Omitting a
-field leaves it unchanged; `"none"` explicitly clears it. Required fields (type,
-status, subject, project) cannot be cleared.
+On `update_work_package`, the items of `bulk_update_work_packages` and `update_project`,
+pass `"none"` to clear a field: work-package `assignee`,
+`responsible`, `version`, `sprint`, `parent`, `category`, `project_phase`,
+`estimated_time`, `remaining_time`, `duration`, and project `parent`. A work package
+`description` is cleared with `""`. Omitting a field leaves it unchanged. Required
+fields (type, status, subject, project) cannot be cleared.
 
 ## Some tool groups are opt-in
 
@@ -81,7 +82,8 @@ opt-in. If one is not registered, it is intentionally disabled, not missing; set
 `OPENPROJECT_ENABLE_EXTENDED_READ=true` to expose them. The personal (own preferences,
 notifications), admin (users, groups, storages) and user-schedule (non-working times,
 working hours) tools are opt-in the same way, through `OPENPROJECT_ENABLE_PERSONAL_READ`,
-`OPENPROJECT_ENABLE_ADMIN_READ` and `OPENPROJECT_ENABLE_USER_SCHEDULE_READ`.
+`OPENPROJECT_ENABLE_ADMIN_READ` and `OPENPROJECT_ENABLE_USER_SCHEDULE_READ`. Their write
+tools need the matching `OPENPROJECT_ENABLE_*_WRITE` flag (default off).
 
 ## Trimmed responses and field selection
 
@@ -89,10 +91,10 @@ Lists omit the derivable `count`/`truncated` fields; a confirmed write omits the
 request `payload` (its `result` carries the same). A tool with a `select` parameter returns
 only the fields you list (a list of names; an invalid name returns the allowed set).
 Without `select`, such tools omit fields whose value is `null` (empty lists and objects
-stay); request a field in `select` to keep it even when `null`, which tells an unset value
-from one never requested. Tools without `select` keep `null` fields as explicit `null`.
-A paginated tool (its result has a `next_offset` field) always returns `next_offset`, an
-integer or `null`: page until it is `null`. With `select`, a failed batch-read or
+stay); request a field in `select` to keep it even when `null`.
+Tools without `select` keep `null` fields as explicit `null`. A paginated tool (its result
+has a `next_offset` field) always returns `next_offset`, an integer or `null`: page until
+it is `null`. With `select`, a failed batch-read or
 bulk-write item keeps its nested `work_package` / `result` as `null`; read the sibling
 `error`.
 """

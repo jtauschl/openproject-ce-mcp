@@ -257,3 +257,70 @@ def test_server_instructions_name_every_opt_in_group() -> None:
     for group in TOOL_GROUPS:
         if not group.read_default:
             assert group.read_env_var in CE_INSTRUCTIONS, group.key
+
+
+def _instructions_section(title: str) -> str:
+    match = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", CE_INSTRUCTIONS, re.DOTALL | re.MULTILINE)
+    assert match, title
+    return match.group(1)
+
+
+def test_server_instructions_name_every_field_the_update_validator_clears() -> None:
+    import ast
+
+    import openproject_ce_mcp.tools_work_packages as module
+
+    function = next(
+        node
+        for node in ast.walk(ast.parse(Path(module.__file__).read_text()))
+        if isinstance(node, ast.FunctionDef) and node.name == "_validate_work_package_update_fields"
+    )
+    returned = next(node.value for node in ast.walk(function) if isinstance(node, ast.Return))
+    assert isinstance(returned, ast.Dict)
+    clearable = {
+        key.value
+        for key, value in zip(returned.keys, returned.values, strict=True)
+        if isinstance(key, ast.Constant)
+        and isinstance(value, ast.Call)
+        and any(keyword.arg == "sentinel" for keyword in value.keywords)
+    }
+    assert {"assignee", "sprint", "estimated_time", "duration", "parent"} <= clearable
+
+    section = _instructions_section("Clearing an assigned field")
+    named = re.search(r"work-package (.*?), and project `parent`", section, re.DOTALL)
+    assert named
+    assert set(re.findall(r"`([^`]+)`", named.group(1))) == clearable
+    assert "`bulk_update_work_packages`" in section
+    assert '`description` is cleared with `""`' in section.replace("\n", " ")
+
+
+def test_server_instructions_name_the_one_project_field_that_takes_none() -> None:
+    import ast
+
+    import openproject_ce_mcp.tools_projects as module
+
+    function = next(
+        node
+        for node in ast.walk(ast.parse(Path(module.__file__).read_text()))
+        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name == "update_project"
+    )
+    clearable = [
+        target.id
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and any(keyword.arg == "sentinel" for keyword in node.value.keywords)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    ]
+    assert clearable == ["safe_parent"]
+    assert "and project `parent`" in _instructions_section("Clearing an assigned field")
+
+
+def test_server_instructions_state_that_opt_in_write_tools_need_their_write_flag() -> None:
+    opt_in_writes = [group.write for group in TOOL_GROUPS if not group.read_default and group.write is not None]
+    assert opt_in_writes
+    for write in opt_in_writes:
+        assert write.default is False, write.env_var
+        assert re.fullmatch(r"OPENPROJECT_ENABLE_[A-Z_]+_WRITE", write.env_var), write.env_var
+    assert "`OPENPROJECT_ENABLE_*_WRITE` flag (default off)" in _instructions_section("Some tool groups are opt-in")
