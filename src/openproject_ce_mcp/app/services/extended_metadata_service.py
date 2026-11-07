@@ -18,8 +18,7 @@ string is checked).
 
 The other four methods (list_help_texts, get_help_text, list_working_days,
 list_non_working_days, get_custom_option) require the "extended" scope
-(OPENPROJECT_ENABLE_EXTENDED_READ / legacy OPENPROJECT_ENABLE_METADATA_TOOLS)
-via `access.ensure_read_enabled("extended", ...)`.
+(OPENPROJECT_ENABLE_EXTENDED_READ) via `access.ensure_read_enabled("extended", ...)`.
 """
 
 from __future__ import annotations

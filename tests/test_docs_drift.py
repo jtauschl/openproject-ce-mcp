@@ -4,6 +4,8 @@ write flag or console command cannot leave them silently wrong."""
 from __future__ import annotations
 
 import argparse
+import ast
+import inspect
 import re
 from collections import Counter
 from importlib.metadata import distribution
@@ -11,6 +13,9 @@ from pathlib import Path
 
 import pytest
 
+import openproject_ce_mcp.tools_projects as project_tools
+import openproject_ce_mcp.tools_work_packages as work_package_tools
+from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION
 from openproject_ce_mcp.config import READ_SCOPE_ENV_VAR, TOOL_GROUPS
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, _build_parser
 from openproject_ce_mcp.tools import (
@@ -265,25 +270,38 @@ def _instructions_section(title: str) -> str:
     return match.group(1)
 
 
-def test_server_instructions_name_every_field_the_update_validator_clears() -> None:
-    import ast
+def _module_tree(module: object) -> ast.Module:
+    return ast.parse(Path(module.__file__).read_text())  # type: ignore[attr-defined]
 
-    import openproject_ce_mcp.tools_work_packages as module
 
-    function = next(
+def _function(module: object, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
+    return next(
         node
-        for node in ast.walk(ast.parse(Path(module.__file__).read_text()))
-        if isinstance(node, ast.FunctionDef) and node.name == "_validate_work_package_update_fields"
+        for node in ast.walk(_module_tree(module))
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name
     )
-    returned = next(node.value for node in ast.walk(function) if isinstance(node, ast.Return))
+
+
+def _has_sentinel(call: ast.AST) -> bool:
+    return isinstance(call, ast.Call) and any(keyword.arg == "sentinel" for keyword in call.keywords)
+
+
+def _clearable_work_package_fields() -> set[str]:
+    returned = next(
+        node.value
+        for node in ast.walk(_function(work_package_tools, "_validate_work_package_update_fields"))
+        if isinstance(node, ast.Return)
+    )
     assert isinstance(returned, ast.Dict)
-    clearable = {
+    return {
         key.value
         for key, value in zip(returned.keys, returned.values, strict=True)
-        if isinstance(key, ast.Constant)
-        and isinstance(value, ast.Call)
-        and any(keyword.arg == "sentinel" for keyword in value.keywords)
+        if isinstance(key, ast.Constant) and _has_sentinel(value)
     }
+
+
+def test_server_instructions_name_every_field_the_update_validator_clears() -> None:
+    clearable = _clearable_work_package_fields()
     assert {"assignee", "sprint", "estimated_time", "duration", "parent"} <= clearable
 
     section = _instructions_section("Clearing an assigned field")
@@ -294,27 +312,49 @@ def test_server_instructions_name_every_field_the_update_validator_clears() -> N
     assert '`description` is cleared with `""`' in section.replace("\n", " ")
 
 
-def test_server_instructions_name_the_one_project_field_that_takes_none() -> None:
-    import ast
+@pytest.mark.parametrize("field", sorted(_clearable_work_package_fields()))
+def test_none_clears_every_field_the_server_instructions_name(field: str) -> None:
+    parameters = inspect.signature(work_package_tools._validate_work_package_update_fields).parameters
+    arguments: dict[str, object] = {
+        name: None for name in parameters if name not in {"field_prefix", "parent_field_name"}
+    }
+    arguments[field] = "none"
 
-    import openproject_ce_mcp.tools_projects as module
+    cleared = work_package_tools._validate_work_package_update_fields(**arguments)[field]
 
-    function = next(
-        node
-        for node in ast.walk(ast.parse(Path(module.__file__).read_text()))
-        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name == "update_project"
-    )
-    clearable = [
-        target.id
-        for node in ast.walk(function)
-        if isinstance(node, ast.Assign)
-        and isinstance(node.value, ast.Call)
-        and any(keyword.arg == "sentinel" for keyword in node.value.keywords)
-        for target in node.targets
-        if isinstance(target, ast.Name)
-    ]
-    assert clearable == ["safe_parent"]
-    assert "and project `parent`" in _instructions_section("Clearing an assigned field")
+    assert cleared in {CLEAR, CLEAR_PARENT, CLEAR_VERSION}
+
+
+def test_update_and_bulk_update_validate_through_the_same_function() -> None:
+    callers = {
+        node.name
+        for node in ast.walk(_module_tree(work_package_tools))
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and any(
+            isinstance(call, ast.Call) and getattr(call.func, "id", None) == "_validate_work_package_update_fields"
+            for call in ast.walk(node)
+        )
+        and node.name != "_validate_work_package_update_fields"
+    }
+    assert callers == {"update_work_package", "bulk_update_work_packages"}
+
+
+def test_server_instructions_name_the_project_fields_that_clear() -> None:
+    function = _function(project_tools, "update_project")
+    assigned: dict[str, list[str]] = {"sentinel": [], "empty_text": []}
+    for node in ast.walk(function):
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)):
+            continue
+        targets = [target.id for target in node.targets if isinstance(target, ast.Name)]
+        if _has_sentinel(node.value):
+            assigned["sentinel"] += targets
+        elif getattr(node.value.func, "id", None) == "_validate_optional_update_text":
+            assigned["empty_text"] += targets
+    assert assigned == {"sentinel": ["safe_parent"], "empty_text": ["safe_description", "safe_status_explanation"]}
+
+    section = _instructions_section("Clearing an assigned field")
+    assert "and project `parent`" in section
+    assert "`status_explanation`" in section
 
 
 def test_server_instructions_state_that_opt_in_write_tools_need_their_write_flag() -> None:
