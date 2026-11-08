@@ -4751,7 +4751,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
     },
     "list_projects": {
-        "description_hash": "3a46c65a2ee8e6502201f9e61d4651e39fadb5cbba9d0cc01b4a555517b0a5cf",
+        "description_hash": "bd476f0541b2a51d9060160e53777d64377d8fc4d15ed9693f2d0cc9ac36a78a",
         "input_schema": {
             "properties": {
                 "search": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Search"},

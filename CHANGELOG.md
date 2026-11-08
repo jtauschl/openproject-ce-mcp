@@ -106,6 +106,12 @@ to install and discover.
 
 Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://github.com/jtauschl/openproject-ce-mcp/pull/35), [#36](https://github.com/jtauschl/openproject-ce-mcp/pull/36), [#43](https://github.com/jtauschl/openproject-ce-mcp/pull/43), [#44](https://github.com/jtauschl/openproject-ce-mcp/pull/44)).
 
+## [0.4.6] - Unreleased
+
+### Fixed
+
+- The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
+
 ## [0.4.5] - 2026-11-08
 
 ### Added
