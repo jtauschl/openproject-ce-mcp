@@ -124,7 +124,9 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 - Descriptions of `estimated_time`, `remaining_time` and `hours` state that a day is 24 hours; `duration` is documented as whole days.
 - `create_news` and `update_news` limit the summary to 255 characters, as OpenProject does; the client allowed 500 and the server then refused it.
 - Write previews no longer echo hidden custom field values; a hidden `custom_fields` also refuses writes and hidden `cf_<N>` sort or group columns.
-- The server instructions fit the 4,096 characters Claude Code reads (the opt-in tool groups and the rule for clearing a field were cut off), name every field that `"none"` clears and every flag an opt-in tool needs, including its `_WRITE` flag.
+- The server instructions fit the 4,096 characters Claude Code reads; the opt-in tool groups and the clearing rule were cut off.
+- The server instructions name every field that `"none"` clears.
+- The server instructions name every flag an opt-in tool needs, including its `_WRITE` flag.
 - Writes that take a work package reference show the resolved work package in `target`, so a misread bare number is visible before `confirm`.
 - A `parent` name that equals another project's identifier no longer moves the project under that one unseen.
 - `get_project_phase` now reports the phase definition, which was always empty.
@@ -135,8 +137,8 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 ### Security
 
-- Stored text can no longer close or open the `<user-content>` delimiter: look-alike tags inside returned text are escaped.
-- The API token no longer appears in the printed form of the settings, so tracebacks and error reports cannot expose it.
+- Returned text escapes look-alikes of the `<user-content>` tags (other case, zero-width characters, angle-bracket variants), so stored text cannot imitate the boundary.
+- The API token no longer appears in the printed form of the settings.
 
 ## [0.4.4] - 2026-10-28
 
