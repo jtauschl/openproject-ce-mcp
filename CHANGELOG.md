@@ -6,7 +6,7 @@ and 0.2.0 the first one published to PyPI.
 
 ---
 
-## [0.4.5] - Unreleased
+## [0.4.5] - 2026-11-08
 
 ### Added
 

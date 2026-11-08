@@ -7,13 +7,13 @@
     "url": "https://github.com/jtauschl/openproject-ce-mcp",
     "source": "github"
   },
-  "version": "0.4.4",
+  "version": "0.4.5",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "openproject-ce-mcp",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
