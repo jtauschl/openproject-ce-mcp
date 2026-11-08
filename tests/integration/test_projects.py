@@ -145,13 +145,12 @@ async def test_get_my_project_access(client: OpenProjectClient, test_project: st
 
 
 async def test_list_principals(client: OpenProjectClient) -> None:
-    result = await client.principal.list_principals()
-    # test_project's admin member is seeded by docker/test/seed.rb and is a
-    # Principal (a User) itself, so this must reliably be non-empty -- the
-    # prior conditional check asserted nothing when the collection happened
-    # to be empty.
-    assert result.count > 0
     me = await client.current_user.get_current_user()
+    assert me.name
+    # The collection has no defined order and leftovers of earlier tests can push the current user off the first
+    # page, so the user is looked up by name instead of expected on page one.
+    result = await client.principal.list_principals(search=me.name)
+    assert result.count > 0
     assert any(p.id == me.id for p in result.results)
 
 
