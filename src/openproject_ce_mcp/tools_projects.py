@@ -147,7 +147,7 @@ async def get_project(
     ``custom_fields`` holds the project attributes the token may see, keyed by customField<N>: a link
     value (list, user, version) as its title or a list of titles, a text value capped by ``text_limit``,
     a version defined outside OPENPROJECT_READ_PROJECTS as null. From OpenProject 17.2
-    ``custom_comments`` holds a field's comment under the same key. ``custom_fields_truncated`` is true
+    ``custom_comments`` holds a field's comment, keyed customComment<N> with the same N. ``custom_fields_truncated`` is true
     when more than 50 entries or a long value were cut.
     """
     client = _client_from_context(ctx)

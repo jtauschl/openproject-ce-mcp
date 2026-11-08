@@ -33,7 +33,7 @@ local.properties
 .mcp.json.example
 .github/copilot-instructions.md
 .github/instructions/
-# GEMINI.md: Copilot's agents read it from the repository; the handbook supports no Gemini tool
+# GEMINI.md: agents read it from the repository, so it is ignored like the other instruction files
 GEMINI.md
 .DS_Store
 Thumbs.db
@@ -49,8 +49,8 @@ Desktop.ini
 SELF_REVIEW.md
 
 # AGENTS.md/CLAUDE.md live one level up at the umbrella-directory level and
-# are ignored here; committing an agent instruction file is the documented
-# exception. ADRs and other internal engineering docs live in a
+# are ignored here; committing an agent instruction file is a deliberate
+# per-project choice. ADRs and other internal engineering docs live in a
 # private companion repository, not tracked here.
 /AGENTS.md
 /CLAUDE.md

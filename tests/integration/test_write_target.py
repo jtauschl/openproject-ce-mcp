@@ -20,14 +20,19 @@ async def _create(client: OpenProjectClient, project: str, wp_ids: list[int], su
     return created.result
 
 
+def _references(wp) -> tuple[int | str, ...]:
+    """Every reference the instance accepts for a work package: instances before 17.4 return no `displayId`."""
+    return (wp.id,) if wp.display_id is None else (wp.id, wp.display_id)
+
+
 async def test_previews_name_the_work_package_for_a_numeric_and_a_display_reference(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
     wp = await _create(client, test_project, wp_ids, "[integration-test] write target")
-    assert wp.display_id is not None
 
     expectation = wp.display_id if has_semantic_display_id(wp.display_id) else None
-    for reference, expect in ((wp.id, expectation), (wp.display_id, None)):
+    by_reference = [(wp.id, expectation), *((reference, None) for reference in _references(wp)[1:])]
+    for reference, expect in by_reference:
         comment = await client.work_package.add_comment(
             work_package_id=reference,
             comment="[integration-test] preview only",
@@ -64,7 +69,7 @@ async def test_a_confirmed_comment_and_a_relation_preview_name_their_work_packag
     )
     relation = await client.relation.create(
         work_package_id=source.id,
-        related_to_work_package_id=related.display_id,
+        related_to_work_package_id=_references(related)[-1],
         expect_display_id=source.display_id if has_semantic_display_id(source.display_id) else None,
         relation_type="relates",
         confirm=False,
@@ -133,10 +138,9 @@ async def test_an_update_names_the_parent_its_reference_resolved_to(
 ) -> None:
     child = await _create(client, test_project, wp_ids, "[integration-test] parent target child")
     parent = await _create(client, test_project, wp_ids, "[integration-test] parent target parent")
-    assert parent.display_id is not None
 
     expect_parent = parent.display_id if has_semantic_display_id(parent.display_id) else None
-    for reference in (parent.id, parent.display_id):
+    for reference in _references(parent):
         preview = await client.work_package.update(
             work_package_id=await write_ref(client, child.id),
             parent_work_package_id=reference,
@@ -150,7 +154,9 @@ async def test_an_update_names_the_parent_its_reference_resolved_to(
         assert preview.parent_target.subject == "[integration-test] parent target parent"
 
     confirmed = await client.work_package.update(
-        work_package_id=await write_ref(client, child.id), parent_work_package_id=parent.display_id, confirm=True
+        work_package_id=await write_ref(client, child.id),
+        parent_work_package_id=_references(parent)[-1],
+        confirm=True,
     )
     assert confirmed.ready, confirmed.validation_errors
     assert confirmed.parent_target is not None and confirmed.parent_target.id == parent.id

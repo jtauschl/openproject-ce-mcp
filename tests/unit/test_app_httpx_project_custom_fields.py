@@ -361,11 +361,9 @@ async def test_the_members_behind_a_user_field_are_read_only_when_a_value_is_wri
 
     async with _client(handler) as http_client:
         result = await _api(http_client).get_schema(project_id=6, draft_payload={})
-        copy_result = await _api(http_client).get_copy_schema(6, draft_payload={})
 
-    assert calls == ["POST /api/v3/projects/6/form", "POST /api/v3/projects/6/copy/form"]
+    assert calls == ["POST /api/v3/projects/6/form"]
     assert "_embedded" not in result.schema["customField10"]
-    assert "_embedded" not in copy_result.schema["customField10"]
 
 
 @pytest.mark.asyncio

@@ -3398,7 +3398,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
     },
     "get_project": {
-        "description_hash": "f6b09d9b63321e8cb216a1acbae5e23837b504476a4a5653ca5b8b4c27386700",
+        "description_hash": "c52e3b03c5c4bed78c298176135af84a24c7584a2e8135239ea6829b754062a3",
         "input_schema": {
             "properties": {
                 "project": {

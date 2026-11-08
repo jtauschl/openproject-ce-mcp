@@ -469,11 +469,9 @@ class HttpxProjectApi:
             form = await self._transport.post_json(f"projects/{project_id}/form", json_body=draft_payload)
         return await self._schema_result(form, custom_field_options=custom_field_options)
 
-    async def get_copy_schema(
-        self, project_id: int, *, draft_payload: dict[str, Any], custom_field_options: bool = False
-    ) -> ProjectSchemaResult:
+    async def get_copy_schema(self, project_id: int, *, draft_payload: dict[str, Any]) -> ProjectSchemaResult:
         form = await self._transport.post_json(f"projects/{project_id}/copy/form", json_body=draft_payload)
-        return await self._schema_result(form, custom_field_options=custom_field_options)
+        return await self._schema_result(form, custom_field_options=True)
 
     async def _schema_result(self, form: dict[str, Any], *, custom_field_options: bool) -> ProjectSchemaResult:
         schema = form.get("_embedded", {}).get("schema", {})

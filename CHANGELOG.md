@@ -111,6 +111,9 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 ### Added
 
 - `get_project_phase` returns the `active` flag.
+- `update_work_package` and `bulk_update_work_packages` show the work package a given `parent` resolved to in `parent_target`, before and after `confirm`.
+- `create_project`, `update_project` and `copy_project` show the project a given `parent` resolved to in `parent_target`.
+- `list_projects` takes `sort_by`, which accepts project attributes such as `name`, `created_at` and `latest_activity_at`.
 - Project custom fields: `get_project` and `list_projects` read them, `create_project`, `update_project` and `copy_project` write them, `list_projects` filters and sorts by them.
 
 ### Fixed
@@ -120,17 +123,12 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 - `copy_project` no longer fails with HTTP 500 on a project with a commented attribute; naming a comment in a copy is refused.
 - Descriptions of `estimated_time`, `remaining_time` and `hours` state that a day is 24 hours; `duration` is documented as whole days.
 - `create_news` and `update_news` limit the summary to 255 characters, as OpenProject does; the client allowed 500 and the server then refused it.
-- The server instructions name every field that `"none"` clears and every flag an opt-in tool needs, including its `_WRITE` flag.
 - Write previews no longer echo hidden custom field values; a hidden `custom_fields` also refuses writes and hidden `cf_<N>` sort or group columns.
-- The server instructions fit the 4,096 characters Claude Code reads; the opt-in tool groups and the rule for clearing a field were cut off.
+- The server instructions fit the 4,096 characters Claude Code reads (the opt-in tool groups and the rule for clearing a field were cut off), name every field that `"none"` clears and every flag an opt-in tool needs, including its `_WRITE` flag.
 - Writes that take a work package reference show the resolved work package in `target`, so a misread bare number is visible before `confirm`.
-- `update_work_package` and `bulk_update_work_packages` show the work package a given `parent` resolved to in `parent_target`, before and after `confirm`.
-- `create_project`, `update_project` and `copy_project` show the project a given `parent` resolved to in `parent_target`.
 - A `parent` name that equals another project's identifier no longer moves the project under that one unseen.
-
 - `get_project_phase` now reports the phase definition, which was always empty.
-- `update_meeting` can clear the location: `location=""` empties it instead of being dropped
-  without a message.
+- `update_meeting` can clear the location: `location=""` empties it instead of being dropped without a message.
 - Descriptions of `update_work_package`, `bulk_update_work_packages` and `update_membership` now state what an empty text does.
 - Work-package tool descriptions and the assignee error no longer point to `list_users`, which needs admin read; assignee ids come from `list_project_memberships`.
 - A project-not-found message names `list_projects` only when that tool is registered.
@@ -138,8 +136,7 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 ### Security
 
 - Stored text can no longer close or open the `<user-content>` delimiter: look-alike tags inside returned text are escaped.
-- The API token no longer appears in the printed form of the settings, so tracebacks and error reports
-  cannot expose it.
+- The API token no longer appears in the printed form of the settings, so tracebacks and error reports cannot expose it.
 
 ## [0.4.4] - 2026-10-28
 

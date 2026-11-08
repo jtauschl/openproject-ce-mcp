@@ -41,23 +41,31 @@ refuses writes to `custom_fields` on that entity.
 ## Project attributes
 
 Project custom fields (project attributes) follow the same rules as work package custom fields:
-`OPENPROJECT_HIDE_PROJECT_FIELDS` naming `custom_fields` or `custom_comments` hides the whole dict,
-and `OPENPROJECT_HIDE_CUSTOM_FIELDS` removes single entries by the raw `customField<N>` key (with its
-`customComment<N>` entry; a comment is judged by its field's key, so it goes even when the value is not in the result). `get_project_admin_context` leaves out the definitions of hidden attributes. The preview and result `payload` of every write that shows a form payload (projects, work packages, versions, users, time entries and the rest) leave out hidden values the form echoes back. A validation error on a hidden key keeps the key and its error classes and replaces its message, so a rejected write does not name the hidden field's title or value. Like every read-side hide, this follows the raw key: a pattern written as a friendly name refuses writes by that name but does not redact (see below).
-A version-valued attribute that points to a version outside `OPENPROJECT_READ_PROJECTS` reads as
-`null`, and `update_project` refuses a write that would replace such a hidden value.
+
+- `OPENPROJECT_HIDE_PROJECT_FIELDS` naming `custom_fields` or `custom_comments` hides the whole dict.
+- `OPENPROJECT_HIDE_CUSTOM_FIELDS` removes single entries by the raw `customField<N>` key, together with the
+  `customComment<N>` entry: a comment is judged by its field's key, so it goes even when the value is not in
+  the result.
+- `get_project_admin_context` leaves out the definitions of hidden attributes.
+- The preview and result `payload` of every write that shows a form payload (projects, work packages,
+  versions, users, time entries and the rest) leave out hidden values the form echoes back. A validation
+  error on a hidden key keeps the key and its error classes and replaces its message, so a rejected write does not name the hidden
+  field's title or value.
+- Like every read-side hide, this follows the raw key: a pattern written as a friendly name refuses writes by
+  that name but does not redact (see below).
+- A version-valued attribute that points to a version outside `OPENPROJECT_READ_PROJECTS` reads as `null`,
+  and `update_project` refuses a write that would replace such a hidden value.
 
 ## Custom fields: a read/write asymmetry
 
 `OPENPROJECT_HIDE_CUSTOM_FIELDS` behaves differently on reads than on writes:
 
-- **On writes** (`create_work_package`/`update_work_package`'s `custom_fields`
-  input), a pattern matches EITHER the raw key (e.g. `customField12`) OR the
+- **On writes** (`custom_fields` input of the work package and project write tools),
+  a pattern matches EITHER the raw key (e.g. `customField12`) OR the
   custom field's resolved friendly name (e.g. `Story points`) — whichever the
   caller happened to supply is checked against the pattern.
-- **On reads** (`list_work_packages`/`search_work_packages`/`get_work_package`/
-  `get_work_packages`/`list_my_open_work_packages`'s `custom_fields`/
-  `custom_comments` response fields), a pattern matches ONLY the raw
+- **On reads** (the `custom_fields`/`custom_comments` response fields of the work package
+  and project read tools), a pattern matches ONLY the raw
   `customField<N>` key/wildcard — never a friendly name. Response keys are
   always the raw key (`custom_fields` never exposes friendly names), so a hide
   pattern written as a friendly name has no effect on what is hidden from reads,

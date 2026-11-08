@@ -134,7 +134,7 @@ def test_no_description_points_to_the_instructions_except_the_three_shared_expec
 
 
 # Claude Code cuts server instructions after 4,096 characters and the model sees only the text before the cut
-# (https://code.claude.com/docs/en/mcp, "For MCP server authors"; verified live on 2.1.311).
+# (https://code.claude.com/docs/en/mcp, "For MCP server authors").
 CLIENT_INSTRUCTIONS_LIMIT = 4096
 
 

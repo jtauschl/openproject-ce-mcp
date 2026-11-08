@@ -15,6 +15,7 @@ from typing import Any
 from ...work_package_reference import is_numeric_ref
 from ..errors import InvalidInputError
 from ..form_result import ValidationFailure
+from ..policies.scope import id_from_href
 
 _SUBJECT_LIMIT = 255
 
@@ -34,14 +35,6 @@ def _trim_text(value: Any, *, limit: int = _SUBJECT_LIMIT) -> str | None:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
-
-
-def _id_from_href(href: str) -> int | None:
-    """Local, deliberately duplicated (matches `app/policies/scope.py`'s
-    `id_from_href` -- Services cannot import from a sibling policy module's
-    private helper)."""
-    tail = href.rstrip("/").rsplit("/", 1)[-1]
-    return int(tail) if tail.isdigit() else None
 
 
 async def resolve_wp_ref_id(
@@ -86,7 +79,7 @@ def _allowed_options(
         href = item.get("_links", {}).get("self", {}).get("href")
         if not href:
             continue
-        options.append((str(href), _id_from_href(href), _option_title(item)))
+        options.append((str(href), id_from_href(href), _option_title(item)))
     return normalized, options
 
 
@@ -168,7 +161,7 @@ def _title_matches(options: builtins.list[tuple[str, int | None, str | None]], n
 
 
 def _ambiguous(raw_value: Any, key: str, hrefs: builtins.list[str]) -> InvalidInputError:
-    ids = ", ".join(str(_id_from_href(href) or href) for href in hrefs)
+    ids = ", ".join(str(id_from_href(href) or href) for href in hrefs)
     return InvalidInputError(
         f"OpenProject value '{raw_value}' is ambiguous for field '{key}' (matches {ids}). Pass a numeric id."
     )

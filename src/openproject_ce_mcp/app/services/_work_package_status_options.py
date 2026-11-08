@@ -10,7 +10,8 @@ from typing import Any
 
 from ...models import OptionValue
 from ..errors import OpenProjectServerError
-from ._schema_write_helpers import _id_from_href, _option_title
+from ..policies.scope import id_from_href
+from ._schema_write_helpers import _option_title
 
 
 def allowed_status_options(schema: dict[str, Any]) -> list[OptionValue]:
@@ -24,5 +25,5 @@ def allowed_status_options(schema: dict[str, Any]) -> list[OptionValue]:
         title = _option_title(item)
         if not href or title is None:
             raise OpenProjectServerError("OpenProject work-package form offers a status without a link or a name.")
-        options.append(OptionValue(id=_id_from_href(href), title=title, href=str(href)))
+        options.append(OptionValue(id=id_from_href(href), title=title, href=str(href)))
     return options
