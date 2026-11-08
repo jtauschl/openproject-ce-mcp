@@ -106,7 +106,7 @@ to install and discover.
 
 Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://github.com/jtauschl/openproject-ce-mcp/pull/35), [#36](https://github.com/jtauschl/openproject-ce-mcp/pull/36), [#43](https://github.com/jtauschl/openproject-ce-mcp/pull/43), [#44](https://github.com/jtauschl/openproject-ce-mcp/pull/44)).
 
-## [0.4.5] - Unreleased
+## [0.4.5] - 2026-11-08
 
 ### Added
 
