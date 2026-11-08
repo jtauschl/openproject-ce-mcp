@@ -47,7 +47,7 @@ def test_list_projects_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_projects"]
     assert (
         tool.description
-        == "List visible projects with optional name or identifier search.\n\nUnder a restrictive OPENPROJECT_READ_PROJECTS, total reflects only the allowed projects already scanned to fill\nthis page, not a full count of all matches; the search stops as soon as it has enough, so an exact total would\nneed an extra full walk. Page until next_offset is null.\n\nEach row carries the project attributes the token may see as `custom_fields`, keyed by customField<N>\n(see get_project); select leaves them out. custom_field_filters and sort_by take a project attribute\nas cf_<N>."
+        == "List visible projects with optional name or identifier search.\n\nUnder a restrictive OPENPROJECT_READ_PROJECTS, total reflects only the allowed projects already scanned to fill\nthis page, not a full count of all matches; the search stops as soon as it has enough, so an exact total would\nneed an extra full walk. Page until next_offset is null.\n\nEach row carries the project attributes the token may see as `custom_fields`, keyed by customField<N>\n(see get_project); with select, name custom_fields to keep them. custom_field_filters and sort_by take a project attribute\nas cf_<N>."
     )
     assert tool.output_schema is None
     assert tool.parameters == {

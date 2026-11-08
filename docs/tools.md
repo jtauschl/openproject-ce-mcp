@@ -107,7 +107,7 @@ default tool set and save context.
 
 | Tool | Description |
 | --- | --- |
-| `list_projects` | List visible projects with an optional name/identifier filter, `custom_field_filters` and `sort_by` on project attributes (`cf_<N>`, see [filters.md](filters.md#project-attributes)); each row carries the project attributes the token may see as `custom_fields` |
+| `list_projects` | List visible projects with an optional name/identifier filter, `custom_field_filters` and `sort_by` on project attributes (`cf_<N>`, see [filters.md](filters.md#project-attributes)); each row carries the project attributes the token may see as `custom_fields`, and `select` keeps them when it names `custom_fields` |
 | `get_project` | Fetch a compact project summary by id, identifier or name, including the project attributes (`custom_fields`, and from OpenProject 17.2 `custom_comments`) the token may see |
 | `get_project_admin_context` | Return project admin metadata such as lifecycle statuses, parent project options, and writable fields |
 | `get_project_configuration` | Return project-scoped configuration such as internal comment support |

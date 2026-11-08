@@ -111,7 +111,7 @@ async def list_projects(
     need an extra full walk. Page until next_offset is null.
 
     Each row carries the project attributes the token may see as `custom_fields`, keyed by customField<N>
-    (see get_project); select leaves them out. custom_field_filters and sort_by take a project attribute
+    (see get_project); with select, name custom_fields to keep them. custom_field_filters and sort_by take a project attribute
     as cf_<N>."""
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)

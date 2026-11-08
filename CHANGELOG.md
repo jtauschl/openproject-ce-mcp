@@ -8,6 +8,10 @@ and 0.2.0 the first one published to PyPI.
 
 ## [0.4.6] - Unreleased
 
+### Fixed
+
+- The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
+
 ## [0.4.5] - 2026-11-08
 
 ### Added
