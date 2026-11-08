@@ -5,9 +5,8 @@ similar module name -- the two hold unrelated concerns. `tools_query_schema.py`
 holds the query METADATA/schema tools (`get_query_filter`, `get_query_column`,
 `get_query_operator`, `get_query_sort_by`, `list_query_filter_instance_schemas`,
 `get_query_filter_instance_schema`): they describe a query's *shape*, are
-gated under the `"extended"` read scope (`OPENPROJECT_ENABLE_EXTENDED_READ`,
-legacy alias `OPENPROJECT_ENABLE_METADATA_TOOLS`), and validate their string
-ids with `_validate_required_query`/`_validate_optional_project_ref`.
+gated under the `"extended"` read scope (`OPENPROJECT_ENABLE_EXTENDED_READ`),
+and validate their string ids with `_validate_required_query`/`_validate_optional_project_ref`.
 `execute_query` instead *runs* a saved query server-side and returns its
 resolved work packages (`WorkPackageListResult`); it is classified under the
 ordinary `"work_package"` read scope in `READ_TOOLS_BY_SCOPE` (the same scope
