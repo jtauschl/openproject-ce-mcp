@@ -3221,9 +3221,8 @@ async def test_add_comment_works_with_read_disabled() -> None:
 # ten total, see docs/filters.md's "Custom-Field Filters" section), verifying
 # only that the filter fragment this Service builds is correctly shaped and
 # reaches the fake API's `filters` list unchanged -- per-field operator/format
-# legality is intentionally NOT locally validated (see
-# CUSTOM_FIELD_FILTER_OPERATORS's module docstring in work_package_service.py)
-# so these tests do not (and cannot) exercise format-specific rejection; they
+# legality is intentionally NOT locally validated (see the module docstring of
+# work_package_service.py) so these tests do not (and cannot) exercise format-specific rejection; they
 # only confirm the key-normalization/filter-append plumbing is correct for
 # each format's real operator vocabulary.
 

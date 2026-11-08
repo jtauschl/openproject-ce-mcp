@@ -3,7 +3,7 @@
 A record of a covered project can carry a version, sprint or bucket shared into it from a project the read
 scope does not cover, in a built-in field or in a custom field. The decision is made here, once per call, and
 handed to the adapters as `VisibleReferences`: this is the only module that builds one, so a result cannot be
-presented without it. An entity module (`_work_package_references`, `_project_references`) supplies what is
+presented without it. An entity module (`_work_package_references`, `_project_presentation`) supplies what is
 its own: which result fields a hide setting removes, and the references that belong to no record.
 
 Functions only, in an underscore-prefixed module: every public class under app/services/ must be

@@ -35,7 +35,7 @@ CUSTOM_FIELD_SCALAR_LIMIT = SUBJECT_LIMIT
 # formats can have unboundedly many linked titles). Deliberately smaller
 # than CUSTOM_FIELD_VALUE_LIMIT (which caps the number of CF *entries*, not
 # titles within one entry) and the same order of magnitude as
-# WORK_PACKAGE_ANCESTORS_LIMIT above -- a single multi-value custom field
+# the ancestors and children caps of a work package -- a single multi-value custom field
 # with more than 20 titles is already an edge case not worth budgeting
 # further context for.
 CUSTOM_FIELD_LIST_ITEM_LIMIT = 20

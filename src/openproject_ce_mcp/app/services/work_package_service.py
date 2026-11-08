@@ -76,10 +76,10 @@ even though the adapter's own extraction is not hidden-field-aware by design
 by `append_custom_field_filters`, a synchronous, network-free helper: it
 normalizes `cf_<N>`/`customField<N>` keys, rejects hidden fields, and appends
 the resulting filter fragments -- deliberately WITHOUT probing a live schema
-to validate operator legality against a specific field's actual format (see
-`CUSTOM_FIELD_FILTER_OPERATORS`'s module-level docstring for the full
-rationale: no single project+type context exists for an unscoped list/search
-call the way there is for the write path's per-call schema probe). An
+to validate operator legality against a specific field's actual format (no single
+project+type context exists for an unscoped list/search call the way there is
+for the write path's per-call schema probe, and the legal operators differ per
+custom field format; `docs/filters.md` lists them). An
 operator/format mismatch surfaces as OpenProject's own clean 400
 (`InvalidQuery`), already mapped to `InvalidInputError` by
 `app/transport/errors.py` -- this is a deliberate scope decision,
@@ -174,61 +174,6 @@ BATCH_READ_MAX_IDS = 100
 # Default cap for create/update responses and the delete preview -- NOT the
 # uncapped default get()'s own single-item path uses.
 FORMATTABLE_LIMIT = 1_200
-
-# Per-CE-realistic-format legal filter operator sets for
-# custom_field_filters, verified against OpenProject CE source:
-# app/models/queries/filters/shared/custom_field_filter.rb
-# (format -> subfilter_class dispatch), custom_fields/base.rb (type dispatch +
-# strategies override table), custom_fields/{list_optional,user,bool}.rb, and
-# strategies/{string,text,date,cf_integer,cf_float,cf_list_optional,
-# boolean_list}.rb. This dict is used ONLY as documentation-in-code plus a
-# defensive fallback (see append_custom_field_filters) -- this Service has no
-# cheap, network-free way to learn a given cf_<N>'s actual field_format (the
-# write path's per-project+type schema probe does not apply to list/search,
-# which have no such single-context guarantee -- see the module docstring
-# addition below), so per-field operator legality is NOT enforced here.
-# OpenProject's own 400 (InvalidQuery, already mapped to InvalidInputError by
-# app/transport/errors.py) is the actual enforcement point for an
-# operator/format mismatch -- this dict exists so the mapping is documented
-# in one place close to the code, not because it gates anything at runtime.
-CUSTOM_FIELD_FILTER_OPERATORS: dict[str, frozenset[str]] = {
-    "string": frozenset({"=", "~", "!", "!~"}),
-    "text": frozenset({"~", "!~"}),
-    "link": frozenset({"=", "~", "!", "!~"}),  # no dedicated "link" strategy exists server-side; same as string
-    "int": frozenset({"=", "!", ">=", "<=", "!*", "*"}),
-    "float": frozenset({"=", "!", ">=", "<=", "!*", "*"}),
-    "date": frozenset({"<t+", ">t+", "t+", "t", "w", ">t-", "<t-", "t-", "=d", "<>d", "!*"}),
-    "bool": frozenset({"=", "!"}),
-    "list": frozenset({"=", "&=", "!", "*", "!*"}),
-    "user": frozenset({"=", "&=", "!", "*", "!*"}),
-    "version": frozenset({"=", "&=", "!", "*", "!*"}),
-}
-
-# Custom-field formats that this Community Edition MCP does not support
-# filtering on -- both are Enterprise-gated (config/initializers/
-# custom_field_format.rb's `enterprise_feature:` tag) so a caller cannot
-# legitimately have one configured on a CE instance in the first place, and
-# a third format, "calculated_value", is excluded from this set: it is
-# ALSO Enterprise-gated AND registered `only: %w(Project)`
-# (config/initializers/custom_field_format.rb), meaning it cannot exist as a
-# WorkPackage custom field's format at all -- no cf_<N> filter on
-# list_work_packages/search_work_packages could ever resolve to it, so there
-# is nothing to reject here.
-CUSTOM_FIELD_FILTER_UNSUPPORTED_FORMATS = frozenset({"hierarchy", "weighted_item_list"})
-
-# Custom-field formats that OpenProject only considers filterable when a
-# project is given -- Queries::WorkPackages::Filter::CustomFieldContext
-# .custom_fields(context) excludes "user"/"version"-format fields entirely
-# from the global (no-project) filter set (`.where.not(field_format: %w(user
-# version))`), so a global custom_field_filters entry referencing one of
-# these formats would fail server-side with an ambiguous "filter not
-# available" error. Rejected locally instead, with a clear message, when no
-# project is given. This Service cannot know a given cf_<N>'s actual format
-# without a schema probe (see CUSTOM_FIELD_FILTER_OPERATORS's docstring), so
-# this check is necessarily best-effort and cannot itself be enforced here
-# either -- documented as a known constraint, callers should pass project
-# whenever filtering on a user/version-format custom field.
-CUSTOM_FIELD_FILTER_PROJECT_ONLY_FORMATS = frozenset({"user", "version"})
 
 # A date such as 2026-10-15 is also the display id of a work package in a
 # project whose classic identifier is "2026-10". Such identifiers are rare and

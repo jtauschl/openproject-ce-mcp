@@ -1451,6 +1451,19 @@ async def test_copy_resolves_the_attributes_against_the_schema_of_the_copy_form(
 
 
 @pytest.mark.asyncio
+async def test_copy_reads_the_attribute_options_only_from_the_copy_form() -> None:
+    api = _FakeProjectApi()
+    api.copy_schema = {"customField1": _ATTRIBUTE_SCHEMA["customField1"]}
+    service = _service(api, settings=_enabled_settings())
+
+    await service.copy(
+        source_project="demo", name="Demo N", identifier="demo-n", custom_fields={"Alpha": "x"}, confirm=False
+    )
+
+    assert [bool(read.get("custom_field_options")) for read in api.schema_reads] == [False]
+
+
+@pytest.mark.asyncio
 async def test_copy_without_attributes_reads_no_copy_schema() -> None:
     api = _FakeProjectApi()
     service = _service(api, settings=_enabled_settings())
@@ -1605,7 +1618,7 @@ async def test_a_copy_refuses_to_set_a_custom_field_comment() -> None:
     api = _FakeProjectApi()
     service = _service(api, settings=_enabled_settings())
 
-    with pytest.raises(InvalidInputError, match="update_project"):
+    with pytest.raises(InvalidInputError, match="cannot set a custom field comment"):
         await service.copy(
             source_project="demo",
             name="Copy",

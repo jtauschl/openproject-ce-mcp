@@ -452,7 +452,7 @@ class ProjectService:
         if any(is_custom_comment_key(key) for key in custom_fields or ()):
             raise InvalidInputError(
                 "copy_project cannot set a custom field comment: OpenProject answers a copy request that names one "
-                "with HTTP 500. Copy the project, then set the comment with update_project."
+                "with HTTP 500."
             )
         built = await self._build_write_payload(
             name=name,
@@ -584,7 +584,7 @@ class ProjectService:
         parent_target: ResolvedParentProject | None = None
         links: dict[str, dict[str, str | None]] = {}
         schema_result = await self._api.get_schema(
-            project_id=project_id, draft_payload=payload, custom_field_options=bool(custom_fields)
+            project_id=project_id, draft_payload=payload, custom_field_options=bool(custom_fields) and copy_of is None
         )
         schema = schema_result.schema
 
@@ -631,9 +631,7 @@ class ProjectService:
         if custom_fields:
             if copy_of is not None:
                 # The copy form offers its own options (versions assignable to the new project).
-                schema = (
-                    await self._api.get_copy_schema(copy_of, draft_payload=payload, custom_field_options=True)
-                ).schema
+                schema = (await self._api.get_copy_schema(copy_of, draft_payload=payload)).schema
             await apply_custom_fields(
                 payload,
                 links,

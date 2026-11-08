@@ -13,6 +13,7 @@ and 0.2.0 the first one published to PyPI.
 - `get_project_phase` returns the `active` flag.
 - `update_work_package` and `bulk_update_work_packages` show the work package a given `parent` resolved to in `parent_target`, before and after `confirm`.
 - `create_project`, `update_project` and `copy_project` show the project a given `parent` resolved to in `parent_target`.
+- `list_projects` takes `sort_by`, which accepts project attributes such as `name`, `created_at` and `latest_activity_at`.
 - Project custom fields: `get_project` and `list_projects` read them, `create_project`, `update_project` and `copy_project` write them, `list_projects` filters and sorts by them.
 
 ### Fixed
@@ -22,9 +23,8 @@ and 0.2.0 the first one published to PyPI.
 - `copy_project` no longer fails with HTTP 500 on a project with a commented attribute; naming a comment in a copy is refused.
 - Descriptions of `estimated_time`, `remaining_time` and `hours` state that a day is 24 hours; `duration` is documented as whole days.
 - `create_news` and `update_news` limit the summary to 255 characters, as OpenProject does; the client allowed 500 and the server then refused it.
-- The server instructions name every field that `"none"` clears and every flag an opt-in tool needs, including its `_WRITE` flag.
 - Write previews no longer echo hidden custom field values; a hidden `custom_fields` also refuses writes and hidden `cf_<N>` sort or group columns.
-- The server instructions fit the 4,096 characters Claude Code reads; the opt-in tool groups and the rule for clearing a field were cut off.
+- The server instructions fit the 4,096 characters Claude Code reads (the opt-in tool groups and the rule for clearing a field were cut off), name every field that `"none"` clears and every flag an opt-in tool needs, including its `_WRITE` flag.
 - Writes that take a work package reference show the resolved work package in `target`, so a misread bare number is visible before `confirm`.
 - A `parent` name that equals another project's identifier no longer moves the project under that one unseen.
 - `get_project_phase` now reports the phase definition, which was always empty.
