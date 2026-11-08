@@ -24,7 +24,9 @@ and 0.2.0 the first one published to PyPI.
 - Descriptions of `estimated_time`, `remaining_time` and `hours` state that a day is 24 hours; `duration` is documented as whole days.
 - `create_news` and `update_news` limit the summary to 255 characters, as OpenProject does; the client allowed 500 and the server then refused it.
 - Write previews no longer echo hidden custom field values; a hidden `custom_fields` also refuses writes and hidden `cf_<N>` sort or group columns.
-- The server instructions fit the 4,096 characters Claude Code reads (the opt-in tool groups and the rule for clearing a field were cut off), name every field that `"none"` clears and every flag an opt-in tool needs, including its `_WRITE` flag.
+- The server instructions fit the 4,096 characters Claude Code reads; the opt-in tool groups and the clearing rule were cut off.
+- The server instructions name every field that `"none"` clears.
+- The server instructions name every flag an opt-in tool needs, including its `_WRITE` flag.
 - Writes that take a work package reference show the resolved work package in `target`, so a misread bare number is visible before `confirm`.
 - A `parent` name that equals another project's identifier no longer moves the project under that one unseen.
 - `get_project_phase` now reports the phase definition, which was always empty.
