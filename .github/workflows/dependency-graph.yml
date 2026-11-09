@@ -1,13 +1,14 @@
 name: Dependency graph
 
 # Dependabot alerts are computed from main's dependency graph. GitHub's own
-# graph job for uv.lock is not reliably triggered by pushes, so main's lock is
+# graph job for uv.lock is not reliably triggered by pushes, so main's locks are
 # submitted here; a submitted snapshot takes precedence over that job's.
 on:
   push:
     branches: [main]
     paths:
       - uv.lock
+      - tools/lint/uv.lock
       - tools/dependency_snapshot.py
       - .github/workflows/dependency-graph.yml
   workflow_dispatch:

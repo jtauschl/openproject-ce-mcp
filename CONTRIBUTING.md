@@ -46,7 +46,10 @@ python3 -m venv .venv
 
 Before pushing, run the full gate: `./dev ci` (lint, types, tests with the
 coverage gate, build). Besides `uv`, it needs `shellcheck`, `shfmt` 3.14.1
-and `actionlint` on your `PATH`. `./dev test` runs the unit tests alone.
+and `actionlint` on your `PATH`. `./dev test` runs the unit tests alone. The lint
+tools (`bandit`, `semgrep`, `twine`, `pip-licenses`) come from the locked project
+`tools/lint`, and `./dev semgrep` fetches its rules at a pinned commit of
+`semgrep/semgrep-rules`, so the first run needs the network and `git`.
 
 **Unit tests** (no network — run against `httpx` mocks):
 

@@ -27,3 +27,17 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+
+  # The locked tools of ./dev and the workflows (bandit, semgrep, twine, pip-licenses) live in their own uv project.
+  # The semgrep-rules commit is not a package: tools/update_semgrep_manifest.py bumps it by hand.
+  - package-ecosystem: uv
+    directory: /tools/lint
+    target-branch: release/0.5.0
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      lint-tools:
+        patterns:
+          - "*"

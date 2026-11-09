@@ -8,7 +8,7 @@ shift || true
 export UV_LOCKED=1
 
 usage() {
-    echo "Usage: ./dev {bootstrap|lint|licenses|shell-lint|test|build|sbom|ci}" >&2
+    echo "Usage: ./dev {bootstrap|lint|licenses|semgrep|shell-lint|test|build|sbom|ci}" >&2
     exit 1
 }
 
@@ -16,7 +16,7 @@ bootstrap() {
     uv sync --locked --dev
 }
 
-shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/install-mcp-publisher.sh tools/install-shfmt.sh)
+shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/install-mcp-publisher.sh tools/install-semgrep-rules.sh tools/install-shfmt.sh)
 required_shfmt_version="3.14.1"
 
 shell_lint() {
@@ -35,6 +35,12 @@ shell_lint() {
     done
 }
 
+# bandit, semgrep, twine and pip-licenses come from their own locked project (tools/lint), so their versions and hashes are
+# fixed by tools/lint/uv.lock and they stay out of the shipped package's license gate and SBOM.
+lint_tool() {
+    uv run --project tools/lint --locked "$@"
+}
+
 # pip-licenses is pinned because tools/check_licenses.py allow-lists the exact strings it prints. The gate builds its own
 # environment from the lock file, so it checks every extra and group on every run, whatever .venv holds. The EXIT trap
 # removes that environment (about 130 MB) when the run is interrupted.
@@ -44,10 +50,24 @@ licenses() {
     trap 'rm -rf "${licenses_dir:-}"' EXIT
     {
         UV_PROJECT_ENVIRONMENT="$licenses_dir/venv" uv sync --locked --all-extras --all-groups --quiet &&
-            uvx pip-licenses@5.5.5 --python "$licenses_dir/venv/bin/python3" --from=mixed --format=json --output-file "$licenses_dir/licenses.json" >/dev/null &&
+            lint_tool pip-licenses --python "$licenses_dir/venv/bin/python3" --from=mixed --format=json --output-file "$licenses_dir/licenses.json" >/dev/null &&
             "$licenses_dir/venv/bin/python3" tools/check_licenses.py "$licenses_dir/licenses.json"
     } || status=$?
     rm -rf "$licenses_dir"
+    return "$status"
+}
+
+# The rules are the handbook's Python packs at a pinned commit of semgrep-rules (tools/install-semgrep-rules.sh); `--config auto`
+# would fetch whatever the registry serves today and refuses `--metrics off`.
+semgrep() {
+    local status=0
+    semgrep_rules_dir="$(mktemp -d)"
+    trap 'rm -rf "${semgrep_rules_dir:-}"' EXIT
+    {
+        tools/install-semgrep-rules.sh "$semgrep_rules_dir" &&
+            lint_tool semgrep scan --config "$semgrep_rules_dir" --error --strict --metrics off --disable-version-check src/openproject_ce_mcp
+    } || status=$?
+    rm -rf "$semgrep_rules_dir"
     return "$status"
 }
 
@@ -55,8 +75,8 @@ lint() {
     uv run ruff check .
     uv run ruff format --check .
     uv run mypy
-    uvx bandit -r src/openproject_ce_mcp -ll
-    uvx semgrep --config auto --error src/openproject_ce_mcp
+    lint_tool bandit -r src/openproject_ce_mcp -ll
+    semgrep
     licenses
     shell_lint
     if ! command -v actionlint >/dev/null 2>&1; then
@@ -85,7 +105,7 @@ sbom() {
 
 build() {
     uv build
-    uvx twine check dist/*
+    lint_tool twine check dist/*
     sbom
 }
 
@@ -93,6 +113,7 @@ case "$cmd" in
 bootstrap) bootstrap ;;
 lint) lint ;;
 licenses) licenses ;;
+semgrep) semgrep ;;
 shell-lint) shell_lint ;;
 test) test_ "$@" ;;
 build) build ;;

@@ -65,10 +65,10 @@ jobs:
         run: uv run mypy
 
       - name: Run bandit (SAST)
-        run: uvx bandit -r src/openproject_ce_mcp -ll
+        run: uv run --project tools/lint --locked bandit -r src/openproject_ce_mcp -ll
 
       - name: Run semgrep (SAST)
-        run: uvx semgrep --config auto --error src/openproject_ce_mcp
+        run: ./dev semgrep
 
       - name: Check dependency licenses
         run: ./dev licenses
@@ -220,7 +220,7 @@ jobs:
           done
 
       - name: Check package metadata
-        run: uvx twine check dist/*
+        run: uv run --project tools/lint --locked twine check dist/*
 
       - name: Generate and check the SBOM
         run: ./dev sbom
@@ -266,6 +266,7 @@ jobs:
 
       - name: Install via pipx
         working-directory: ${{ env.SCRATCH }}
+        # Unpinned on purpose: users install the newest pipx, and this smoke test has to track what they run.
         run: |
           python3 -m pip install --user pipx
           python3 -m pipx ensurepath
@@ -363,6 +364,7 @@ jobs:
           echo "SCRATCH=$scratch" >> "$GITHUB_ENV"
 
       - name: Install baseline 0.4.x via pipx
+        # Unpinned on purpose, as in the install smoke job above.
         run: |
           python3 -m pip install --user pipx
           python3 -m pipx ensurepath

@@ -179,7 +179,7 @@ def test_the_license_gate_has_one_home() -> None:
     workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
 
     assert "--fail-on" not in dev and "--fail-on" not in workflow
-    assert dev.count("uvx pip-licenses") == 1
+    assert dev.count("lint_tool pip-licenses") == 1
     assert "pip-licenses" not in workflow
     assert "run: ./dev licenses" in workflow
     lint = dev.split("\nlint() {")[1].split("\n}\n")[0]

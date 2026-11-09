@@ -1,15 +1,19 @@
-"""Turn uv.lock into a snapshot for GitHub's dependency submission API.
+"""Turn uv.lock and tools/lint/uv.lock into one snapshot for GitHub's dependency submission API.
 
 Dependabot alerts are computed from the dependency graph, and GitHub's own graph
-job for uv.lock is not reliably triggered by pushes, so CI submits the lock itself.
+job for uv.lock is not reliably triggered by pushes, so CI submits the locks itself.
 
-Only what `pip install openproject-ce-mcp` installs is runtime. The extras and
+In uv.lock only what `pip install openproject-ce-mcp` installs is runtime. The extras and
 dependency groups in DEVELOPMENT_EXTRAS and DEVELOPMENT_GROUPS are development;
 any other one stops the script, so a new extra gets classified on purpose.
 Markers are ignored: the lock is cross-platform, and a dependency installed only
 on Windows or an older Python still ships to those users.
 
-Reads uv.lock from the working directory and the standard GitHub Actions
+tools/lint/uv.lock locks the tools of ./dev and the workflows (a virtual root, nothing is
+installed from it): every package in it is development, and the root's direct
+dependencies are the direct ones.
+
+Reads both locks from the working directory and the standard GitHub Actions
 variables; prints the snapshot as one line of JSON.
 """
 
@@ -25,11 +29,12 @@ from pathlib import Path
 from typing import Any
 
 LOCK_FILE = "uv.lock"
+TOOLS_LOCK_FILE = "tools/lint/uv.lock"
 LOCK_FORMAT_VERSION = 1
 PYPI = {"registry": "https://pypi.org/simple"}
 CORRELATOR = "openproject-ce-mcp uv.lock"
 DETECTOR_NAME = "openproject-ce-mcp dependency_snapshot"
-DETECTOR_VERSION = "1"
+DETECTOR_VERSION = "2"
 DEVELOPMENT_EXTRAS = frozenset({"dev", "measure"})
 DEVELOPMENT_GROUPS = frozenset({"dev"})
 ENVIRONMENT = ("GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY")
@@ -42,14 +47,17 @@ class SnapshotError(Exception):
 
 
 class _Lock:
-    def __init__(self, text: str) -> None:
-        data = tomllib.loads(text)
+    def __init__(self, text: str, root_kind: str = "editable") -> None:
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as error:
+            raise SnapshotError(f"a lock is not valid TOML: {error}") from None
         if data.get("version") != LOCK_FORMAT_VERSION:
             raise SnapshotError(f"unsupported uv.lock format version {data.get('version')!r}")
         packages: list[dict[str, Any]] = data["package"]
-        roots = [package for package in packages if package["source"] == {"editable": "."}]
+        roots = [package for package in packages if package["source"] == {root_kind: "."}]
         if len(roots) != 1:
-            raise SnapshotError(f"expected one editable root package, found {len(roots)}")
+            raise SnapshotError(f"expected one {root_kind} root package, found {len(roots)}")
         self.root = roots[0]
         self.packages: dict[Node, dict[str, Any]] = {}
         for package in packages:
@@ -104,6 +112,25 @@ def _purl(node: Node) -> str:
     return f"pkg:pypi/{node[0]}@{node[1]}"
 
 
+def _resolved(
+    lock: _Lock, runtime: dict[Node, set[str]], development: dict[Node, set[str]], direct: set[Node]
+) -> dict[str, dict[str, Any]]:
+    resolved: dict[str, dict[str, Any]] = {}
+    for node in sorted(runtime.keys() | development.keys()):
+        extras = runtime.get(node, set()) | development.get(node, set())
+        entries = lock.dependencies(node) + [
+            entry for extra in sorted(extras) for entry in lock.extra_dependencies(node, extra)
+        ]
+        children = {lock.resolve(entry) for entry in entries}
+        resolved[_purl(node)] = {
+            "package_url": _purl(node),
+            "relationship": "direct" if node in direct else "indirect",
+            "scope": "runtime" if node in runtime else "development",
+            "dependencies": sorted(_purl(child) for child in children),
+        }
+    return resolved
+
+
 def resolved_dependencies(lock_text: str) -> dict[str, dict[str, Any]]:
     lock = _Lock(lock_text)
     root = lock.root
@@ -124,27 +151,29 @@ def resolved_dependencies(lock_text: str) -> dict[str, dict[str, Any]]:
     runtime = _walk(lock, runtime_entries)
     development = _walk(lock, development_entries)
     direct = {lock.resolve(entry) for entry in [*runtime_entries, *development_entries]}
-
-    resolved: dict[str, dict[str, Any]] = {}
-    for node in sorted(runtime.keys() | development.keys()):
-        extras = runtime.get(node, set()) | development.get(node, set())
-        entries = lock.dependencies(node) + [
-            entry for extra in sorted(extras) for entry in lock.extra_dependencies(node, extra)
-        ]
-        children = {lock.resolve(entry) for entry in entries}
-        resolved[_purl(node)] = {
-            "package_url": _purl(node),
-            "relationship": "direct" if node in direct else "indirect",
-            "scope": "runtime" if node in runtime else "development",
-            "dependencies": sorted(_purl(child) for child in children),
-        }
-    return resolved
+    return _resolved(lock, runtime, development, direct)
 
 
-def snapshot(lock_text: str, environ: Mapping[str, str], scanned: datetime) -> dict[str, Any]:
+def resolved_tool_dependencies(lock_text: str) -> dict[str, dict[str, Any]]:
+    """The packages of the tools lock: all development, the root's own dependencies are the direct ones."""
+    lock = _Lock(lock_text, root_kind="virtual")
+    unclassified = {"optional-dependencies", "dev-dependencies"} & lock.root.keys()
+    if unclassified:
+        raise SnapshotError(f"the tools lock root has unclassified {sorted(unclassified)}")
+    entries = lock.root.get("dependencies", [])
+    return _resolved(lock, {}, _walk(lock, entries), {lock.resolve(entry) for entry in entries})
+
+
+MANIFESTS = {LOCK_FILE: resolved_dependencies, TOOLS_LOCK_FILE: resolved_tool_dependencies}
+
+
+def snapshot(lock_texts: Mapping[str, str], environ: Mapping[str, str], scanned: datetime) -> dict[str, Any]:
     missing = [name for name in ENVIRONMENT if not environ.get(name)]
     if missing:
         raise SnapshotError(f"missing environment variable(s) {', '.join(missing)}")
+    absent = [path for path in MANIFESTS if path not in lock_texts]
+    if absent:
+        raise SnapshotError(f"missing lock(s) {', '.join(absent)}")
     repository_url = f"{environ['GITHUB_SERVER_URL']}/{environ['GITHUB_REPOSITORY']}"
     return {
         "version": 0,
@@ -162,18 +191,23 @@ def snapshot(lock_text: str, environ: Mapping[str, str], scanned: datetime) -> d
         },
         "scanned": scanned.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "manifests": {
-            LOCK_FILE: {
-                "name": LOCK_FILE,
-                "file": {"source_location": LOCK_FILE},
-                "resolved": resolved_dependencies(lock_text),
-            }
+            path: {"name": path, "file": {"source_location": path}, "resolved": resolve(lock_texts[path])}
+            for path, resolve in MANIFESTS.items()
         },
     }
 
 
+def _read(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise SnapshotError(f"{path} not found") from None
+
+
 def main() -> None:
     try:
-        document = snapshot(Path(LOCK_FILE).read_text(encoding="utf-8"), os.environ, datetime.now(UTC))
+        locks = {path: _read(path) for path in MANIFESTS}
+        document = snapshot(locks, os.environ, datetime.now(UTC))
     except SnapshotError as error:
         sys.exit(f"dependency_snapshot: {error}")
     print(json.dumps(document, separators=(",", ":"), sort_keys=True))
