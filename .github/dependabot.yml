@@ -41,3 +41,17 @@ updates:
       lint-tools:
         patterns:
           - "*"
+
+  # The build backend of the distribution (hatchling) lives in its own uv project; ./dev dist exports its lock as the
+  # hashed build constraints of `uv build`.
+  - package-ecosystem: uv
+    directory: /tools/build
+    target-branch: release/0.5.0
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      build-tools:
+        patterns:
+          - "*"

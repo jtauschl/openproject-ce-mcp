@@ -9,6 +9,7 @@ on:
     paths:
       - uv.lock
       - tools/lint/uv.lock
+      - tools/build/uv.lock
       - tools/dependency_snapshot.py
       - .github/workflows/dependency-graph.yml
   workflow_dispatch:

@@ -8,7 +8,7 @@ shift || true
 export UV_LOCKED=1
 
 usage() {
-    echo "Usage: ./dev {bootstrap|lint|licenses|semgrep|shell-lint|test|build|sbom|ci}" >&2
+    echo "Usage: ./dev {bootstrap|lint|licenses|semgrep|shell-lint|test|build|dist|dist-check|sbom|ci}" >&2
     exit 1
 }
 
@@ -103,8 +103,50 @@ sbom() {
     uv run --locked python tools/check_sbom.py sbom.json
 }
 
+# The distribution is built with the build backend of tools/build/uv.lock, exported as hashed build constraints. With
+# `--require-hashes` uv refuses any build requirement, transitive ones included, that is not pinned with a matching hash.
+# The constraints file is generated here and never committed, so the lock stays the only source. Anything after the name
+# is passed to `uv build` (for example `--out-dir`).
+dist() {
+    (
+        constraints="$(mktemp)"
+        trap 'rm -f "$constraints"' EXIT
+        uv export --project tools/build --locked --no-emit-project --no-header --format requirements-txt -o "$constraints" >/dev/null
+        uv build --build-constraints "$constraints" --require-hashes "$@"
+    )
+}
+
+# Every build proves the guarantee above is live: constraints that omit one dependency of the backend must make the build
+# fail, and for the right reason. A uv release that stops enforcing the hashes turns this check red instead of letting an
+# unhashed backend through.
+dist_check() {
+    (
+        workdir="$(mktemp -d)"
+        trap 'rm -rf "$workdir"' EXIT
+        uv export --project tools/build --locked --no-emit-project --no-header --format requirements-txt -o "$workdir/all.txt" >/dev/null
+        awk '/^pluggy==/ { skip = 1; next } skip && /^[[:space:]]/ { next } { skip = 0; print }' "$workdir/all.txt" >"$workdir/without-pluggy.txt"
+        if grep -q '^pluggy' "$workdir/without-pluggy.txt" || ! grep -q '^hatchling==' "$workdir/without-pluggy.txt"; then
+            echo "dist-check: could not remove exactly the pluggy pin from the exported constraints" >&2
+            exit 1
+        fi
+        if uv build --sdist --out-dir "$workdir/out" --build-constraints "$workdir/without-pluggy.txt" --require-hashes \
+            >"$workdir/build.log" 2>&1; then
+            echo "dist-check: a build without the hash of pluggy succeeded; hash checking of build requirements is not enforced" >&2
+            exit 1
+        fi
+        # The wording differs between uv releases ("all requirements must be pinned upfront with `==`, but found" in
+        # 0.12, "Hash-checking is required, but no trusted hash was provided for" in 0.13); both name the package.
+        if ! grep -qE '(pinned upfront with .==., but found|no trusted hash was provided for): .pluggy.' "$workdir/build.log"; then
+            echo "dist-check: the build failed, but not because pluggy has no hash:" >&2
+            cat "$workdir/build.log" >&2
+            exit 1
+        fi
+    )
+}
+
 build() {
-    uv build
+    dist
+    dist_check
     lint_tool twine check dist/*
     sbom
 }
@@ -117,6 +159,8 @@ semgrep) semgrep ;;
 shell-lint) shell_lint ;;
 test) test_ "$@" ;;
 build) build ;;
+dist) dist "$@" ;;
+dist-check) dist_check ;;
 sbom) sbom ;;
 ci)
     lint

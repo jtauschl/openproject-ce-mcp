@@ -1,4 +1,4 @@
-"""Turn uv.lock and tools/lint/uv.lock into one snapshot for GitHub's dependency submission API.
+"""Turn uv.lock, tools/lint/uv.lock and tools/build/uv.lock into one snapshot for GitHub's dependency submission API.
 
 Dependabot alerts are computed from the dependency graph, and GitHub's own graph
 job for uv.lock is not reliably triggered by pushes, so CI submits the locks itself.
@@ -9,11 +9,11 @@ any other one stops the script, so a new extra gets classified on purpose.
 Markers are ignored: the lock is cross-platform, and a dependency installed only
 on Windows or an older Python still ships to those users.
 
-tools/lint/uv.lock locks the tools of ./dev and the workflows (a virtual root, nothing is
-installed from it): every package in it is development, and the root's direct
-dependencies are the direct ones.
+tools/lint/uv.lock locks the tools of ./dev and the workflows, and tools/build/uv.lock the build
+backend of the distribution (a virtual root each, nothing is installed from it): every package
+in them is development, and the root's direct dependencies are the direct ones.
 
-Reads both locks from the working directory and the standard GitHub Actions
+Reads the locks from the working directory and the standard GitHub Actions
 variables; prints the snapshot as one line of JSON.
 """
 
@@ -30,11 +30,12 @@ from typing import Any
 
 LOCK_FILE = "uv.lock"
 TOOLS_LOCK_FILE = "tools/lint/uv.lock"
+BUILD_LOCK_FILE = "tools/build/uv.lock"
 LOCK_FORMAT_VERSION = 1
 PYPI = {"registry": "https://pypi.org/simple"}
 CORRELATOR = "openproject-ce-mcp uv.lock"
 DETECTOR_NAME = "openproject-ce-mcp dependency_snapshot"
-DETECTOR_VERSION = "2"
+DETECTOR_VERSION = "3"
 DEVELOPMENT_EXTRAS = frozenset({"dev", "measure"})
 DEVELOPMENT_GROUPS = frozenset({"dev"})
 ENVIRONMENT = ("GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY")
@@ -164,7 +165,11 @@ def resolved_tool_dependencies(lock_text: str) -> dict[str, dict[str, Any]]:
     return _resolved(lock, {}, _walk(lock, entries), {lock.resolve(entry) for entry in entries})
 
 
-MANIFESTS = {LOCK_FILE: resolved_dependencies, TOOLS_LOCK_FILE: resolved_tool_dependencies}
+MANIFESTS = {
+    LOCK_FILE: resolved_dependencies,
+    TOOLS_LOCK_FILE: resolved_tool_dependencies,
+    BUILD_LOCK_FILE: resolved_tool_dependencies,
+}
 
 
 def snapshot(lock_texts: Mapping[str, str], environ: Mapping[str, str], scanned: datetime) -> dict[str, Any]:

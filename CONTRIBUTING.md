@@ -49,7 +49,11 @@ coverage gate, build). Besides `uv`, it needs `shellcheck`, `shfmt` 3.14.1
 and `actionlint` on your `PATH`. `./dev test` runs the unit tests alone. The lint
 tools (`bandit`, `semgrep`, `twine`, `pip-licenses`) come from the locked project
 `tools/lint`, and `./dev semgrep` fetches its rules at a pinned commit of
-`semgrep/semgrep-rules`, so the first run needs the network and `git`.
+`semgrep/semgrep-rules`, so the first run needs the network and `git`. The
+build backend (hatchling) comes from the locked project `tools/build`: `./dev
+dist` exports its lock as hashed build constraints, and a bump arrives as a
+Dependabot PR or with `uv lock --upgrade-package hatchling --project
+tools/build`.
 
 **Unit tests** (no network — run against `httpx` mocks):
 

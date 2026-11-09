@@ -33,6 +33,8 @@ TOOLS_ROOT_PACKAGE = 'name = "lint"\nversion = "0"\nsource = { virtual = "." }\n
 PYPI = 'source = { registry = "https://pypi.org/simple" }\n'
 LOCK_PATH = "uv.lock"
 TOOLS_LOCK_PATH = "tools/lint/uv.lock"
+BUILD_LOCK_PATH = "tools/build/uv.lock"
+BUILD_ROOT_PACKAGE = 'name = "build"\nversion = "0"\nsource = { virtual = "." }\n'
 
 
 def _lock(*packages: str, version: int = 1) -> str:
@@ -41,6 +43,14 @@ def _lock(*packages: str, version: int = 1) -> str:
 
 def _package(name: str, version: str = "1.0.0", extra: str = "") -> str:
     return f'name = "{name}"\nversion = "{version}"\n{PYPI}{extra}'
+
+
+def _build_lock() -> str:
+    return _lock(
+        BUILD_ROOT_PACKAGE + 'dependencies = [{ name = "backend" }]\n',
+        _package("backend", extra='dependencies = [{ name = "plugin" }]\n'),
+        _package("plugin"),
+    )
 
 
 def _tools_lock() -> str:
@@ -207,7 +217,7 @@ def test_unsupported_locks_fail_with_the_reason(lock: str, message: str) -> None
 def test_snapshot_envelope() -> None:
     lock = _lock(ROOT_PACKAGE + 'dependencies = [{ name = "x" }]\n', _package("x"))
 
-    document = dependency_snapshot.snapshot({LOCK_PATH: lock, TOOLS_LOCK_PATH: _tools_lock()}, ENVIRONMENT, SCANNED)
+    document = dependency_snapshot.snapshot(_all_locks(lock), ENVIRONMENT, SCANNED)
 
     assert document == {
         "version": 0,
@@ -220,7 +230,7 @@ def test_snapshot_envelope() -> None:
         "ref": "refs/heads/main",
         "detector": {
             "name": "openproject-ce-mcp dependency_snapshot",
-            "version": "2",
+            "version": "3",
             "url": "https://github.com/owner/repo/blob/0123abc/tools/dependency_snapshot.py",
         },
         "scanned": "2026-10-10T12:30:05Z",
@@ -255,6 +265,24 @@ def test_snapshot_envelope() -> None:
                     },
                 },
             },
+            "tools/build/uv.lock": {
+                "name": "tools/build/uv.lock",
+                "file": {"source_location": "tools/build/uv.lock"},
+                "resolved": {
+                    "pkg:pypi/backend@1.0.0": {
+                        "package_url": "pkg:pypi/backend@1.0.0",
+                        "relationship": "direct",
+                        "scope": "development",
+                        "dependencies": ["pkg:pypi/plugin@1.0.0"],
+                    },
+                    "pkg:pypi/plugin@1.0.0": {
+                        "package_url": "pkg:pypi/plugin@1.0.0",
+                        "relationship": "indirect",
+                        "scope": "development",
+                        "dependencies": [],
+                    },
+                },
+            },
         },
     }
 
@@ -263,19 +291,27 @@ def test_snapshot_names_missing_environment_variables() -> None:
     environ = {key: value for key, value in ENVIRONMENT.items() if key not in {"GITHUB_SHA", "GITHUB_RUN_ID"}}
 
     with pytest.raises(dependency_snapshot.SnapshotError, match="GITHUB_SHA, GITHUB_RUN_ID"):
-        dependency_snapshot.snapshot({LOCK_PATH: _lock(ROOT_PACKAGE), TOOLS_LOCK_PATH: _tools_lock()}, environ, SCANNED)
+        dependency_snapshot.snapshot(_all_locks(_lock(ROOT_PACKAGE)), environ, SCANNED)
 
 
-def _write_tools_lock(directory: Path, text: str | None = None) -> None:
-    (directory / "tools" / "lint").mkdir(parents=True)
-    (directory / "tools" / "lint" / "uv.lock").write_text(_tools_lock() if text is None else text)
+def _all_locks(root_lock: str) -> dict[str, str]:
+    return {LOCK_PATH: root_lock, TOOLS_LOCK_PATH: _tools_lock(), BUILD_LOCK_PATH: _build_lock()}
+
+
+def _write_tool_locks(directory: Path, *, lint: str | None = None, build: str | None = None) -> None:
+    """Writes the lint and build locks; `lint` or `build` of None writes the valid fixture, "" leaves the file out."""
+    for name, text, valid in (("lint", lint, _tools_lock()), ("build", build, _build_lock())):
+        if text == "":
+            continue
+        (directory / "tools" / name).mkdir(parents=True)
+        (directory / "tools" / name / "uv.lock").write_text(valid if text is None else text)
 
 
 def test_main_reads_the_locks_in_the_working_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     (tmp_path / "uv.lock").write_text(_lock(ROOT_PACKAGE + 'dependencies = [{ name = "x" }]\n', _package("x")))
-    _write_tools_lock(tmp_path)
+    _write_tool_locks(tmp_path)
     monkeypatch.chdir(tmp_path)
     for key, value in ENVIRONMENT.items():
         monkeypatch.setenv(key, value)
@@ -287,11 +323,12 @@ def test_main_reads_the_locks_in_the_working_directory(
     manifests = json.loads(output)["manifests"]
     assert list(manifests["uv.lock"]["resolved"]) == ["pkg:pypi/x@1.0.0"]
     assert sorted(manifests["tools/lint/uv.lock"]["resolved"]) == ["pkg:pypi/helper@1.0.0", "pkg:pypi/tool@1.0.0"]
+    assert sorted(manifests["tools/build/uv.lock"]["resolved"]) == ["pkg:pypi/backend@1.0.0", "pkg:pypi/plugin@1.0.0"]
 
 
 def test_main_exits_with_the_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "uv.lock").write_text(_lock(ROOT_PACKAGE, version=2))
-    _write_tools_lock(tmp_path)
+    _write_tool_locks(tmp_path)
     monkeypatch.chdir(tmp_path)
     for key, value in ENVIRONMENT.items():
         monkeypatch.setenv(key, value)
@@ -330,6 +367,19 @@ def test_real_tools_lock_classifies_every_package(real_tools_resolved: dict[str,
     assert {entry["scope"] for entry in real_tools_resolved.values()} == {"development"}
     assert {name for name in locked if _entry(real_tools_resolved, name)["relationship"] == "direct"} == direct
     assert {"bandit", "semgrep", "twine", "pip-licenses"} <= direct
+
+
+def test_real_build_lock_holds_only_the_backend_and_its_dependencies_as_development() -> None:
+    text = (ROOT / "tools" / "build" / "uv.lock").read_text(encoding="utf-8")
+    resolved = dependency_snapshot.resolved_tool_dependencies(text)
+    lock = tomllib.loads(text)
+    (root,) = [package for package in lock["package"] if package["source"] == {"virtual": "."}]
+
+    assert _names(list(resolved)) == {package["name"] for package in lock["package"] if package is not root}
+    assert {entry["scope"] for entry in resolved.values()} == {"development"}
+    assert {name for name in _names(list(resolved)) if _entry(resolved, name)["relationship"] == "direct"} == {
+        "hatchling"
+    }
 
 
 @pytest.mark.parametrize(
@@ -372,12 +422,22 @@ def test_a_lock_that_is_not_toml_fails_with_the_reason(resolve: str) -> None:
 
 
 def test_snapshot_names_a_missing_lock() -> None:
-    with pytest.raises(dependency_snapshot.SnapshotError, match="missing lock\\(s\\) tools/lint/uv.lock"):
+    with pytest.raises(
+        dependency_snapshot.SnapshotError, match="missing lock\\(s\\) tools/lint/uv.lock, tools/build/uv.lock"
+    ):
         dependency_snapshot.snapshot({LOCK_PATH: _lock(ROOT_PACKAGE)}, ENVIRONMENT, SCANNED)
 
 
-def test_main_exits_when_the_tools_lock_is_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("lint", "build", "absent"),
+    [("", None, "tools/lint/uv.lock"), (None, "", "tools/build/uv.lock")],
+    ids=["lint-lock", "build-lock"],
+)
+def test_main_exits_when_a_tools_lock_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lint: str | None, build: str | None, absent: str
+) -> None:
     (tmp_path / "uv.lock").write_text(_lock(ROOT_PACKAGE))
+    _write_tool_locks(tmp_path, lint=lint, build=build)
     monkeypatch.chdir(tmp_path)
     for key, value in ENVIRONMENT.items():
         monkeypatch.setenv(key, value)
@@ -385,12 +445,13 @@ def test_main_exits_when_the_tools_lock_is_absent(tmp_path: Path, monkeypatch: p
     with pytest.raises(SystemExit) as raised:
         dependency_snapshot.main()
 
-    assert raised.value.code == "dependency_snapshot: tools/lint/uv.lock not found"
+    assert raised.value.code == f"dependency_snapshot: {absent} not found"
 
 
-def test_main_exits_when_the_tools_lock_is_malformed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("which", ["lint", "build"])
+def test_main_exits_when_a_tools_lock_is_malformed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, which: str) -> None:
     (tmp_path / "uv.lock").write_text(_lock(ROOT_PACKAGE))
-    _write_tools_lock(tmp_path, _lock(TOOLS_ROOT_PACKAGE, version=2))
+    _write_tool_locks(tmp_path, **{which: _lock(TOOLS_ROOT_PACKAGE, version=2)})
     monkeypatch.chdir(tmp_path)
     for key, value in ENVIRONMENT.items():
         monkeypatch.setenv(key, value)

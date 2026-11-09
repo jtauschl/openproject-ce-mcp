@@ -224,7 +224,7 @@ jobs:
           python-version: "3.12"
 
       - name: Build sdist and wheel
-        run: uv build
+        run: ./dev dist
 
       # Recorded before the second build, twine and ./dev sbom: the last two sync the dev environment, and the digests
       # must reflect only what the build backend produced. The publish job checks the downloaded files against them.
@@ -238,7 +238,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build again into a separate directory for reproducibility comparison
-        run: uv build --out-dir dist2
+        run: ./dev dist --out-dir dist2
+
+      - name: Check that the build refuses a build dependency without a hash
+        run: ./dev dist-check
 
       - name: Verify the two builds are byte-identical
         run: |

@@ -1,0 +1,15 @@
+# The build backend of the distribution, locked with hashes in its own project. Nothing installs this project: `./dev dist`
+# exports its lock as the hashed build constraints of `uv build`, so the backend and its dependencies are pinned and
+# hash-checked instead of resolved from PyPI at build time. It stays out of the shipped package's lock, license gate and
+# SBOM, and is never built or published. Keep the requirement in step with `[build-system] requires` of the root project.
+[project]
+name = "openproject-ce-mcp-build"
+version = "0"
+description = "Locked build backend of openproject-ce-mcp"
+requires-python = ">=3.11"
+dependencies = [
+  "hatchling>=1.27",
+]
+
+[tool.uv]
+package = false
