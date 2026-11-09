@@ -22,6 +22,18 @@ on:
     branches: [main, release/0.4.6, release/0.5.0]
   pull_request:
   workflow_call:
+    inputs:
+      concurrency-group-suffix:
+        description: Keeps a caller that runs on the same ref as a normal Tests run from cancelling it.
+        type: string
+        default: ""
+    outputs:
+      dist-artifact-id:
+        description: ID of the uploaded dist artifact (the wheel and the sdist built by the build job).
+        value: ${{ jobs.build.outputs.dist-artifact-id }}
+      dist-digests:
+        description: SHA-256 of each built file, recorded right after the first build.
+        value: ${{ jobs.build.outputs.dist-digests }}
   workflow_dispatch:
   # GitHub only fires `schedule` from a workflow file that exists on the
   # repo's default branch (main) — this file is on main, so this trigger
@@ -38,7 +50,7 @@ concurrency:
   # inside a reusable-workflow call, `github.workflow` resolves to the
   # *caller's* name, so the default group would collide with a caller like
   # publish.yml's own group and self-cancel this run before any job starts.
-  group: tests-${{ github.ref }}
+  group: tests-${{ github.ref }}${{ inputs.concurrency-group-suffix && format('-{0}', inputs.concurrency-group-suffix) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -197,8 +209,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      dist-artifact-id: ${{ steps.dist.outputs.artifact-id }}
+      dist-digests: ${{ steps.digests.outputs.digests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
@@ -208,6 +225,17 @@ jobs:
 
       - name: Build sdist and wheel
         run: uv build
+
+      # Recorded before the second build, twine and ./dev sbom: the last two sync the dev environment, and the digests
+      # must reflect only what the build backend produced. The publish job checks the downloaded files against them.
+      - name: Record the digests of the built files
+        id: digests
+        run: |
+          {
+            echo "digests<<DIGESTS_EOF"
+            (cd dist && sha256sum -- *)
+            echo "DIGESTS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build again into a separate directory for reproducibility comparison
         run: uv build --out-dir dist2
@@ -237,12 +265,15 @@ jobs:
           # that actually needs retrying.
           overwrite: true
 
-      - name: Upload built dist for install-smoke/upgrade jobs
+      - name: Upload built dist for install-smoke/upgrade jobs and the publish job
+        id: dist
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
           path: dist/*
-          retention-days: 1
+          if-no-files-found: error
+          # A tag run keeps the artifact long enough for a later re-run of the publish job.
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 1 }}
           overwrite: true # see the sbom upload's own comment above
 
   install-smoke:
@@ -250,9 +281,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # By ID, not by name: any job of the run can upload another artifact called `dist`, and these jobs must install
+      # the exact upload that the publish job verifies.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: dist
+          artifact-ids: ${{ needs.build.outputs.dist-artifact-id }}
           path: /tmp/dist
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -343,9 +376,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # By ID, not by name: any job of the run can upload another artifact called `dist`, and these jobs must install
+      # the exact upload that the publish job verifies.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: dist
+          artifact-ids: ${{ needs.build.outputs.dist-artifact-id }}
           path: /tmp/dist
 
       - name: Resolve latest published 0.4.x from PyPI

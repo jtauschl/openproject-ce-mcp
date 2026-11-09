@@ -73,13 +73,19 @@ jobs:
             exit 1
           fi
 
+      # No credentials stay in .git/config: nothing in this job runs a build, and gh and uv publish authenticate
+      # through GH_TOKEN and the OIDC token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
+          # The uv release the build job builds with. This job builds nothing and needs no Python of its own.
+          version: "0.12.24"
 
       - name: Verify tag matches pyproject.toml version
+        id: version
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
           pkg_version="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
@@ -87,12 +93,18 @@ jobs:
             echo "::error::Tag v$tag_version does not match pyproject.toml version $pkg_version" >&2
             exit 1
           fi
+          echo "version=$tag_version" >> "$GITHUB_OUTPUT"
 
-      - name: Build sdist and wheel
-        run: uv build
-
-      - name: Check package metadata
-        run: uv run --project tools/lint --locked twine check dist/*
+      # Nothing is built here: the files published are the ones the test workflow's build job built, checked for
+      # reproducibility and with twine, and installed by the smoke tests. Third-party build code must not run beside
+      # the OIDC token and the write-scoped GITHUB_TOKEN of this job. This step and the attestation come before the
+      # only immutable step, `uv publish`, so a failure here leaves PyPI untouched.
+      - name: Verify the tested distribution
+        uses: ./.github/actions/verify-dist
+        with:
+          artifact-id: ${{ needs.test.outputs.dist-artifact-id }}
+          digests: ${{ needs.test.outputs.dist-digests }}
+          version: ${{ steps.version.outputs.version }}
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

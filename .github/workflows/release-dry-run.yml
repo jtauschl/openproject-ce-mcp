@@ -1,0 +1,53 @@
+name: Release dry run
+
+# Exercises the parts of the release workflow that need no credential: the test workflow's build job hands its
+# artifact to a later job, which downloads it by ID and verifies it exactly as the publish job does. Triggered by a push
+# to a release branch, so it runs from the pushed file whether or not publish.yml is on the default branch. It holds no
+# secret, no publish, upload, attest or release step and no tag trigger, and it is never a required check: a
+# path-filtered workflow that was skipped leaves a required check Pending.
+on:
+  push:
+    branches: ["release/**"]
+    paths:
+      - .github/workflows/publish.yml
+      - .github/workflows/test.yml
+      - .github/workflows/release-dry-run.yml
+      - .github/actions/verify-dist/**
+      - tools/verify_dist.py
+      - pyproject.toml
+
+permissions: {}
+
+jobs:
+  test:
+    # The suffix keeps this call from cancelling the normal Tests run of the same push (same ref, same group).
+    uses: ./.github/workflows/test.yml
+    with:
+      concurrency-group-suffix: dry-run
+    permissions:
+      contents: read
+
+  verify:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # A release takes the version from its tag; there is none here, so it comes from pyproject.toml.
+      - name: Read the package version
+        id: version
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the tested distribution
+        uses: ./.github/actions/verify-dist
+        with:
+          artifact-id: ${{ needs.test.outputs.dist-artifact-id }}
+          digests: ${{ needs.test.outputs.dist-digests }}
+          version: ${{ steps.version.outputs.version }}

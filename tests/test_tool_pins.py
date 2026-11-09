@@ -31,14 +31,14 @@ def test_no_tool_is_run_through_an_unpinned_uvx(path: Path) -> None:
 
 def test_every_tool_runs_through_the_locked_tools_project() -> None:
     dev = _text(DEV)
-    test_workflow, publish = _text(WORKFLOWS / "test.yml"), _text(WORKFLOWS / "publish.yml")
+    test_workflow = _text(WORKFLOWS / "test.yml")
 
     assert f'lint_tool() {{\n    {LINT_COMMAND} "$@"\n}}' in dev
     for call in ("lint_tool bandit ", "lint_tool semgrep scan ", "lint_tool twine check ", "lint_tool pip-licenses "):
         assert call in dev, call
     assert f"{LINT_COMMAND} bandit " in test_workflow
     assert f"{LINT_COMMAND} twine check " in test_workflow
-    assert f"{LINT_COMMAND} twine check " in publish
+    assert "twine" not in "\n".join(_code_lines(WORKFLOWS / "publish.yml"))
     assert "run: ./dev semgrep" in test_workflow
 
 

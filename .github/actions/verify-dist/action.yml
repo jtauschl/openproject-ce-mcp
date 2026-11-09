@@ -1,0 +1,46 @@
+name: Verify the built distribution
+description: >
+  Download the dist artifact by ID and check it against the digests the build job recorded. It holds no secret and
+  has no write step, so the publish job and the release dry run share it.
+
+inputs:
+  artifact-id:
+    description: ID of the uploaded dist artifact (output dist-artifact-id of test.yml).
+    required: true
+  digests:
+    description: The sha256sum lines recorded by the build job (output dist-digests of test.yml).
+    required: true
+  version:
+    description: The version the distribution must carry, without a leading v.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # An empty value would let the later steps pass over nothing.
+    - name: Refuse an empty artifact ID or empty digests
+      shell: bash
+      env:
+        ARTIFACT_ID: ${{ inputs.artifact-id }}
+        DIGESTS: ${{ inputs.digests }}
+      run: |
+        if [ -z "$ARTIFACT_ID" ] || [ -z "$DIGESTS" ]; then
+          echo "::error::The build job passed no artifact ID or no digests; refusing to continue." >&2
+          exit 1
+        fi
+
+    # By ID, not by name: any job of the run can upload another artifact called `dist`.
+    - name: Download the dist artifact
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        artifact-ids: ${{ inputs.artifact-id }}
+        path: dist
+
+    - name: Verify the files against the recorded digests
+      shell: bash
+      env:
+        DIGESTS: ${{ inputs.digests }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        printf '%s\n' "$DIGESTS" > "$RUNNER_TEMP/dist-digests.txt"
+        python3 "$GITHUB_WORKSPACE/tools/verify_dist.py" dist "$VERSION" "$RUNNER_TEMP/dist-digests.txt"
