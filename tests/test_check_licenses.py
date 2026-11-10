@@ -56,6 +56,7 @@ def _package(license_text: str, name: str = "pkg", version: str = "1.0") -> dict
         "Mozilla Public License 2.0 (MPL 2.0)",
         "MPL-2.0",
         "mit license",
+        "MIT-0",
         "Apache Software License; MIT License",
         "Apache-2.0 OR BSD-3-Clause",
         "Apache-2.0 OR BSD-2-Clause",
@@ -100,6 +101,7 @@ def test_licenses_off_the_allow_list_are_reported(license_text: str) -> None:
         "MIT;;",
         "MIT OR  OR BSD-3-Clause",
         "GPL-2.0 AND CNRI-Python",
+        "MIT-0 OR GPL-3.0-only",
     ],
 )
 def test_every_license_named_in_an_expression_must_be_allowed(license_text: str) -> None:

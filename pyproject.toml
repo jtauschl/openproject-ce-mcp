@@ -39,8 +39,9 @@ dependencies = [
   # which does not exist before 2.0.0 -- a caller could otherwise install a
   # 1.x version that fails to import at all.
   "mcp>=2,<3",
-  # Imported directly (Field, model configuration); mcp itself needs >=2.12.
-  "pydantic>=2.12,<3",
+  # Imported directly (Field, model configuration); mcp itself needs >=2.12. 2.14.2 is the first release without
+  # GHSA-qpmf-fgh3-ff25 and GHSA-3r8g-cqwr-jr29, so no install resolves below the fix.
+  "pydantic>=2.14.2,<3",
   # Imported directly: pydantic accepts a TypedDict only from typing_extensions before Python 3.12;
   # 4.16.0 is the lowest the newest anyio allows, so a lowest-direct install cannot reach a lower one.
   "typing-extensions>=4.16.0",

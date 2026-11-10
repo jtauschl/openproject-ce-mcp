@@ -38,6 +38,9 @@ ALLOWED = frozenset(
         "Apache-2.0",
         "Apache Software License",
         "PSF-2.0",
+        # MIT without the condition to keep the copyright and permission notice: strictly more permissive than MIT and
+        # OSI-approved. cffi 2.1.1 (a dependency of cryptography) moved to it from MIT.
+        "MIT-0",
         # The Python 1.6b1 license: permissive and OSI-approved. The FSF lists it as GPL-incompatible (a choice-of-law
         # clause), which does not matter for an MIT-licensed project. Appears as `Apache-2.0 AND CNRI-Python`.
         "CNRI-Python",
