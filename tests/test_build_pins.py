@@ -36,12 +36,31 @@ def _build_job() -> str:
     return _text(WORKFLOWS / "test.yml").split("\n  build:\n", 1)[1].split("\n  install-smoke:\n", 1)[0]
 
 
-def _uv_pin(block: str) -> str:
-    match = re.search(
-        r'astral-sh/setup-uv@[0-9a-f]{40}[^\n]*\n\s+with:\n(?:\s+#[^\n]*\n)*\s+version: "(\d+\.\d+\.\d+)"', block
-    )
-    assert match, "no pinned setup-uv version"
-    return match.group(1)
+def _setup_uv_versions(text: str) -> list[str | None]:
+    """The `version:` input of every `astral-sh/setup-uv` step in a workflow or composite action, None where absent."""
+    lines = text.splitlines()
+    versions: list[str | None] = []
+    for index, line in enumerate(lines):
+        if "astral-sh/setup-uv@" not in line or line.lstrip().startswith("#"):
+            continue
+        dash = len(line) - len(line.lstrip())
+        block = []
+        for following in lines[index + 1 :]:
+            if following.strip() and len(following) - len(following.lstrip()) <= dash:
+                break
+            block.append(following)
+        version = None
+        in_with = False
+        for entry in block:
+            indent = len(entry) - len(entry.lstrip())
+            if re.fullmatch(r"\s*with:\s*", entry) and indent == dash + 2:
+                in_with = True
+            elif entry.strip() and indent == dash + 2:
+                in_with = False
+            elif in_with and (m := re.fullmatch(rf"\s{{{dash + 4}}}version:\s*(.*)", entry)):
+                version = m.group(1).strip()
+        versions.append(version)
+    return versions
 
 
 def test_no_workflow_runs_uv_build_directly() -> None:
@@ -94,12 +113,87 @@ def test_the_build_job_builds_twice_through_dev_with_the_digests_and_the_check_i
     assert build.count("./dev dist\n") == 1
 
 
-def test_the_build_and_publish_jobs_pin_the_same_uv() -> None:
-    publish = (
-        _text(WORKFLOWS / "publish.yml").split("\n  publish:\n", 1)[1].split("\n  prepare-homebrew-formula:\n", 1)[0]
-    )
+def _uv_pin_files() -> list[Path]:
+    return sorted([*WORKFLOWS.glob("*.yml"), *(ROOT / ".github" / "actions").glob("**/*.yml")])
 
-    assert _uv_pin(_build_job()) == _uv_pin(publish)
+
+# The scope is the setup-uv steps of the workflows and composite actions: another uv installer (`pip install uv`,
+# a download in a script) is not seen by this test.
+def test_every_setup_uv_step_pins_the_same_exact_uv() -> None:
+    found = {path.name: _setup_uv_versions(_text(path)) for path in _uv_pin_files()}
+    versions = [version for steps in found.values() for version in steps]
+
+    assert len(versions) >= 9, found
+    assert all(version is not None and re.fullmatch(r'"\d+\.\d+\.\d+"', version) for version in versions), found
+    assert len(set(versions)) == 1, found
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "      - uses: astral-sh/setup-uv@" + "0" * 40 + ' # v10\n        with:\n          version: "0.13.7"\n',
+            ['"0.13.7"'],
+        ),
+        (
+            "      - uses: astral-sh/setup-uv@"
+            + "0" * 40
+            + ' # v10\n        with:\n          python-version: "3.12"\n',
+            [None],
+        ),
+        (
+            "      - uses: astral-sh/setup-uv@"
+            + "0" * 40
+            + "\n        with:\n          # why\n          version: ${{ matrix.uv }}\n"
+            "      - uses: actions/checkout@" + "1" * 40 + '\n        with:\n          version: "9.9.9"\n',
+            ["${{ matrix.uv }}"],
+        ),
+        (
+            "  - uses: astral-sh/setup-uv@" + "0" * 40 + '\n    with:\n      version: "0.13.7"\n',
+            ['"0.13.7"'],
+        ),
+        ("      # - uses: astral-sh/setup-uv@" + "0" * 40 + "\n", []),
+        (
+            "      - uses: astral-sh/setup-uv@"
+            + "0" * 40
+            + '\n        env:\n          version: "0.13.7"\n        with:\n          python-version: "3.12"\n',
+            [None],
+        ),
+    ],
+)
+def test_the_setup_uv_reader_finds_a_missing_a_matrix_valued_and_a_neighbouring_version(
+    text: str, expected: list[str | None]
+) -> None:
+    assert _setup_uv_versions(text) == expected
+
+
+def _test_linux_matrix(text: str) -> set[str]:
+    job = text.split("\n  test-linux:\n", 1)[1].split("\n\n  ", 1)[0]
+    match = re.search(r"python-version: \[([^\]]*)\]", job)
+    assert match, "test-linux has no static python-version matrix"
+    return {version.strip(" \"'") for version in match.group(1).split(",")}
+
+
+def _python_classifiers(pyproject: str) -> set[str]:
+    return set(re.findall(r'"Programming Language :: Python :: (3\.\d+)"', pyproject))
+
+
+# Parity with the static test-linux matrix only: a Python test path outside it is not seen.
+def test_the_python_classifiers_equal_the_test_linux_matrix() -> None:
+    matrix = _test_linux_matrix(_text(WORKFLOWS / "test.yml"))
+
+    assert matrix == _python_classifiers(_text(ROOT / "pyproject.toml"))
+    assert {"3.11", "3.15"} <= matrix
+
+
+def test_the_parity_test_sees_a_matrix_entry_without_a_classifier_and_the_reverse() -> None:
+    workflow = _text(WORKFLOWS / "test.yml")
+    pyproject = _text(ROOT / "pyproject.toml")
+
+    assert _test_linux_matrix(workflow.replace('"3.15"]', '"3.15", "3.16"]', 1)) != _python_classifiers(pyproject)
+    assert _test_linux_matrix(workflow) != _python_classifiers(
+        pyproject.replace('  "Programming Language :: Python :: 3.15",\n', "")
+    )
 
 
 def test_the_build_lock_names_the_backend_and_hashes_every_package() -> None:

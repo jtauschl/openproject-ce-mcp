@@ -107,7 +107,7 @@ numbers, and how to reproduce them, see
 
 | | |
 | --- | --- |
-| Python | 3.11 or later (tested on 3.11 to 3.13) |
+| Python | 3.11 or later (tested on 3.11 to 3.15) |
 | OpenProject | Community Edition 16.0 or later with API v3 accessible (source-audited and smoke-tested through 17.9) |
 | OS | macOS 12+, Linux, or Windows 10/11 |
 | MCP client | any client that starts a stdio MCP server; see [Clients](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/clients.md) |
