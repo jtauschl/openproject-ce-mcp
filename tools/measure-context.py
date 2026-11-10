@@ -50,7 +50,7 @@ numbers are what the server emits against the same data as compact JSON, not a r
 
 Token counts use tiktoken's `o200k_base` encoding as a stable, reproducible
 BPE proxy, not an exact billed count for every model, provider, or MCP client.
-Requires the `measure` extra (`uv sync --extra measure`, or
+Requires the `measure` extra (`./dev bootstrap --extra measure`, or
 `pip install openproject-ce-mcp[measure]`).
 
 `python tools/measure-context.py --export DIR` instead writes the Glama and full

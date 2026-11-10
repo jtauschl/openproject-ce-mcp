@@ -65,16 +65,16 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: ./dev bootstrap
 
       - name: Run Ruff
-        run: uv run ruff check .
+        run: uv run --no-sync ruff check .
 
       - name: Check formatting
-        run: uv run ruff format --check .
+        run: uv run --no-sync ruff format --check .
 
       - name: Run mypy
-        run: uv run mypy
+        run: uv run --no-sync mypy
 
       - name: Run bandit (SAST)
         run: uv run --project tools/lint --locked bandit -r src/openproject_ce_mcp -ll
@@ -108,11 +108,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: ./dev bootstrap
 
       - name: Run tests
         if: matrix.python-version != '3.12'
-        run: uv run pytest
+        run: uv run --no-sync pytest
 
       - name: Run tests with coverage gate
         if: matrix.python-version == '3.12'
@@ -135,11 +135,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # ./dev is a bash script: Git Bash on the Windows runner.
       - name: Install dependencies
-        run: uv sync --locked --dev
+        shell: bash
+        run: ./dev bootstrap
 
       - name: Run tests
-        run: uv run pytest
+        run: uv run --no-sync pytest
 
   # A real end-user install (pipx/uv tool install/pip/uvx) resolves the
   # newest version satisfying pyproject.toml's declared ranges at install
@@ -165,10 +167,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies at their newest allowed versions
-        run: uv sync --dev --upgrade
+        run: uv sync --dev --group build --upgrade --no-build-isolation-package openproject-ce-mcp
 
       - name: Run tests
-        run: uv run pytest
+        run: uv run --no-sync pytest
 
   # The other end of the declared ranges: uv.lock follows the newest releases,
   # so without this job nothing would show that a range's lower bound
@@ -192,10 +194,16 @@ jobs:
           version: "0.12.24"
           python-version: "3.11"
 
+      # The editable install is built with the locked backend of the `build` group, installed first and hash-checked: with
+      # --require-hashes uv rejects a backend package that has no matching hash on every release, whereas build constraints
+      # (-b) are not required to cover every build requirement before uv 0.13. --frozen: the lowest-direct resolution above
+      # would make --locked see a stale lock.
       - name: Install direct dependencies at their lowest allowed versions
         run: |
           uv venv "$RUNNER_TEMP/lowest-deps"
-          uv pip install --python "$RUNNER_TEMP/lowest-deps" --editable ".[$EXTRA]" --group "$GROUP"
+          uv export --frozen --only-group build --no-emit-project --no-header --format requirements-txt -o "$RUNNER_TEMP/build-backend.txt"
+          uv pip install --python "$RUNNER_TEMP/lowest-deps" --require-hashes -r "$RUNNER_TEMP/build-backend.txt"
+          uv pip install --python "$RUNNER_TEMP/lowest-deps" --no-build-isolation-package openproject-ce-mcp --editable ".[$EXTRA]" --group "$GROUP"
 
       - name: Check every direct dependency sits on its declared lower bound
         run: '"$RUNNER_TEMP/lowest-deps/bin/python" tools/check_dependency_floors.py --extra "$EXTRA" --group "$GROUP"'

@@ -8,12 +8,21 @@ shift || true
 export UV_LOCKED=1
 
 usage() {
-    echo "Usage: ./dev {bootstrap|lint|licenses|semgrep|shell-lint|test|build|dist|dist-check|sbom|ci}" >&2
+    echo "Usage: ./dev {bootstrap|lint|licenses|semgrep|shell-lint|test|build|dist|dist-check|editable-check|sbom|ci}" >&2
     exit 1
 }
 
+# The project's own editable install is built without build isolation, with the hatchling of the `build` dependency group, which
+# uv.lock pins and hashes. Isolated, uv would resolve the backend of [build-system] from PyPI at run time, and uv has no
+# build-constraints option for `sync` and `run`. The flag names the one package, because UV_NO_BUILD_ISOLATION would reach
+# `uv build` and its --build-constraints too. Every other `uv run` of the project passes --no-sync, since a sync would build
+# the project isolated again.
+sync_project() {
+    uv sync --locked --dev --group build --no-build-isolation-package openproject-ce-mcp "$@"
+}
+
 bootstrap() {
-    uv sync --locked --dev
+    sync_project "$@"
 }
 
 shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/install-mcp-publisher.sh tools/install-semgrep-rules.sh tools/install-shfmt.sh)
@@ -49,7 +58,7 @@ licenses() {
     licenses_dir="$(mktemp -d)"
     trap 'rm -rf "${licenses_dir:-}"' EXIT
     {
-        UV_PROJECT_ENVIRONMENT="$licenses_dir/venv" uv sync --locked --all-extras --all-groups --quiet &&
+        UV_PROJECT_ENVIRONMENT="$licenses_dir/venv" sync_project --all-extras --all-groups --quiet &&
             lint_tool pip-licenses --python "$licenses_dir/venv/bin/python3" --from=mixed --format=json --output-file "$licenses_dir/licenses.json" >/dev/null &&
             "$licenses_dir/venv/bin/python3" tools/check_licenses.py "$licenses_dir/licenses.json"
     } || status=$?
@@ -72,9 +81,10 @@ semgrep() {
 }
 
 lint() {
-    uv run ruff check .
-    uv run ruff format --check .
-    uv run mypy
+    sync_project --quiet
+    uv run --no-sync ruff check .
+    uv run --no-sync ruff format --check .
+    uv run --no-sync mypy
     lint_tool bandit -r src/openproject_ce_mcp -ll
     semgrep
     licenses
@@ -87,20 +97,22 @@ lint() {
 }
 
 test_() {
+    sync_project --quiet
     # Separate floors so well-covered client code cannot carry untested audit tooling.
-    uv run pytest --cov=src/openproject_ce_mcp --cov=tools --cov-report= --cov-fail-under=0 "$@"
-    uv run coverage report --include='*/src/openproject_ce_mcp/*' --fail-under=88
-    uv run coverage report --include='*/tools/*' --fail-under=85
+    uv run --no-sync pytest --cov=src/openproject_ce_mcp --cov=tools --cov-report= --cov-fail-under=0 "$@"
+    uv run --no-sync coverage report --include='*/src/openproject_ce_mcp/*' --fail-under=88
+    uv run --no-sync coverage report --include='*/tools/*' --fail-under=85
     # The client wraps httpx internals, so the lowest supported httpx minor is tested too.
-    uv run --with 'httpx[socks]==0.27.*' pytest -q -p no:cacheprovider \
+    uv run --no-sync --with 'httpx[socks]==0.27.*' pytest -q -p no:cacheprovider \
         tests/unit/test_client_http_stack.py tests/unit/test_app_httpx_transport.py tests/test_retry_transport.py
 }
 
 # The SBOM is exported from the lock file, so the project is its root component and the graph is complete.
 # uv marks the format experimental; tools/check_sbom.py fails the build if a uv release changes what it needs.
 sbom() {
+    sync_project --quiet
     uv export --locked --no-dev --format cyclonedx1.5 --preview-features sbom-export -o sbom.json >/dev/null
-    uv run --locked python tools/check_sbom.py sbom.json
+    uv run --no-sync python tools/check_sbom.py sbom.json
 }
 
 # The distribution is built with the build backend of tools/build/uv.lock, exported as hashed build constraints. With
@@ -144,15 +156,38 @@ dist_check() {
     )
 }
 
+# Every build also proves the editable install really is built without isolation: without the `build` group the backend is not
+# in the environment, so the same sync must fail. If it succeeded, uv would have resolved a backend from PyPI again (a uv
+# release that ignores the flag, or the flag dropped from sync_project).
+editable_check() {
+    (
+        workdir="$(mktemp -d)"
+        trap 'rm -rf "$workdir"' EXIT
+        export UV_PROJECT_ENVIRONMENT="$workdir/venv"
+        if uv sync --locked --no-dev --no-build-isolation-package openproject-ce-mcp \
+            --reinstall-package openproject-ce-mcp --refresh-package openproject-ce-mcp >"$workdir/sync.log" 2>&1; then
+            echo "editable-check: the project was built without its backend in the environment; build isolation is not off" >&2
+            exit 1
+        fi
+        # The backend's own import fails inside the build; a failed download of an isolated backend would not say this.
+        if ! grep -q "ModuleNotFoundError: No module named 'hatchling'" "$workdir/sync.log"; then
+            echo "editable-check: the build failed, but not because the backend is missing:" >&2
+            cat "$workdir/sync.log" >&2
+            exit 1
+        fi
+    )
+}
+
 build() {
     dist
     dist_check
+    editable_check
     lint_tool twine check dist/*
     sbom
 }
 
 case "$cmd" in
-bootstrap) bootstrap ;;
+bootstrap) bootstrap "$@" ;;
 lint) lint ;;
 licenses) licenses ;;
 semgrep) semgrep ;;
@@ -161,6 +196,7 @@ test) test_ "$@" ;;
 build) build ;;
 dist) dist "$@" ;;
 dist-check) dist_check ;;
+editable-check) editable_check ;;
 sbom) sbom ;;
 ci)
     lint

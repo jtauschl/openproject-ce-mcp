@@ -35,7 +35,9 @@ def _run_dev(recorded_uv: Path, *args: str) -> list[str]:
 
 @pytest.mark.skipif(BASH is None, reason="needs bash")
 def test_bootstrap_installs_from_the_lockfile(recorded_uv: Path) -> None:
-    assert _run_dev(recorded_uv, "bootstrap") == ["UV_LOCKED=1 sync --locked --dev"]
+    assert _run_dev(recorded_uv, "bootstrap") == [
+        "UV_LOCKED=1 sync --locked --dev --group build --no-build-isolation-package openproject-ce-mcp"
+    ]
 
 
 @pytest.mark.skipif(BASH is None, reason="needs bash")
@@ -47,11 +49,11 @@ def test_every_uv_command_of_the_gate_fails_on_a_stale_lockfile(recorded_uv: Pat
 
 
 def test_a_workflow_install_of_the_project_uses_the_lockfile_unless_it_re_resolves_on_purpose() -> None:
-    installs = [line.strip() for line in WORKFLOW.read_text(encoding="utf-8").splitlines() if "run: uv sync" in line]
+    lines = [line.strip() for line in WORKFLOW.read_text(encoding="utf-8").splitlines()]
+    syncs = [line for line in lines if re.search(r"\buv sync\b", line) and not line.startswith("#")]
+    through_dev = [line for line in lines if line == "run: ./dev bootstrap"]
 
-    re_resolving = [line for line in installs if "--upgrade" in line]
-    locked = [line for line in installs if "--upgrade" not in line]
-
-    assert len(re_resolving) == 1
-    assert len(locked) == 3
-    assert all(re.search(r"\buv sync --locked\b", line) for line in locked), locked
+    # The one install that does not use the lock re-resolves on purpose; every other job goes through ./dev, which locks.
+    assert len(syncs) == 1
+    assert "--upgrade" in syncs[0]
+    assert len(through_dev) == 3

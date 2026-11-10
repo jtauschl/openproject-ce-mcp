@@ -4,7 +4,7 @@
 # `openproject-ce-mcp configure` and its console-command alias
 # `openproject-ce-mcp-setup`. This file stays so a manual source checkout (see docs/installation.md's
 # "Development / from source" section) runs the setup with the checkout's own interpreter,
-# `.venv/bin/python configure_mcp.py [args]` or `uv run python configure_mcp.py [args]`: the
+# `.venv/bin/python configure_mcp.py [args]` or `uv run --no-sync python configure_mcp.py [args]`: the
 # package's dependencies must be installed there, the package itself need not be.
 #
 # It puts src/ on sys.path and forwards argv to main(). Any other attribute

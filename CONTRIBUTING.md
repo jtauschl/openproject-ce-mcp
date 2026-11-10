@@ -34,13 +34,13 @@ git clone -b release/0.5.0 https://github.com/jtauschl/openproject-ce-mcp.git
 
 cd openproject-ce-mcp
 
-# option A: uv (recommended)
-uv sync --locked --dev
-
-# option B: venv + pip
-python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+./dev bootstrap
 ```
+
+`./dev bootstrap` installs the locked dependencies and builds the editable install with the locked, hashed build
+backend (the `build` dependency group in `uv.lock`). Run the project's tools as `uv run --no-sync ...`:
+without `--no-sync`, `uv run` after a change to `pyproject.toml` rebuilds the editable install in an isolated
+environment with a build backend resolved from PyPI at that moment, without a pin or a hash.
 
 ## Run tests
 
@@ -50,19 +50,18 @@ and `actionlint` on your `PATH`. `./dev test` runs the unit tests alone. The lin
 tools (`bandit`, `semgrep`, `twine`, `pip-licenses`) come from the locked project
 `tools/lint`, and `./dev semgrep` fetches its rules at a pinned commit of
 `semgrep/semgrep-rules`, so the first run needs the network and `git`. The
-build backend (hatchling) comes from the locked project `tools/build`: `./dev
+build backend (hatchling) of the distribution comes from the locked project `tools/build`: `./dev
 dist` exports its lock as hashed build constraints, and a bump arrives as a
 Dependabot PR or with `uv lock --upgrade-package hatchling --project
-tools/build`.
+tools/build`. The editable install of `./dev bootstrap` uses the same backend through the `build` group of
+`uv.lock`; both locks must name the same hatchling version (a test checks it), so bump it in both:
+`uv lock --upgrade-package hatchling` and the command above. `./dev editable-check` proves on every build that
+this install does not resolve a backend from PyPI.
 
 **Unit tests** (no network — run against `httpx` mocks):
 
 ```bash
-# uv
-uv run pytest
-
-# venv
-.venv/bin/python -m pytest
+uv run --no-sync pytest
 ```
 
 **Integration tests** (require a disposable, non-production OpenProject instance; they create, update and delete data):
@@ -72,7 +71,7 @@ OPENPROJECT_BASE_URL=https://op.example.com \
 OPENPROJECT_API_TOKEN=opapi-... \
 OPENPROJECT_TEST_PROJECT=mcp-test \
 OPENPROJECT_TEST_DESTRUCTIVE_TARGET=https://op.example.com \
-uv run pytest -m integration -v
+uv run --no-sync pytest -m integration -v
 ```
 
 `OPENPROJECT_TEST_PROJECT` is the project identifier used for write tests; it has no default, must be one identifier, and its name must contain a disposable token (`test`, `tst`, `tmp`, `sandbox`, `playground`, `scratch` or `disposable`, separated by `-` or `_`). `OPENPROJECT_TEST_DESTRUCTIVE_TARGET` repeats the base URL and says that this instance may be written to; it is only required when the target is not loopback (the local Docker instances need only the first three variables). A run that misses a required variable stops before the first test, and `tools/measure-context.py` stops before its first request. Integration tests are excluded from the default run (`-m 'not integration'`) and must be opted in explicitly.

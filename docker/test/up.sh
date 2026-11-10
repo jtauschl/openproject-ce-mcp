@@ -194,7 +194,7 @@ OPENPROJECT_API_TOKEN=$token \\
 OPENPROJECT_RESTRICTED_API_TOKEN=$restricted_token \\
 OPENPROJECT_TEST_PROJECT=$test_project \\
 OPENPROJECT_DOCKER_SERVICE=$svc \\
-uv run pytest -m integration -v
+uv run --no-sync pytest -m integration -v
 EOF
 }
 

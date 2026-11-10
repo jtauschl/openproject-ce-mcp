@@ -191,7 +191,7 @@ def test_the_license_gate_checks_a_fresh_environment_with_every_extra() -> None:
     licenses = dev.split("\nlicenses() {")[1].split("\n}\n")[0]
 
     assert "UV_PROJECT_ENVIRONMENT" in licenses
-    assert "uv sync --locked --all-extras --all-groups" in licenses
+    assert "sync_project --all-extras --all-groups" in licenses
     assert '--python "$licenses_dir/venv/bin/python3"' in licenses
     assert "trap 'rm -rf" in licenses
     assert "uv run" not in licenses

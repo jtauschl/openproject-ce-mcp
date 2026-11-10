@@ -179,6 +179,21 @@ def test_development_closure_excludes_runtime_packages() -> None:
     assert resolved["pkg:pypi/tool@1.0.0"]["scope"] == "development"
 
 
+def test_the_build_group_of_the_editable_install_is_development() -> None:
+    lock = _lock(
+        ROOT_PACKAGE + '\n[package.dev-dependencies]\nbuild = [{ name = "backend" }]\n',
+        _package("backend"),
+    )
+
+    assert dependency_snapshot.resolved_dependencies(lock)["pkg:pypi/backend@1.0.0"]["scope"] == "development"
+
+
+def test_the_real_lock_classifies_the_backend_of_the_editable_install_as_development() -> None:
+    resolved = dependency_snapshot.resolved_dependencies((ROOT / "uv.lock").read_text(encoding="utf-8"))
+
+    assert _entry(resolved, "hatchling")["scope"] == "development"
+
+
 @pytest.mark.parametrize(
     ("lock", "message"),
     [
@@ -230,7 +245,7 @@ def test_snapshot_envelope() -> None:
         "ref": "refs/heads/main",
         "detector": {
             "name": "openproject-ce-mcp dependency_snapshot",
-            "version": "3",
+            "version": "4",
             "url": "https://github.com/owner/repo/blob/0123abc/tools/dependency_snapshot.py",
         },
         "scanned": "2026-10-10T12:30:05Z",

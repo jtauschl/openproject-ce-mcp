@@ -35,9 +35,9 @@ LOCK_FORMAT_VERSION = 1
 PYPI = {"registry": "https://pypi.org/simple"}
 CORRELATOR = "openproject-ce-mcp uv.lock"
 DETECTOR_NAME = "openproject-ce-mcp dependency_snapshot"
-DETECTOR_VERSION = "3"
+DETECTOR_VERSION = "4"
 DEVELOPMENT_EXTRAS = frozenset({"dev", "measure"})
-DEVELOPMENT_GROUPS = frozenset({"dev"})
+DEVELOPMENT_GROUPS = frozenset({"dev", "build"})
 ENVIRONMENT = ("GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY")
 
 Node = tuple[str, str]

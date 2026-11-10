@@ -180,7 +180,7 @@ non-duplicating case duplicate too.
 ## Reproducing these numbers
 
 ```bash
-uv sync --extra measure   # installs tiktoken for real token counts
+./dev bootstrap --extra measure   # installs tiktoken for real token counts
 python tools/measure-context.py
 ```
 

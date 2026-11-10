@@ -68,7 +68,7 @@ SEED_MULTI_VERSIONS=1 docker/test/up.sh 178
 OPENPROJECT_BASE_URL=http://localhost:8175 \
 OPENPROJECT_API_TOKEN=<captured> \
 OPENPROJECT_TEST_PROJECT=TST \
-uv run pytest -m integration -v
+uv run --no-sync pytest -m integration -v
 
 docker/test/down.sh         # stop, keep volumes (fast re-up)
 docker/test/down.sh --purge # also drop volumes
@@ -165,7 +165,7 @@ semantic instance resolves `tst-<n>` references; the classic instances degrade a
 project-prefixed reference to `NotFoundError`.
 
 Run the full suite against a running instance with the env block `up.sh` prints,
-e.g. `OPENPROJECT_BASE_URL=http://localhost:8175 OPENPROJECT_API_TOKEN=… OPENPROJECT_TEST_PROJECT=tst uv run pytest -m integration`.
+e.g. `OPENPROJECT_BASE_URL=http://localhost:8175 OPENPROJECT_API_TOKEN=… OPENPROJECT_TEST_PROJECT=tst uv run --no-sync pytest -m integration`.
 Without the base URL, token and test project the run stops before the first request (`tools/live_target_guard.py`).
 
 ## Note: semantic identifiers require an UPPERCASE project identifier
