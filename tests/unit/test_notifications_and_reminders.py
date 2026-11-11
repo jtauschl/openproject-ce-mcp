@@ -11,6 +11,7 @@ from _client_test_helpers import (
     _write_enabled_settings,
     started_client,
 )
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import (
     InvalidInputError,
@@ -42,7 +43,7 @@ async def test_list_notifications_filters_by_read_projects() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -84,7 +85,7 @@ async def test_list_notifications_returns_only_project_less_under_empty_read_pro
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -123,7 +124,7 @@ async def test_list_notifications_allows_all_under_wildcard_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -153,7 +154,7 @@ async def test_list_notifications_denied_by_personal_read_not_work_package_read(
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -199,7 +200,7 @@ async def test_list_notifications_resolves_work_package_notification_without_pro
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -226,7 +227,7 @@ async def test_list_reminders_returns_empty_without_a_request_under_empty_read_p
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -286,7 +287,7 @@ async def test_list_reminders_filters_by_read_projects_via_work_package() -> Non
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

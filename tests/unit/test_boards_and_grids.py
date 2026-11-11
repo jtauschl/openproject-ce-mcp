@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 from _client_test_helpers import _make_grid_payload, _make_grid_settings, _make_project_response, started_client
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import (
     InvalidInputError,
@@ -43,7 +44,7 @@ async def test_list_boards_returns_empty_under_empty_read_projects() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -197,7 +198,7 @@ async def test_board_crud_uses_query_form_endpoints_and_project_filtering() -> N
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -305,7 +306,7 @@ async def test_create_grid_uses_form_endpoint_and_project_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -366,7 +367,7 @@ async def test_create_board_global_requires_fully_open_scope(read_projects, proj
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_board_write=True,
         enable_project_write=True,
         timeout=12,
@@ -408,7 +409,7 @@ async def test_create_board_returns_preview_when_not_confirmed() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_board_write=True,
         timeout=12,
         verify_ssl=True,
@@ -448,7 +449,7 @@ async def test_create_board_rejects_validation_error() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_board_write=True,
         timeout=12,
         verify_ssl=True,

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "openproject_ce_mcp"
 APP = SRC / "app"
@@ -1419,7 +1420,7 @@ def test_f3_allowlist_semaphore_is_structurally_separate_from_f6_batch_read_sema
     def _settings() -> Settings:
         return Settings(
             base_url="https://example.test",
-            api_token="token",
+            api_token=SecretStr("token"),
             timeout=30.0,
             verify_ssl=True,
             default_page_size=25,
@@ -2103,7 +2104,7 @@ async def test_client_service_namespaces_are_complete_and_identity_preserving() 
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -2174,7 +2175,7 @@ async def test_every_adapter_reads_through_the_one_learning_transport() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

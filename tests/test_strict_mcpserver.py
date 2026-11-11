@@ -16,7 +16,7 @@ from mcp import types
 from mcp.client import Client
 from mcp.server.mcpserver import Context, MCPServer
 from packaging.version import Version
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
@@ -27,7 +27,7 @@ from openproject_ce_mcp.tool_errors import ToolInputError
 def make_settings(**overrides) -> Settings:
     defaults = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

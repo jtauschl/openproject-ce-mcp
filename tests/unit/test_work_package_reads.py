@@ -14,6 +14,7 @@ from _client_test_helpers import (
     serving_projects,
     started_client,
 )
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import (
     InvalidInputError,
@@ -978,7 +979,7 @@ async def test_global_list_work_packages_and_versions_respect_allowlist_ids() ->
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -1056,7 +1057,7 @@ async def test_list_my_open_work_packages_filters_total_when_all_items_blocked_b
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

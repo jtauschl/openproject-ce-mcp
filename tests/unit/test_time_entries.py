@@ -11,6 +11,7 @@ from _client_test_helpers import (
     make_settings,
     started_client,
 )
+from pydantic import SecretStr
 
 from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.client import (
@@ -192,7 +193,7 @@ async def test_time_entry_crud_and_activity_listing() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -355,7 +356,7 @@ async def test_list_time_entry_activities_paginates_project_fallback() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=1,
@@ -572,7 +573,7 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -927,7 +928,7 @@ async def test_create_time_entry_resolves_activity_via_work_package_link_when_wo
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

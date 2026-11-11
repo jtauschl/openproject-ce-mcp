@@ -254,7 +254,7 @@ def _raw_api(settings: Settings) -> httpx.AsyncClient:
     # sides of the comparison wait as long as the MCP client does.
     return httpx.AsyncClient(
         base_url=settings.base_url,
-        auth=httpx.BasicAuth("apikey", settings.api_token),
+        auth=httpx.BasicAuth("apikey", settings.api_token.get_secret_value()),
         verify=settings.verify_ssl,
         timeout=settings.timeout,
     )

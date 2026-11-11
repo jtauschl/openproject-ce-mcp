@@ -77,7 +77,7 @@ async def check() -> dict[str, object]:
         return _failure("server_error", "OpenProject answered with an error")
     finally:
         await client.aclose()
-    name = None if user.name is None else _without_credentials(user.name, settings.api_token)
+    name = None if user.name is None else _without_credentials(user.name, settings.api_token.get_secret_value())
     return {"ok": True, "user": name}
 
 

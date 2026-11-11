@@ -7,6 +7,9 @@
 # that is forward-merged into it takes dependency updates only as
 # deliberate backports, so it doesn't collect duplicate bump PRs.
 version: 2
+# Cooldown: Dependabot delays a version update for 7 days after its release (14 for a major uv update; github-actions has
+# no semver keys) and never delays a security update. Dependabot applies 3 days even without this block, so the block is
+# the project's stronger rule, and a hand update of a pin takes a release at least this old as well.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -14,7 +17,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
 
   - package-ecosystem: uv
     directory: /
@@ -22,7 +25,8 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
+      semver-major-days: 14
     groups:
       python-dependencies:
         patterns:
@@ -36,7 +40,8 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
+      semver-major-days: 14
     groups:
       lint-tools:
         patterns:
@@ -50,7 +55,8 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
+      semver-major-days: 14
     groups:
       build-tools:
         patterns:

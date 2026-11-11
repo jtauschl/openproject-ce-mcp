@@ -37,6 +37,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
 from openproject_ce_mcp.config import Settings
@@ -213,7 +214,7 @@ def _integration_settings() -> Settings | None:
     test_project = os.environ["OPENPROJECT_TEST_PROJECT"].strip()
     return Settings(
         base_url=base_url,
-        api_token=api_token,
+        api_token=SecretStr(api_token),
         timeout=30,
         verify_ssl=True,
         default_page_size=20,
@@ -288,7 +289,9 @@ async def openproject_version() -> tuple[int, int]:
     settings = _integration_settings()
     if settings is None:
         pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
-    async with httpx.AsyncClient(auth=("apikey", settings.api_token), timeout=settings.timeout) as http:
+    async with httpx.AsyncClient(
+        auth=("apikey", settings.api_token.get_secret_value()), timeout=settings.timeout
+    ) as http:
         response = await http.get(f"{settings.base_url.rstrip('/')}/api/v3")
     response.raise_for_status()
     core_version = response.json().get("coreVersion")
@@ -369,7 +372,7 @@ async def restricted_client(open_client):
     settings = _integration_settings()
     if settings is None:
         pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
-    restricted_settings = dataclasses.replace(settings, api_token=restricted_token)
+    restricted_settings = dataclasses.replace(settings, api_token=SecretStr(restricted_token))
     return await open_client(restricted_settings)
 
 
@@ -549,7 +552,7 @@ async def second_user_client(client: OpenProjectClient, user_ids: list[int], ope
     """
     token = _run_rails_script(script, result_key="TOKEN")
 
-    second_settings = dataclasses.replace(client.settings, api_token=token)
+    second_settings = dataclasses.replace(client.settings, api_token=SecretStr(token))
     return user_id, await open_client(second_settings)
 
 
@@ -608,7 +611,7 @@ async def workflow_limited_editor_client(
     token = _run_rails_script(
         script, result_key="TOKEN", env={"PROJECT_IDENTIFIER": test_project.strip(), "USER_ID": str(user_id)}
     )
-    return await open_client(dataclasses.replace(client.settings, api_token=token))
+    return await open_client(dataclasses.replace(client.settings, api_token=SecretStr(token)))
 
 
 @pytest.fixture

@@ -35,7 +35,7 @@ async def _starred(http: httpx.AsyncClient, query_id: int) -> bool:
 async def test_star_and_unstar_a_query_of_the_test_project(client: OpenProjectClient, name: str) -> None:
     async with httpx.AsyncClient(
         base_url=f"{client.settings.api_base_url}/",
-        auth=("apikey", client.settings.api_token),
+        auth=("apikey", client.settings.api_token.get_secret_value()),
         timeout=client.settings.timeout,
     ) as http:
         query_id = int((await _seeded_query(http, name))["id"])

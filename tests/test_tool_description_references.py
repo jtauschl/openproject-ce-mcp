@@ -13,6 +13,7 @@ import re
 from functools import cache
 
 import pytest
+from pydantic import SecretStr
 
 from openproject_ce_mcp.config import TOOL_GROUPS, Settings
 from openproject_ce_mcp.server import create_app
@@ -39,7 +40,7 @@ _NAMED_AS_ABSENT = frozenset(
 def _settings(on: frozenset[str]) -> Settings:
     return Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

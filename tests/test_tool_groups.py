@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 import pytest
 from mcp.server.mcpserver import MCPServer
+from pydantic import SecretStr
 
 from openproject_ce_mcp import tools
 from openproject_ce_mcp import tools_runtime as _tools_runtime
@@ -24,7 +25,7 @@ from openproject_ce_mcp.config import TOOL_GROUPS, ConfigError, Settings
 def make_settings(**overrides) -> Settings:
     defaults = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

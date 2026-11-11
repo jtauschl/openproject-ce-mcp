@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 from _client_test_helpers import _base_settings, _project_index_response, started_client
+from pydantic import SecretStr
 
 from openproject_ce_mcp.app.policies import board_policy, project_policy, scope
 from openproject_ce_mcp.client import (
@@ -31,7 +32,7 @@ async def test_add_comment_requires_write_gate_not_delete_gate() -> None:
         write_projects=("*",),
         enable_work_package_write=False,
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=1,
@@ -60,7 +61,7 @@ async def test_board_create_respects_allowed_write_projects() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -98,7 +99,7 @@ async def test_create_time_entry_with_work_package_respects_allowed_write_projec
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -157,7 +158,7 @@ async def test_empty_read_projects_denies_project_scoped_read() -> None:
     # not allow — constructed directly, not via make_settings()'s permissive default.
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -194,7 +195,7 @@ async def test_empty_write_projects_denies_project_scoped_write() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -265,7 +266,7 @@ async def test_write_is_always_a_subset_of_read_scope(check) -> None:
     # read_projects — read is always checked first, across every write path.
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -471,7 +472,7 @@ async def test_project_wildcard_patterns_match_identifier_and_title() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -511,7 +512,7 @@ async def test_get_membership_respects_project_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -563,7 +564,7 @@ async def test_delete_membership_allows_identifier_write_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -619,7 +620,7 @@ async def test_delete_news_allows_identifier_write_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -677,7 +678,7 @@ async def test_delete_time_entry_allows_identifier_write_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -733,7 +734,7 @@ async def test_delete_version_allows_identifier_write_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -790,7 +791,7 @@ async def test_delete_board_allows_identifier_write_scope() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -817,7 +818,7 @@ async def test_chain_specific_read_flags_restrict_membership_reads_with_global_r
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

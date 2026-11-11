@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 
+from pydantic import SecretStr
+
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
 
@@ -14,7 +16,7 @@ from openproject_ce_mcp.config import Settings
 def make_settings() -> Settings:
     return Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

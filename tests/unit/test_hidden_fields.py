@@ -6,6 +6,7 @@ from functools import partial
 import httpx
 import pytest
 from _client_test_helpers import _base_settings
+from pydantic import SecretStr
 
 from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
@@ -46,7 +47,7 @@ normalize_work_package_detail = partial(
 async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -162,7 +163,7 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
     client = OpenProjectClient(
         Settings(
             base_url="https://op.example.com",
-            api_token="token",
+            api_token=SecretStr("token"),
             timeout=12,
             verify_ssl=True,
             default_page_size=20,
@@ -215,7 +216,7 @@ async def test_hidden_project_field_is_rejected_on_write() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -252,7 +253,7 @@ async def test_hidden_document_field_is_rejected_on_write() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -285,7 +286,7 @@ async def test_hidden_work_package_field_is_rejected_on_write() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -314,7 +315,7 @@ async def test_hidden_activity_field_is_rejected_on_write() -> None:
     client = OpenProjectClient(
         Settings(
             base_url="https://op.example.com",
-            api_token="token",
+            api_token=SecretStr("token"),
             timeout=12,
             verify_ssl=True,
             default_page_size=20,
@@ -344,7 +345,7 @@ async def test_hidden_time_entry_field_is_rejected_on_write() -> None:
     client = OpenProjectClient(
         Settings(
             base_url="https://op.example.com",
-            api_token="token",
+            api_token=SecretStr("token"),
             timeout=12,
             verify_ssl=True,
             default_page_size=20,
@@ -381,7 +382,7 @@ async def test_hidden_time_entry_start_time_is_rejected_on_write() -> None:
     client = OpenProjectClient(
         Settings(
             base_url="https://op.example.com",
-            api_token="token",
+            api_token=SecretStr("token"),
             timeout=12,
             verify_ssl=True,
             default_page_size=20,
@@ -415,7 +416,7 @@ async def test_hidden_custom_field_is_rejected_on_write() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

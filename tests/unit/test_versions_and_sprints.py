@@ -6,6 +6,7 @@ import json
 import httpx
 import pytest
 from _client_test_helpers import make_settings, started_client
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import (
     InvalidInputError,
@@ -232,7 +233,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_version_write=True,
         timeout=12,
         verify_ssl=True,
@@ -311,7 +312,7 @@ async def test_create_version_returns_preview_when_not_confirmed() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_version_write=True,
         timeout=12,
         verify_ssl=True,
@@ -357,7 +358,7 @@ async def test_create_version_rejects_validation_error() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_version_write=True,
         timeout=12,
         verify_ssl=True,

@@ -49,7 +49,9 @@ def writes_outside(test_project: str, settings: Any) -> bool:
 
 async def token_is_admin(settings: Any) -> bool:
     """OpenProject adds `admin` to `users/me` for an admin only, so its absence means the token is not one."""
-    async with httpx.AsyncClient(auth=("apikey", settings.api_token), timeout=settings.timeout) as http:
+    async with httpx.AsyncClient(
+        auth=("apikey", settings.api_token.get_secret_value()), timeout=settings.timeout
+    ) as http:
         response = await http.get(f"{settings.base_url.rstrip('/')}/api/v3/users/me")
     response.raise_for_status()
     return bool(response.json().get("admin"))

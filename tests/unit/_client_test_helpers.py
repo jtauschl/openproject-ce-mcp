@@ -9,6 +9,7 @@ import json
 from collections.abc import Callable, Sequence
 
 import httpx
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
@@ -20,7 +21,7 @@ def make_settings() -> Settings:
     # scope enforcement override read_projects/write_projects explicitly.
     return Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -35,7 +36,7 @@ def make_settings() -> Settings:
 def _membership_settings() -> Settings:
     return Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -51,7 +52,7 @@ def _membership_settings() -> Settings:
 def _empty_scope_settings() -> Settings:
     return Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -68,7 +69,7 @@ def _no_request_handler(request: httpx.Request) -> httpx.Response:
 def _make_grid_settings(extra: dict | None = None) -> Settings:
     base = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,
@@ -184,7 +185,7 @@ def _notification_payload(
 def _base_settings(**overrides) -> Settings:
     base = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

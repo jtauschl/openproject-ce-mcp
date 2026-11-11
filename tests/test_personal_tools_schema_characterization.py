@@ -12,6 +12,8 @@ the move changed the public tool contract, not just its location.
 
 from __future__ import annotations
 
+from pydantic import SecretStr
+
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
 
@@ -19,7 +21,7 @@ from openproject_ce_mcp.server import create_app
 def _make_settings(**overrides) -> Settings:
     defaults = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

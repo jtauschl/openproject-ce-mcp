@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from openproject_ce_mcp import models as m
 from openproject_ce_mcp.app.form_result import ValidationFailure
@@ -591,7 +592,7 @@ def test_non_dataclass_passthrough() -> None:
 def _make_settings(**overrides) -> Settings:
     defaults = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

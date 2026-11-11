@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+from pydantic import SecretStr
+
 from .logging_support import build_formatter
 
 
@@ -330,7 +332,7 @@ HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
 @dataclass(frozen=True, slots=True)
 class Settings:
     base_url: str
-    api_token: str = field(repr=False)
+    api_token: SecretStr = field(repr=False)
     timeout: float
     verify_ssl: bool
     default_page_size: int
@@ -393,7 +395,9 @@ class Settings:
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
         env = os.environ if environ is None else environ
         base_url = _parse_base_url(env.get("OPENPROJECT_BASE_URL"))
-        api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
+        # Wrapped at once: a traceback tool that captures locals must not find the plain token in this frame. `env` is the
+        # caller's mapping and stays the caller's.
+        api_token = SecretStr(_require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN"))
         read_projects = _parse_project_scope(env, "OPENPROJECT_READ_PROJECTS")
         write_projects = _parse_project_scope(env, "OPENPROJECT_WRITE_PROJECTS")
         group_flags = {g.read_attr: _bool_env(env, g.read_env_var, default=g.read_default) for g in TOOL_GROUPS}

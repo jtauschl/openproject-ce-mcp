@@ -686,7 +686,7 @@ def test_windows_lower_case_required_key_in_an_entry_satisfies_it(box):
     evaluation = evaluate(Subject(ClaudeDesktopHost(), "x", effective=effective), ctx)
 
     assert not evaluation.failed
-    assert evaluation.settings is not None and evaluation.settings.api_token == TOKEN
+    assert evaluation.settings is not None and evaluation.settings.api_token.get_secret_value() == TOKEN
 
 
 def test_posix_lower_case_required_key_does_not_satisfy_it(box):

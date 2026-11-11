@@ -294,7 +294,7 @@ async def test_mark_all_notifications_read_rewrites_only_unread(
 
     async with httpx.AsyncClient(
         base_url=f"{client.settings.api_base_url}/",
-        auth=("apikey", client.settings.api_token),
+        auth=("apikey", client.settings.api_token.get_secret_value()),
         timeout=client.settings.timeout,
     ) as http:
         project_id = await _raw_project_id(http, test_project)
@@ -351,7 +351,7 @@ async def test_mark_notifications_read_leaves_notifications_outside_the_read_all
 
     async with httpx.AsyncClient(
         base_url=f"{client.settings.api_base_url}/",
-        auth=("apikey", client.settings.api_token),
+        auth=("apikey", client.settings.api_token.get_secret_value()),
         timeout=client.settings.timeout,
     ) as http:
         inside_project_id = await _raw_project_id(http, test_project)

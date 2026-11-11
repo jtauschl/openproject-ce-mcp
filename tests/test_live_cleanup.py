@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from pydantic import SecretStr
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PATH = _ROOT / "tests" / "integration" / "_live_cleanup.py"
@@ -242,7 +243,7 @@ async def test_the_token_is_admin_only_when_users_me_says_so(monkeypatch):
             return _Response(self.payload)
 
     monkeypatch.setattr(live_cleanup.httpx, "AsyncClient", _Http)
-    settings = type("S", (), {"base_url": "https://op.example/", "api_token": "t", "timeout": 5})()
+    settings = type("S", (), {"base_url": "https://op.example/", "api_token": SecretStr("t"), "timeout": 5})()
 
     _Http.payload = {"admin": True}
     assert await live_cleanup.token_is_admin(settings) is True

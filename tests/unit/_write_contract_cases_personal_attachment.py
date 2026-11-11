@@ -16,6 +16,7 @@ from pathlib import Path
 
 import httpx
 from _write_contract_cases_types import MaterializedWriteToolCase, WriteToolCase
+from pydantic import SecretStr
 
 from openproject_ce_mcp.config import Settings
 
@@ -35,7 +36,7 @@ def _unexpected(request: httpx.Request) -> None:
 def _base_personal_settings(**overrides: object) -> Settings:
     base: dict[str, object] = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,
@@ -149,7 +150,7 @@ def _materialize_container_attachment_case(tmp_path: Path) -> MaterializedWriteT
 def _base_settings_for_attachment(**overrides: object) -> Settings:
     base: dict[str, object] = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

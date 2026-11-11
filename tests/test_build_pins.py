@@ -225,6 +225,67 @@ def test_dependabot_and_the_dependency_snapshot_cover_the_build_lock() -> None:
     assert "      - tools/build/uv.lock\n" in _text(WORKFLOWS / "dependency-graph.yml")
 
 
+COOLDOWN_DAYS = 7
+
+
+def _cooldowns(text: str) -> list[tuple[str, int | None, int | None]]:
+    """Per Dependabot update block: the ecosystem, its default-days and its semver-major-days."""
+    blocks = []
+    for block in text.split("\n  - package-ecosystem: ")[1:]:
+        default = re.search(r"\n      default-days: (\d+)\n", block)
+        major = re.search(r"\n      semver-major-days: (\d+)\n", block)
+        blocks.append(
+            (
+                block.split("\n", 1)[0],
+                int(default.group(1)) if default else None,
+                int(major.group(1)) if major else None,
+            )
+        )
+    return blocks
+
+
+def _cooldown_problems(text: str) -> list[str]:
+    problems = []
+    for ecosystem, default, major in _cooldowns(text):
+        if default is None or default < COOLDOWN_DAYS:
+            problems.append(f"{ecosystem}: default-days {default} is below {COOLDOWN_DAYS}")
+        if ecosystem == "uv" and (major is None or default is None or major < default):
+            problems.append(f"uv: semver-major-days {major} is missing or below default-days")
+        if ecosystem != "uv" and major is not None:
+            problems.append(f"{ecosystem}: no semver keys are supported")
+    return problems
+
+
+def test_every_dependabot_block_sets_a_cooldown_of_at_least_seven_days() -> None:
+    text = _text(ROOT / ".github" / "dependabot.yml")
+
+    assert len(_cooldowns(text)) >= 4
+    assert _cooldown_problems(text) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        ("      default-days: 7\n", "      default-days: 3\n", "default-days 3 is below 7"),
+        ("    cooldown:\n      default-days: 7\n", "", "default-days None is below 7"),
+        ("      semver-major-days: 14\n", "", "semver-major-days None is missing"),
+        ("      semver-major-days: 14\n", "      semver-major-days: 5\n", "semver-major-days 5 is missing or below"),
+        (
+            "    cooldown:\n      default-days: 7\n",
+            "    cooldown:\n      default-days: 7\n      semver-major-days: 14\n",
+            "no semver keys are supported",
+        ),
+    ],
+)
+def test_the_cooldown_check_sees_a_short_a_missing_and_a_misplaced_value(old: str, new: str, expected: str) -> None:
+    text = _text(ROOT / ".github" / "dependabot.yml")
+    assert old in text
+    # The first match belongs to the github-actions block for the semver case and to the first block otherwise.
+    mutated = text.replace(old, new, 1)
+
+    assert any(expected in problem for problem in _cooldown_problems(mutated)), _cooldown_problems(mutated)
+
+
 @pytest.mark.skipif(shutil.which("git") is None or not (ROOT / ".git").exists(), reason="needs a git checkout")
 def test_the_build_project_is_not_hidden_by_the_ignore_rule_for_build_output() -> None:
     for path in ("tools/build/pyproject.toml", "tools/build/uv.lock"):

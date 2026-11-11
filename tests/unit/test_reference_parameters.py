@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from _tools_test_helpers import FakeContext
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from openproject_ce_mcp import tools_runtime
 from openproject_ce_mcp.config import Settings
@@ -189,7 +189,7 @@ def _settings_exposing_every_tool() -> Settings:
     flags = {field.name: True for field in dataclasses.fields(Settings) if field.name.startswith("enable_")}
     return Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

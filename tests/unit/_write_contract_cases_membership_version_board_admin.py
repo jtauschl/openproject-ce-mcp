@@ -13,6 +13,7 @@ import json
 
 import httpx
 from _write_contract_cases_types import WriteToolCase
+from pydantic import SecretStr
 
 from openproject_ce_mcp.config import Settings
 
@@ -20,7 +21,7 @@ from openproject_ce_mcp.config import Settings
 def _settings(**overrides: object) -> Settings:
     base: dict[str, object] = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

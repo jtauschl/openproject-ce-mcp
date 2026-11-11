@@ -4,6 +4,7 @@ import json
 
 import pytest
 from _doctor_test_helpers import own_server_binary
+from pydantic import SecretStr
 
 import openproject_ce_mcp.server as server
 from openproject_ce_mcp import __version__, models
@@ -19,7 +20,7 @@ from openproject_ce_mcp.tools_validation import (
 def make_settings(**overrides) -> Settings:
     defaults = {
         "base_url": "https://op.example.com",
-        "api_token": "token",
+        "api_token": SecretStr("token"),
         "timeout": 12,
         "verify_ssl": True,
         "default_page_size": 20,

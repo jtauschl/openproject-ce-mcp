@@ -13,6 +13,7 @@ from _client_test_helpers import (
     _write_enabled_settings,
     make_settings,
 )
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import (
     CLEAR,
@@ -80,7 +81,7 @@ async def test_create_work_package_returns_confirmation_preview_before_writing()
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=1,
@@ -665,7 +666,7 @@ async def test_update_work_package_clears_sprint_with_null_href() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_work_package_write=True,
         timeout=12,
         verify_ssl=True,
@@ -777,7 +778,7 @@ async def test_update_work_package_resolves_sprint_by_name() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_work_package_write=True,
         timeout=12,
         verify_ssl=True,
@@ -1045,7 +1046,7 @@ async def test_delete_work_package_requires_confirmation_preview() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=1,
@@ -1143,7 +1144,7 @@ async def test_delete_work_package_requires_write_enablement() -> None:
         write_projects=("*",),
         enable_work_package_write=False,
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -1538,7 +1539,7 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=1,
@@ -1886,7 +1887,7 @@ async def test_bulk_create_work_packages_confirm_forwards_duration_fields() -> N
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,

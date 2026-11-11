@@ -7,6 +7,7 @@ import os
 import httpx
 import pytest
 from _client_test_helpers import _base_settings, make_settings, started_client
+from pydantic import SecretStr
 
 from openproject_ce_mcp.client import (
     AuthenticationError,
@@ -137,7 +138,7 @@ async def test_get_project_work_package_context_returns_schema_and_metadata() ->
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=1,
@@ -219,7 +220,7 @@ async def test_get_project_admin_context_filters_parent_candidates_and_writable_
         read_projects=("demo", "allowed-parent"),
         write_projects=(),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -819,7 +820,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -976,7 +977,7 @@ async def test_project_scoped_reads_accept_numeric_project_ids_when_allowed_by_i
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -1180,7 +1181,7 @@ async def test_views_categories_and_attachments() -> None:
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -1514,7 +1515,7 @@ async def test_create_project_returns_preview_when_not_confirmed() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_project_write=True,
         timeout=12,
         verify_ssl=True,
@@ -1555,7 +1556,7 @@ async def test_create_project_rejects_validation_error() -> None:
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_project_write=True,
         timeout=12,
         verify_ssl=True,
@@ -1598,7 +1599,7 @@ async def test_delete_project_returns_preview_and_executes_when_confirmed() -> N
         read_projects=("*",),
         write_projects=("*",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         enable_project_write=True,
         timeout=12,
         verify_ssl=True,
@@ -1780,7 +1781,7 @@ async def test_list_projects_reports_filtered_total_when_allowlist_drops_items()
 
     settings = Settings(
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=20,
@@ -2054,7 +2055,7 @@ async def test_work_package_context_drops_form_values_defined_in_projects_outsid
         read_projects=("demo",),
         write_projects=("demo",),
         base_url="https://op.example.com",
-        api_token="token",
+        api_token=SecretStr("token"),
         timeout=12,
         verify_ssl=True,
         default_page_size=10,

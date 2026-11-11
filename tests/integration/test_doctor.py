@@ -30,7 +30,9 @@ def test_doctor_live_connection(client):
     """The real connection check passes against the instance."""
     settings = client.settings
 
-    exit_code = _run_doctor(entries=[_entry(settings.base_url, settings.api_token, settings.verify_ssl)])
+    exit_code = _run_doctor(
+        entries=[_entry(settings.base_url, settings.api_token.get_secret_value(), settings.verify_ssl)]
+    )
 
     assert exit_code == EXIT_SUCCESS
 

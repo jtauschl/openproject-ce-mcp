@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import tempfile
+import traceback
 from pathlib import Path
 
 import pytest
@@ -798,6 +799,33 @@ def test_the_api_token_never_appears_in_the_text_form_of_settings() -> None:
     assert "secret-token-value" not in repr(settings)
     assert "secret-token-value" not in str(settings)
     assert "secret-token-value" not in repr(dataclasses.replace(settings, timeout=5.0))
+    # `asdict` keeps the SecretStr object, so this proves masking, not removal.
+    assert "secret-token-value" not in str(dataclasses.asdict(settings))
+    assert settings.api_token.get_secret_value() == "secret-token-value"
+
+
+class _MaskedEnvironment(dict[str, str]):
+    """The caller's mapping holds the token by definition; its repr is masked so a locals capture shows from_env only."""
+
+    def __repr__(self) -> str:
+        return "<environment>"
+
+
+def test_a_failing_from_env_leaves_no_plain_token_in_a_traceback_with_locals() -> None:
+    environment = _MaskedEnvironment(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "secret-token-value",
+            "OPENPROJECT_READ_PROJECTS": "[unclosed",
+        }
+    )
+
+    with pytest.raises(ConfigError) as raised:
+        Settings.from_env(environment)
+
+    captured = "".join(traceback.TracebackException.from_exception(raised.value, capture_locals=True).format())
+    assert "secret-token-value" not in captured
+    assert "api_token" in captured  # the local is still there, as a masked SecretStr
 
 
 def test_the_token_is_still_part_of_settings_equality() -> None:
@@ -806,3 +834,26 @@ def test_the_token_is_still_part_of_settings_equality() -> None:
     assert Settings.from_env({**base, "OPENPROJECT_API_TOKEN": "a"}) != Settings.from_env(
         {**base, "OPENPROJECT_API_TOKEN": "b"}
     )
+
+
+_ROOT = Path(__file__).resolve().parents[1]
+# The only places that turn the token back into a plain string: the Authorization header, the doctor's text scrubbing and the
+# measuring tool's own client. A new one is a decision, so it has to be added here.
+_UNWRAP_SITES = {
+    "src/openproject_ce_mcp/client.py": 1,
+    "src/openproject_ce_mcp/doctor/probe.py": 1,
+    "tools/measure-context.py": 1,
+}
+
+
+def test_the_token_is_unwrapped_only_where_it_is_used() -> None:
+    found = {}
+    for directory in ("src", "tools"):
+        for path in sorted((_ROOT / directory).rglob("*.py")):
+            if ".venv" in path.parts:
+                continue
+            count = path.read_text(encoding="utf-8").count("get_secret_value(")
+            if count:
+                found[path.relative_to(_ROOT).as_posix()] = count
+
+    assert found == _UNWRAP_SITES

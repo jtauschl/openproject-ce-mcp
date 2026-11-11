@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 from collections.abc import Mapping
 from dataclasses import replace
@@ -7,6 +8,7 @@ from fnmatch import fnmatchcase
 from typing import Any
 
 import httpx
+from pydantic import SecretStr
 
 from . import __version__
 from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
@@ -1458,6 +1460,12 @@ class OpenProjectClient:
         return await self._version_resolver.resolve_id(version_ref, project=project, context=context)
 
 
+def _basic_authorization(api_token: SecretStr) -> str:
+    # One expression and no local: no frame of a traceback captured with its locals holds the plain token. The header
+    # itself (base64 of the token) stays in the httpx client, so a debugger of that object still sees it.
+    return "Basic " + base64.b64encode(b"apikey:" + api_token.get_secret_value().encode()).decode()
+
+
 def _build_http_client(settings: Settings, transport: httpx.AsyncBaseTransport | None) -> httpx.AsyncClient:
     # Patching specific caller-supplied transport orderings in place with
     # `isinstance` checks produced a real bug per ordering -- there is
@@ -1511,9 +1519,7 @@ def _build_http_client(settings: Settings, transport: httpx.AsyncBaseTransport |
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
                 "Accept": "application/hal+json, application/json",
-                "Authorization": (
-                    f"Basic {__import__('base64').b64encode(f'apikey:{settings.api_token}'.encode()).decode()}"
-                ),
+                "Authorization": _basic_authorization(settings.api_token),
                 "User-Agent": f"openproject-ce-mcp/{__version__}",
             },
             timeout=httpx.Timeout(settings.timeout),
@@ -1546,9 +1552,7 @@ def _build_http_client(settings: Settings, transport: httpx.AsyncBaseTransport |
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
                 "Accept": "application/hal+json, application/json",
-                "Authorization": (
-                    f"Basic {__import__('base64').b64encode(f'apikey:{settings.api_token}'.encode()).decode()}"
-                ),
+                "Authorization": _basic_authorization(settings.api_token),
                 "User-Agent": f"openproject-ce-mcp/{__version__}",
             },
             timeout=httpx.Timeout(settings.timeout),
