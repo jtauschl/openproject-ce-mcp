@@ -22,6 +22,7 @@ DECLARED: list[dict[str, Any]] = PACKAGE["environmentVariables"]
 VALID_VALUES = {
     "OPENPROJECT_BASE_URL": "https://op.example.com",
     "OPENPROJECT_API_TOKEN": "token",
+    "OPENPROJECT_TOOL_PROFILE": "core",
     "OPENPROJECT_READ_PROJECTS": "*",
     "OPENPROJECT_WRITE_PROJECTS": "*",
 }
@@ -58,3 +59,12 @@ def test_declared_variable_is_required_exactly_when_settings_requires_it(variabl
             Settings.from_env(env)
     else:
         assert Settings.from_env(env) != Settings.from_env(_env_with_all_declared())
+
+
+def test_the_declared_profile_choices_are_exactly_the_accepted_values() -> None:
+    from openproject_ce_mcp.config import DEFAULT_TOOL_PROFILE, TOOL_PROFILES
+
+    declared = next(variable for variable in DECLARED if variable["name"] == "OPENPROJECT_TOOL_PROFILE")
+
+    assert tuple(declared["choices"]) == TOOL_PROFILES
+    assert declared["default"] == DEFAULT_TOOL_PROFILE

@@ -888,6 +888,29 @@ async def test_create_reads_a_non_ascii_digit_activity_as_a_name(name: str) -> N
     assert api.validate_create_calls[-1]["_links"]["activity"]["href"] == "/api/v3/time_entries/activities/5"
 
 
+@pytest.mark.asyncio
+async def test_an_unknown_activity_name_is_refused_with_the_allowed_names() -> None:
+    api = _FakeTimeEntryApi(activities=[_activity_summary(5, name="Support"), _activity_summary(2, name="development")])
+    service = _service(api=api)
+
+    with pytest.raises(InvalidInputError) as raised:
+        await service.create(work_package_id=42, activity="Meeting", hours="PT1H", spent_on="2026-03-20", confirm=False)
+
+    assert str(raised.value) == (
+        "OpenProject time entry activity 'Meeting' was not found. Allowed activities: development, Support."
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_activity_name_without_any_allowed_activity_has_no_list() -> None:
+    service = _service(api=_FakeTimeEntryApi(activities=[]))
+
+    with pytest.raises(InvalidInputError) as raised:
+        await service.create(work_package_id=42, activity="Meeting", hours="PT1H", spent_on="2026-03-20", confirm=False)
+
+    assert str(raised.value) == "OpenProject time entry activity 'Meeting' was not found."
+
+
 class _RealActivityNormalizerApi(_FakeTimeEntryApi):
     def to_activity_record(self, payload: dict) -> TimeEntryActivityRecord:
         return TimeEntryActivityRecord(summary=normalize_time_entry_activity_raw(payload))

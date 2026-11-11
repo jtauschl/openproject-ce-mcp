@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1076,6 +1077,28 @@ def test_tool_preview_runs_once_per_distinct_settings(box, capsys, monkeypatch):
 
     assert len(calls) == 1
     assert len([line for line in run.out.splitlines() if "would register" in line]) == 2
+
+
+def _tools_line(out: str) -> str:
+    return next(line for line in out.splitlines() if "would register" in line)
+
+
+def test_tool_preview_names_the_full_profile(box, capsys):
+    box.write(box.claude_state, {"mcpServers": {"openproject": server()}})
+
+    run = box.run(capsys)
+
+    assert "would register (profile full):" in _tools_line(run.out)
+
+
+def test_tool_preview_names_the_core_profile_with_the_count_under_full(box, capsys):
+    env = {**VALID_ENV, "OPENPROJECT_TOOL_PROFILE": "core", "OPENPROJECT_READ_PROJECTS": "*"}
+    box.write(box.claude_state, {"mcpServers": {"openproject": server(env)}})
+
+    run = box.run(capsys)
+
+    line = _tools_line(run.out)
+    assert re.search(r"Tools: 15 would register \(profile core; 88 under full\): ", line), line
 
 
 def test_failed_probe_fails_the_entry_and_shows_no_token(box, capsys):

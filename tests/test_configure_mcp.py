@@ -1344,6 +1344,20 @@ def test_run_uninstall_reports_failure_and_exits_nonzero(monkeypatch, tmp_path: 
 # ── main() orchestration (happy paths + abort), prompts fully patched ───────────
 
 
+def _with_profile(answers: Mapping[str, str | Sequence[str]]) -> dict[str, str | Sequence[str]]:
+    """Add a keep-default answer for the tool profile prompt wherever the credentials questionnaire runs.
+
+    The prompt comes once per credentials attempt, right after the readable-projects prompt, so it
+    gets as many answers as that prompt does. A test that wants a specific profile registers its
+    own "Tool profile" answer.
+    """
+    merged: dict[str, str | Sequence[str]] = dict(answers)
+    readable = merged.get("Readable projects")
+    if readable is not None and "Tool profile" not in merged:
+        merged["Tool profile"] = [""] * len(readable) if not isinstance(readable, str) else ""
+    return merged
+
+
 def _run_main(
     monkeypatch,
     tmp_path: Path,
@@ -1385,7 +1399,7 @@ def _run_main(
     monkeypatch.setattr(c, "_clients", lambda: clients)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
-    book = _AnswerBook(answers)
+    book = _AnswerBook(_with_profile(answers))
     monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, secret))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
     c.main(list(argv), interactive=interactive)
@@ -1780,6 +1794,7 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
     assert set(env) == {
         "OPENPROJECT_BASE_URL",
         "OPENPROJECT_API_TOKEN",
+        "OPENPROJECT_TOOL_PROFILE",
         "OPENPROJECT_ENABLE_PROJECT_WRITE",
         "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
         "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
@@ -1787,6 +1802,7 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
         "OPENPROJECT_ENABLE_BOARD_WRITE",
         "OPENPROJECT_ENABLE_MEETING_WRITE",
     }
+    assert env["OPENPROJECT_TOOL_PROFILE"] == "core"
     settings = c.Settings.from_env(env)
     assert settings.enable_work_package_write is False
     assert settings.enable_project_write is False
@@ -1870,6 +1886,58 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
     assert settings.enable_membership_write is False
     assert settings.enable_version_write is False
     assert settings.enable_board_write is False
+
+
+def _profile_run(
+    monkeypatch, tmp_path: Path, existing_env: dict[str, str] | None, profile_answer: str | list[str]
+) -> dict[str, str]:
+    target = tmp_path / ".mcp.json"
+    if existing_env is not None:
+        target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "old", "env": existing_env}}}))
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "n",
+        "Tool profile": profile_answer,
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers)
+    return json.loads(target.read_text())["mcpServers"]["openproject"]["env"]
+
+
+_EXISTING_BASE = {"OPENPROJECT_BASE_URL": "https://old.example.com", "OPENPROJECT_API_TOKEN": "old-token"}
+
+
+def test_main_fresh_setup_offers_the_core_profile_and_writes_it(monkeypatch, tmp_path: Path) -> None:
+    assert _profile_run(monkeypatch, tmp_path, None, "")["OPENPROJECT_TOOL_PROFILE"] == "core"
+
+
+def test_main_existing_setup_without_a_profile_keeps_full_and_writes_it_explicitly(monkeypatch, tmp_path: Path) -> None:
+    env = _profile_run(monkeypatch, tmp_path, dict(_EXISTING_BASE), "")
+    assert env["OPENPROJECT_TOOL_PROFILE"] == "full"
+
+
+def test_main_existing_explicit_profile_is_the_prompt_default(monkeypatch, tmp_path: Path) -> None:
+    env = _profile_run(monkeypatch, tmp_path, {**_EXISTING_BASE, "OPENPROJECT_TOOL_PROFILE": "core"}, "")
+    assert env["OPENPROJECT_TOOL_PROFILE"] == "core"
+
+
+def test_main_an_unusable_stored_profile_falls_back_to_the_existing_setups_default(monkeypatch, tmp_path: Path) -> None:
+    env = _profile_run(monkeypatch, tmp_path, {**_EXISTING_BASE, "OPENPROJECT_TOOL_PROFILE": "minimal"}, "")
+    assert env["OPENPROJECT_TOOL_PROFILE"] == "full"
+
+
+def test_main_the_profile_answer_replaces_the_stored_value(monkeypatch, tmp_path: Path) -> None:
+    env = _profile_run(monkeypatch, tmp_path, {**_EXISTING_BASE, "OPENPROJECT_TOOL_PROFILE": "core"}, " FULL ")
+    assert env["OPENPROJECT_TOOL_PROFILE"] == "full"
+
+
+def test_main_an_unknown_profile_answer_is_asked_again(monkeypatch, tmp_path: Path) -> None:
+    env = _profile_run(monkeypatch, tmp_path, None, ["minimal", "full"])
+    assert env["OPENPROJECT_TOOL_PROFILE"] == "full"
 
 
 def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Path) -> None:
@@ -3074,7 +3142,7 @@ def _run_main_autodetect(monkeypatch, tmp_path: Path, clients, answers, argv=(),
     monkeypatch.setattr(c, "_clients", lambda: clients)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
-    book = _AnswerBook(answers)
+    book = _AnswerBook(_with_profile(answers))
     monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, secret))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
     c.main(list(argv))
@@ -3136,6 +3204,7 @@ def test_main_non_interactive_flag_forces_skip_even_with_real_stdin(monkeypatch,
 _FULL_DEFAULT_ENV: dict[str, str] = {
     "OPENPROJECT_BASE_URL": "https://op.example.com",
     "OPENPROJECT_API_TOKEN": "tok",
+    "OPENPROJECT_TOOL_PROFILE": "full",
     "OPENPROJECT_READ_PROJECTS": "",
     "OPENPROJECT_WRITE_PROJECTS": "",
     "OPENPROJECT_ENABLE_PROJECT_READ": "true",
@@ -3182,11 +3251,12 @@ def _minimal_env_for(env: dict[str, str]) -> dict[str, str]:
     return c._minimal_env(env, candidate)
 
 
-def test_minimal_env_all_defaults_keeps_only_base_url_and_token() -> None:
+def test_minimal_env_all_defaults_keeps_only_base_url_token_and_profile() -> None:
     minimal = _minimal_env_for(dict(_FULL_DEFAULT_ENV))
     assert minimal == {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "tok",
+        "OPENPROJECT_TOOL_PROFILE": "full",
     }
 
 
@@ -3227,7 +3297,7 @@ def test_minimal_env_keeps_a_single_deviated_key(env_key: str, deviated_value: s
     env[env_key] = deviated_value
     minimal = _minimal_env_for(env)
     assert minimal[env_key] == deviated_value
-    assert set(minimal) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN", env_key}
+    assert set(minimal) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN", "OPENPROJECT_TOOL_PROFILE", env_key}
 
 
 @pytest.mark.parametrize(
@@ -3250,7 +3320,13 @@ def test_minimal_env_keeps_read_flag_off_alongside_its_forced_write_flag(read_ke
     minimal = _minimal_env_for(env)
     assert minimal[read_key] == "false"
     assert minimal[write_key] == "false"
-    assert set(minimal) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN", read_key, write_key}
+    assert set(minimal) == {
+        "OPENPROJECT_BASE_URL",
+        "OPENPROJECT_API_TOKEN",
+        "OPENPROJECT_TOOL_PROFILE",
+        read_key,
+        write_key,
+    }
 
 
 def test_minimal_env_keeps_personal_write_alongside_its_required_read_flag() -> None:
@@ -3267,6 +3343,7 @@ def test_minimal_env_keeps_personal_write_alongside_its_required_read_flag() -> 
     assert set(minimal) == {
         "OPENPROJECT_BASE_URL",
         "OPENPROJECT_API_TOKEN",
+        "OPENPROJECT_TOOL_PROFILE",
         "OPENPROJECT_ENABLE_PERSONAL_READ",
         "OPENPROJECT_ENABLE_PERSONAL_WRITE",
     }
@@ -3284,6 +3361,7 @@ def test_minimal_env_keeps_admin_write_alongside_its_required_read_flag() -> Non
     assert set(minimal) == {
         "OPENPROJECT_BASE_URL",
         "OPENPROJECT_API_TOKEN",
+        "OPENPROJECT_TOOL_PROFILE",
         "OPENPROJECT_ENABLE_ADMIN_READ",
         "OPENPROJECT_ENABLE_ADMIN_WRITE",
     }
@@ -3536,7 +3614,7 @@ def test_configure_writes_valid_project_scoped_config_for_every_real_client(monk
         "Readable projects": "DEMO, TEST",
         "Enable write access?": "n",
     }
-    book = _AnswerBook(answers)
+    book = _AnswerBook(_with_profile(answers))
     monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, "opapi-real-client-check"))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-real-client-check")
     c.main([], interactive=False)
@@ -3643,7 +3721,7 @@ def test_configure_writes_valid_global_config_for_claude_desktop(monkeypatch, tm
         "Readable projects": "DEMO, TEST",
         "Enable write access?": "n",
     }
-    book = _AnswerBook(answers)
+    book = _AnswerBook(_with_profile(answers))
     monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, "opapi-desktop-check"))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-desktop-check")
     c.main([], interactive=False)

@@ -164,8 +164,7 @@ async def create_time_entry(
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours). A day in a duration string is 24 hours, so write 'PT8H' for a working day.
     start_time is an ISO 8601 date-time and requires the instance setting "allow
     tracking of start and end times"; ignored otherwise. No end_time parameter --
-    OpenProject derives it read-only from start_time + hours. Use
-    create_time_entry_until to specify an end time instead of hours directly.
+    OpenProject derives it read-only from start_time + hours.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_ref(activity, field_name="activity", max_length=100)

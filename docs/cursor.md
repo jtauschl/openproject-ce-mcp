@@ -63,6 +63,7 @@ If you'd rather reproduce what `configure` writes automatically, create
       "env": {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "replace-with-your-token",
+        "OPENPROJECT_TOOL_PROFILE": "core",
         "OPENPROJECT_READ_PROJECTS": "my-project,other-project",
         "OPENPROJECT_WRITE_PROJECTS": "my-project"
       }

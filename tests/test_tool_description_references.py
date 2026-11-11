@@ -5,6 +5,7 @@ configuration that the mentioning tool needs, with every flag that is on by defa
 minimal flags of a tool are found by switching flags off while the tool stays registered, so the
 check follows the real registration logic and needs no table of scopes. A flag that is on by
 default and that an operator switches off is not checked, and the project allowlists are set.
+The same holds under the `core` profile: a tool it registers names only tools it registers too.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ _NAMED_AS_ABSENT = frozenset(
 )
 
 
-def _settings(on: frozenset[str]) -> Settings:
+def _settings(on: frozenset[str], profile: str = "full") -> Settings:
     return Settings(
         base_url="https://op.example.com",
         api_token=SecretStr("token"),
@@ -50,13 +51,14 @@ def _settings(on: frozenset[str]) -> Settings:
         read_projects=("*",),
         write_projects=("*",),
         attachment_root="/tmp",
+        tool_profile=profile,
         **{flag: flag in on for flag in _FLAGS},
     )
 
 
 @cache
-def _registered(on: frozenset[str]) -> frozenset[str]:
-    return frozenset(enabled_tool_names(_settings(on)))
+def _registered(on: frozenset[str], profile: str = "full") -> frozenset[str]:
+    return frozenset(enabled_tool_names(_settings(on, profile)))
 
 
 def _startable(on: frozenset[str]) -> bool:
@@ -64,15 +66,15 @@ def _startable(on: frozenset[str]) -> bool:
 
 
 @cache
-def _minimal_flags(tool: str) -> frozenset[str]:
+def _minimal_flags(tool: str, profile: str = "full") -> frozenset[str]:
     on = frozenset(_FLAGS)
-    assert tool in _registered(on)
+    assert tool in _registered(on, profile)
     shrunk = True
     while shrunk:
         shrunk = False
         for flag in sorted(on):
             smaller = on - {flag}
-            if _startable(smaller) and tool in _registered(smaller):
+            if _startable(smaller) and tool in _registered(smaller, profile):
                 on, shrunk = smaller, True
     return on
 
@@ -122,6 +124,7 @@ _DEFAULT_FLAGS = frozenset(
 )
 _MENTIONS = _mentions()
 _ALL = _registered(frozenset(_FLAGS))
+_CORE = _registered(frozenset(_FLAGS), "core")
 
 
 def test_the_derivation_finds_references() -> None:
@@ -140,6 +143,12 @@ def test_every_mentioned_tool_is_a_registered_tool(tool: str) -> None:
 @pytest.mark.parametrize("tool", sorted(_MENTIONS))
 def test_a_mentioned_tool_is_registered_wherever_the_mentioning_tool_is(tool: str) -> None:
     registered = _registered(_DEFAULT_FLAGS | _minimal_flags(tool))
+    assert _MENTIONS[tool] <= registered, sorted(_MENTIONS[tool] - registered)
+
+
+@pytest.mark.parametrize("tool", sorted(_MENTIONS.keys() & _CORE))
+def test_a_tool_the_core_profile_registers_names_only_tools_it_registers_too(tool: str) -> None:
+    registered = _registered(_DEFAULT_FLAGS | _minimal_flags(tool, "core"), "core")
     assert _MENTIONS[tool] <= registered, sorted(_MENTIONS[tool] - registered)
 
 
@@ -174,3 +183,11 @@ def test_a_tool_the_instructions_name_is_registered_by_default_or_comes_with_its
     env_vars = {group.read_env_var for group in TOOL_GROUPS}
     flags = set(re.findall(r"OPENPROJECT_ENABLE_[A-Z_]+", text))
     assert flags and flags <= env_vars, sorted(unregistered)
+
+
+@pytest.mark.parametrize(("text", "names"), _instruction_paragraphs(), ids=lambda value: str(value)[:40])
+def test_a_tool_outside_the_core_profile_comes_with_the_profile_in_the_instructions(text: str, names: set[str]) -> None:
+    outside = names - _CORE
+    if not outside:
+        return
+    assert "OPENPROJECT_TOOL_PROFILE" in text, sorted(outside)

@@ -467,7 +467,9 @@ class TimeEntryService:
             activities = (await self.list_activities()).results
         matches = [str(item.id) for item in activities if (item.name or "").casefold() == activity_ref.casefold()]
         if not matches:
-            raise InvalidInputError(f"OpenProject time entry activity '{activity_ref}' was not found.")
+            allowed = sorted({item.name for item in activities if item.name}, key=str.casefold)
+            hint = f" Allowed activities: {', '.join(allowed)}." if allowed else ""
+            raise InvalidInputError(f"OpenProject time entry activity '{activity_ref}' was not found.{hint}")
         if len(matches) > 1:
             raise InvalidInputError(
                 f"OpenProject time entry activity '{activity_ref}' is ambiguous. Pass a numeric activity id."

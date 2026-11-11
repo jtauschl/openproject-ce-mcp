@@ -20,13 +20,13 @@ tokens** and create a new one.
 
 `openproject-ce-mcp configure` writes a minimal config: only the values you set
 differ from a safe default, so a fresh setup is just `OPENPROJECT_BASE_URL` and
-`OPENPROJECT_API_TOKEN` plus whatever scope you gave it — not a
-fully-spelled-out file (see the tables below for what every field defaults to).
+`OPENPROJECT_API_TOKEN` plus the tool profile (always written) and whatever
+scope you gave it — not a fully-spelled-out file (see the tables below for what every field defaults to).
 Three flags control what it does; see [Clients](clients.md) for the
 global-vs-project-scoped question every mode asks first:
 
 - **`configure` / `configure --quick`** (the default) — client target(s), base
-  URL, token, readable projects, and (if write access is enabled) a Y/N per
+  URL, token, readable projects, the [tool profile](#tool-profile), and (if write access is enabled) a Y/N per
   project-scoped write category (work packages, projects, memberships,
   versions, boards, meetings), mapped directly to the matching
   `OPENPROJECT_ENABLE_*_WRITE` flag. These prompts do not touch personal-data
@@ -91,6 +91,36 @@ of projects, and leaves out any that no longer matches, so the counts and sums
 OpenProject returns cover only readable projects. Archived projects are left out
 of that filter, since OpenProject hides their work packages.
 
+## Tool Profile
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `OPENPROJECT_TOOL_PROFILE` | no | `full` | `full` registers every tool the settings below allow. `core` registers only a compact starter set of 21 tools (projects, work packages, relations, time entries, the reference lists, your own account) for small models and short contexts. Any other value stops the server at start. |
+
+A profile only narrows. A tool is registered only when its group switch, the
+project allowlists and the write flags select it, and the profile then keeps
+it or drops it; it never registers a tool those settings leave out, and every
+write still needs `confirm=true`. With `core` and both project lists set to `*`
+exactly these tools register: `list_projects`, `get_project`,
+`get_current_user`, `list_work_packages`, `search_work_packages`,
+`list_my_open_work_packages`, `get_work_package`,
+`get_work_package_activities`, `get_work_package_relations`, `list_statuses`,
+`list_types`, `list_priorities`, `list_available_assignees`, `list_versions`,
+`create_work_package`, `update_work_package`, `add_work_package_comment`,
+`create_work_package_relation`, `delete_relation`, `create_time_entry`,
+`list_time_entries`. The six starter writes need a non-empty
+`OPENPROJECT_WRITE_PROJECTS`; with only `OPENPROJECT_READ_PROJECTS` set `core`
+registers 15 tools, with neither list set 4. Meetings, boards and every other
+group are not part of `core`: switch to `full` to use them, and trim `full`
+with the group switches below.
+
+`configure` asks for the profile and writes it into the config. A fresh setup
+is offered `core`; an existing setup without the key keeps `full`, and the
+answer is written out so that a later default change cannot narrow it.
+`openproject-ce-mcp doctor` shows the number of tools the profile registers and
+the number `full` would register. A tool that is missing under `core` is
+outside the profile, not broken.
+
 ## Tool Groups
 
 Each tool group below has its own `OPENPROJECT_ENABLE_<GROUP>_READ`
@@ -99,7 +129,7 @@ governs tool *visibility* (and context-token budget), not data access; the
 actual security boundary is `OPENPROJECT_READ_PROJECTS` /
 `OPENPROJECT_WRITE_PROJECTS` plus the write flags below.
 
-The core groups (projects, work packages, memberships, versions, boards,
+The default groups (projects, work packages, memberships, versions, boards,
 meetings) default `true`. Their project-bound read tools are registered only
 while `OPENPROJECT_READ_PROJECTS` is non-empty, regardless of
 `OPENPROJECT_WRITE_PROJECTS`, so with `OPENPROJECT_READ_PROJECTS` empty (the
@@ -108,13 +138,13 @@ under [Tools per switch](#tools-per-switch).
 `OPENPROJECT_ENABLE_PERSONAL_READ`, `OPENPROJECT_ENABLE_ADMIN_READ`,
 `OPENPROJECT_ENABLE_USER_SCHEDULE_READ` and `OPENPROJECT_ENABLE_EXTENDED_READ`
 default `false`; they are opt-in because they surface data with a different
-exposure profile than the core groups: `personal` your own
+exposure than the default groups: `personal` your own
 preferences/notifications, `admin` the instance-wide user/group list (names,
 logins, emails) via `list_users`/`get_user`/`list_groups`/`get_group`/
 `list_principals`, `user_schedule` per-user vacations and working hours, and
 `extended` rarely-needed metadata and reference tools. Apart from the
 project-bound tools of these groups listed below, none of that is bounded by a
-project scope the way the core groups are, so it stays out of the tool set
+project scope the way the default groups are, so it stays out of the tool set
 until explicitly requested.
 
 | Variable | Required | Default | Description |
@@ -132,7 +162,7 @@ until explicitly requested.
 
 Each write flag below requires its matching read boolean to be `true` — e.g.
 `OPENPROJECT_ENABLE_BOARD_WRITE=true` with `OPENPROJECT_ENABLE_BOARD_READ=false`
-fails at startup with a clear error. The project-scoped write flags (the core
+fails at startup with a clear error. The project-scoped write flags (the default
 groups' writes) default `true`, since the real gate for them is the project allowlists above (a write
 flag alone does nothing without a project in `OPENPROJECT_WRITE_PROJECTS`, and
 the corresponding write tools aren't even registered unless both
@@ -160,7 +190,7 @@ Privacy](#security--privacy) below.
 
 Each switch registers the tools in its row, unless the project allowlists
 above or the table after it keep a tool unregistered. While
-`OPENPROJECT_READ_PROJECTS` is empty, the read switches of the core groups
+`OPENPROJECT_READ_PROJECTS` is empty, the read switches of the default groups
 register only these project-independent tools:
 `list_project_phase_definitions`, `get_project_phase_definition`,
 `get_instance_configuration`, `list_statuses`, `get_status`,

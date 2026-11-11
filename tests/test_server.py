@@ -504,7 +504,7 @@ def test_instructions_state_ce_reality() -> None:
     assert "Community Edition" in instructions
     # The two hard limits we most want the agent to know:
     assert "do not attempt" in instructions.lower() or "not creatable" in instructions.lower()
-    assert "list_capabilities" in instructions
+    assert "capability" in instructions.lower()
 
 
 def test_serverinfo_version_is_our_version() -> None:

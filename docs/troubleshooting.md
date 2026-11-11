@@ -58,7 +58,8 @@ broken entry is never hidden by another client's entry or by the shell you run
    connection settings are tested once. A failure names its kind, for example
    a TLS/certificate error apart from an unreachable server or a timeout.
 7. **Tool registration**: which MCP tools would register with the entry's
-   settings.
+   settings. Under `OPENPROJECT_TOOL_PROFILE=core` the line also gives the count
+   the same settings register under `full`.
 8. **MCP dispatch**: that the server builds with the entry's settings and its
    tool-call dispatch rejects unknown arguments, checked in memory with a time
    limit, without starting the server or connecting. Like the tool preview, it
@@ -120,7 +121,7 @@ Connection checks run with each entry's environment plus this shell's HOME, USER
     ...
 [OK] Claude Code openproject (~/.claude.json, user scope): command: /usr/local/bin/openproject-ce-mcp
 [OK] Claude Code openproject (~/.claude.json, user scope): API: connected (Your Name)
-[OK] Claude Code openproject (~/.claude.json, user scope): Tools: <N> would register (based on settings): list_projects, ...
+[OK] Claude Code openproject (~/.claude.json, user scope): Tools: <N> would register (profile full): list_projects, ...
 [OK] Claude Code openproject (~/.claude.json, user scope): MCP: dispatch rejects unknown arguments (checked in process)
 
 [FAIL] Claude Desktop openproject (~/Library/Application Support/Claude/claude_desktop_config.json, user): OPENPROJECT_API_TOKEN is not set, and Claude Desktop cannot get it from anywhere else

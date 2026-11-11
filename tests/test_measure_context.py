@@ -11,6 +11,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from openproject_ce_mcp.tools import CORE_TOOLS
+
 _PATH = Path(__file__).resolve().parents[1] / "tools" / "measure-context.py"
 _spec = importlib.util.spec_from_file_location("measure_context", _PATH)
 measure_context = importlib.util.module_from_spec(_spec)
@@ -35,6 +37,30 @@ def test_catalog_profiles_widen_from_fresh_install_to_every_scope(capsys):
 
     assert len(counts) == 6
     assert counts == sorted(set(counts))
+
+
+def _profile_lines(out: str) -> dict[tuple[str, str], int]:
+    return {
+        (m["label"], m["profile"]): int(m["count"])
+        for m in re.finditer(r"^(?P<label>.+), profile (?P<profile>\w+) -- (?P<count>\d+) tools,", out, re.M)
+    }
+
+
+def test_profile_table_gives_core_next_to_full_for_the_same_settings(capsys):
+    asyncio.run(measure_context.measure_tool_profiles())
+    lines = _profile_lines(capsys.readouterr().out)
+
+    glama = "Glama settings (every project readable and writable)"
+    assert lines[(glama, "core")] == len(CORE_TOOLS)
+    assert lines[(glama, "core")] < lines[(glama, "full")]
+    reads = "project reads enabled, no writes"
+    assert lines[(reads, "core")] < lines[(reads, "full")]
+
+
+def test_profile_table_does_not_add_scenarios_to_the_catalog_table(capsys):
+    asyncio.run(measure_context.measure_tool_profiles())
+
+    assert _catalog_lines(capsys.readouterr().out) == {}
 
 
 def test_catalog_never_duplicates_the_server_instructions_into_tool_descriptions(capsys):

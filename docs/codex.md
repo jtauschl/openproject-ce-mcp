@@ -58,6 +58,7 @@ command = "openproject-ce-mcp"
 [mcp_servers.openproject.env]
 OPENPROJECT_BASE_URL = "https://op.example.com"
 OPENPROJECT_API_TOKEN = "replace-with-your-token"
+OPENPROJECT_TOOL_PROFILE = "core"
 OPENPROJECT_READ_PROJECTS = "my-project,other-project"
 OPENPROJECT_WRITE_PROJECTS = "my-project"
 ```

@@ -32,6 +32,13 @@
           "isSecret": true
         },
         {
+          "name": "OPENPROJECT_TOOL_PROFILE",
+          "description": "full registers every tool the settings allow, core only a compact starter set of 21 tools",
+          "isRequired": false,
+          "default": "full",
+          "choices": ["full", "core"]
+        },
+        {
           "name": "OPENPROJECT_READ_PROJECTS",
           "description": "Comma-separated project identifiers or glob patterns that may be read, * for all; unset allows none",
           "isRequired": false,

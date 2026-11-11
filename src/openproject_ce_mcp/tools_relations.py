@@ -108,7 +108,7 @@ async def create_work_package_relation(
 @register_tool
 async def delete_relation(
     ctx: Context,
-    relation_id: Annotated[int, Field(description="Relation id, from list_relations or get_work_package_relations.")],
+    relation_id: Annotated[int, Field(description="Relation id, from get_work_package_relations.")],
     confirm: Confirm = False,
 ) -> RelationWriteResult:
     """Delete a relation between work packages; this cannot be undone.

@@ -45,15 +45,15 @@ wrapped in `<user-content>` tags; only the exact tags the server writes mark a b
 look-alike is data, its `<` escaped as `&lt;`). Leave the tags off text you write: a value
 that is exactly one wrapped text loses the pair.
 
-## Capabilities: what the tools say, not what `list_capabilities` says
+## What the tools say, not what capability reports say
 
-`list_capabilities` / `get_instance_configuration` report per-user *action grants* and
+The capability and instance-configuration tools report per-user *action grants* and
 feature flags: informational, **not** the source of truth. A missing capability does **not**
 make an operation impossible. **The registered MCP tools are the authority.**
 
 ## Clearing an assigned field
 
-On `update_work_package`, the items of `bulk_update_work_packages` and `update_project`,
+On the work-package and project update tools (and bulk items),
 pass `"none"` to clear a field: work-package `assignee`, `responsible`, `version`,
 `sprint`, `parent`, `category`, `project_phase`, `estimated_time`, `remaining_time`,
 `duration`, and project `parent`. A `description` is cleared with `""`, as is a project's
@@ -73,7 +73,8 @@ before `confirm`.
 
 ## Some tool groups are opt-in
 
-An unregistered opt-in tool is disabled on purpose, not missing.
+An unregistered opt-in tool is disabled on purpose, not missing, as is a tool outside
+`OPENPROJECT_TOOL_PROFILE=core`.
 `OPENPROJECT_ENABLE_EXTENDED_READ=true` adds the `*_query_*` schema tools, `render_text`,
 `get_custom_option`, help-text, working-day, budget, revision and picker tools;
 `OPENPROJECT_ENABLE_PERSONAL_READ`, `OPENPROJECT_ENABLE_ADMIN_READ`
@@ -88,7 +89,7 @@ select a field to keep it even when `null`. Tools without `select` keep `null`. 
 tool (its result has `next_offset`) always returns it, an integer or `null`: page until `null`.
 
 On batch and bulk tools, `select` names fields of each item's entity inside the item's
-`id`/`index`/`success`/`error` wrapper: the work package itself for `get_work_packages`
+`id`/`index`/`success`/`error` wrapper: the work package itself for the batch read
 (`["id", "status"]`), the item's write result for a bulk write (`["work_package_id", "result.status"]`). Without `select`, a succeeded confirmed bulk item is lean:
 `work_package_id`, `state`, `target`, `parent_target`, `display_id`, `status`;
 `["work_package_id", "state", "result"]` selects all of it. A failed item has a `null`

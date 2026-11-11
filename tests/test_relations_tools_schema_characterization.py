@@ -113,7 +113,7 @@ def test_delete_relation_schema() -> None:
     assert tool.parameters == {
         "properties": {
             "relation_id": {
-                "description": "Relation id, from list_relations or get_work_package_relations.",
+                "description": "Relation id, from get_work_package_relations.",
                 "title": "Relation Id",
                 "type": "integer",
             },

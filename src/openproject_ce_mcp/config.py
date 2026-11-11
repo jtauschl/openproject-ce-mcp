@@ -329,6 +329,10 @@ HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
 }
 
 
+TOOL_PROFILES: tuple[str, ...] = ("full", "core")
+DEFAULT_TOOL_PROFILE = "full"
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     base_url: str
@@ -372,6 +376,7 @@ class Settings:
     retry_base_delay: float = 1.0
     retry_max_delay: float = 60.0
     log_format: str = "text"
+    tool_profile: str = DEFAULT_TOOL_PROFILE
 
     def read_enabled(self, scope: str) -> bool:
         try:
@@ -435,7 +440,15 @@ class Settings:
         max_page_size = _int_env(env, "OPENPROJECT_MAX_PAGE_SIZE", default=50, minimum=1)
         max_results = _int_env(env, "OPENPROJECT_MAX_RESULTS", default=100, minimum=1)
         log_level = _parse_log_level(env.get("OPENPROJECT_LOG_LEVEL"), "OPENPROJECT_LOG_LEVEL", default="WARNING")
-        log_format = _parse_log_format(env.get("OPENPROJECT_LOG_FORMAT"), "OPENPROJECT_LOG_FORMAT", default="text")
+        log_format = _parse_choice(
+            env.get("OPENPROJECT_LOG_FORMAT"), "OPENPROJECT_LOG_FORMAT", allowed=("text", "json"), default="text"
+        )
+        tool_profile = _parse_choice(
+            env.get("OPENPROJECT_TOOL_PROFILE"),
+            "OPENPROJECT_TOOL_PROFILE",
+            allowed=TOOL_PROFILES,
+            default=DEFAULT_TOOL_PROFILE,
+        )
         text_limit = _int_env(env, "OPENPROJECT_TEXT_LIMIT", default=DEFAULT_TEXT_LIMIT, minimum=1)
         if text_limit > TEXT_LIMIT_MAX:
             raise ConfigError(f"OPENPROJECT_TEXT_LIMIT must not exceed {TEXT_LIMIT_MAX}.")
@@ -505,6 +518,7 @@ class Settings:
             max_results=max_results,
             log_level=log_level,
             log_format=log_format,
+            tool_profile=tool_profile,
             text_limit=text_limit,
             read_projects=read_projects,
             write_projects=write_projects,
@@ -651,11 +665,10 @@ def _parse_log_level(value: str | None, name: str, *, default: str) -> str:
     return normalized
 
 
-def _parse_log_format(value: str | None, name: str, *, default: str) -> str:
+def _parse_choice(value: str | None, name: str, *, allowed: tuple[str, ...], default: str) -> str:
     if value is None or not value.strip():
         return default
     normalized = value.strip().lower()
-    allowed = {"text", "json"}
     if normalized not in allowed:
         raise ConfigError(f"{name} must be one of: {', '.join(sorted(allowed))}.")
     return normalized

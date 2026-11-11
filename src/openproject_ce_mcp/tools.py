@@ -628,6 +628,37 @@ ADDITIONAL_READ_SCOPES_BY_TOOL: dict[str, frozenset[str]] = {
 }
 
 
+# Capabilities that nearly every comparable server offers, plus the reads that complete a workflow. Listing a name here
+# never registers it: scope flags and project allowlists still decide.
+CORE_TOOLS: frozenset[str] = frozenset(
+    {
+        "list_projects",
+        "get_project",
+        "get_current_user",
+        "list_work_packages",
+        "search_work_packages",
+        "list_my_open_work_packages",
+        "get_work_package",
+        "get_work_package_activities",
+        "get_work_package_relations",
+        "list_statuses",
+        "list_types",
+        "list_priorities",
+        "list_available_assignees",
+        "list_versions",
+        "create_work_package",
+        "update_work_package",
+        "add_work_package_comment",
+        "create_work_package_relation",
+        "delete_relation",
+        "create_time_entry",
+        "list_time_entries",
+    }
+)
+
+TOOLS_BY_PROFILE: Mapping[str, frozenset[str] | None] = {"full": None, "core": CORE_TOOLS}
+
+
 def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     """Ordered, duplicate-free tool names to register for this configuration.
 
@@ -692,6 +723,9 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
         if any(settings.write_enabled(scope) for scope in CONTAINER_UPLOAD_WRITE_SCOPES):
             include(CONTAINER_UPLOAD_TOOLS)
 
+    profile_names = TOOLS_BY_PROFILE[settings.tool_profile]
+    if profile_names is not None:
+        return tuple(name for name in enabled if name in profile_names)
     return tuple(enabled)
 
 

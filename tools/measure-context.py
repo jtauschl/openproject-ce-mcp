@@ -7,7 +7,8 @@ in README.md's "How it works" section). Three parts:
 1. **Tool catalog size** (`tools/list`) — pure code, no live instance needed.
    Builds the app for several representative exposure profiles, from a fresh
    install through every write scope, and measures the serialized `tools/list`
-   payload both with and without the opt-in metadata tools.
+   payload both with and without the opt-in metadata tools. A second table
+   gives the `core` tool profile next to `full` for the same settings.
 
 2. **Response-size table** (raw API vs. list/get/search/update/bulk, each with
    and without MCP trimming, the list and bulk rows also with `select`) — needs a live OpenProject instance with a few
@@ -81,7 +82,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import live_target_guard  # noqa: E402
 
 from openproject_ce_mcp.client import OpenProjectClient  # noqa: E402
-from openproject_ce_mcp.config import TOOL_GROUPS, Settings  # noqa: E402
+from openproject_ce_mcp.config import TOOL_GROUPS, TOOL_PROFILES, Settings  # noqa: E402
 from openproject_ce_mcp.models import SortCriterion  # noqa: E402
 from openproject_ce_mcp.presentation import _to_payload, dump_payload  # noqa: E402
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
@@ -224,6 +225,19 @@ async def measure_tools_list() -> None:
         f"(if a client duplicated instructions into every one of {len(payload)} tool descriptions "
         f"instead, that would be ~{hypothetical_tokens} tokens, {round(hypothetical_tokens / raw_tokens, 1)}x)"
     )
+    print()
+
+
+async def measure_tool_profiles() -> None:
+    print("=== Tool profiles (tools/list) ===\n")
+    for label, env in (
+        ("project reads enabled, no writes", {**BASE_ENV, "OPENPROJECT_READ_PROJECTS": "*"}),
+        ("Glama settings (every project readable and writable)", GLAMA_ENV),
+    ):
+        for profile in TOOL_PROFILES:
+            payload = await _wire_catalog({**env, "OPENPROJECT_TOOL_PROFILE": profile})
+            raw = json.dumps({"tools": payload})
+            print(f"{label}, profile {profile} -- {len(payload)} tools, {len(raw)} bytes, ~{_tokens(raw)} tokens")
     print()
 
 
@@ -618,6 +632,7 @@ async def main() -> None:
         await export_catalogs(Path(sys.argv[2]))
         return
     await measure_tools_list()
+    await measure_tool_profiles()
     rows = await measure_response_sizes(keep="--keep" in sys.argv[1:])
     if rows is not None:
         measure_null_distinguishability_cost(rows)

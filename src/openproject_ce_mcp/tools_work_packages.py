@@ -366,7 +366,7 @@ async def list_work_packages(
     packages do not, so this field is present for forward compatibility
     only. Combined worst case is roughly 250 KB for custom_fields per work
     package, always finite regardless of how many custom fields exist or
-    how large their values are. get_work_packages (batch) and
+    how large their values are. The batch read and
     list_my_open_work_packages return the same custom_fields/custom_comments
     shape and caps, since they reuse this same normalization.
     OPENPROJECT_HIDE_CUSTOM_FIELDS hides individual custom_fields entries by
@@ -660,9 +660,8 @@ async def create_work_package(
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope. Each entry has a `message`
     and `error_codes` (OpenProject's error classes, the same in every language).
-    If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in
-    server completion order, not call order; use bulk_create_work_packages instead when relative
-    ID/creation order across a batch matters.
+    If you issue several creates concurrently, OpenProject assigns IDs in server completion order, not call
+    order; create them one after another when relative ID/creation order across a batch matters.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)

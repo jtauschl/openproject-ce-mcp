@@ -50,7 +50,7 @@ from openproject_ce_mcp.client import (
     PermissionDeniedError,
     TransportError,
 )
-from openproject_ce_mcp.config import TOOL_GROUPS, ConfigError, Settings, tool_exposure_violations
+from openproject_ce_mcp.config import TOOL_GROUPS, TOOL_PROFILES, ConfigError, Settings, tool_exposure_violations
 from openproject_ce_mcp.config import _parse_bool as _runtime_parse_bool
 
 # This file lives at src/openproject_ce_mcp/setup_cli.py inside a checkout. The
@@ -971,6 +971,14 @@ def _prompt_bool(label: str, default: bool = False) -> bool:
     return answer in ("y", "yes")
 
 
+def _prompt_tool_profile(default: str) -> str:
+    while True:
+        answer = _prompt("Tool profile (core/full)", default).lower()
+        if answer in TOOL_PROFILES:
+            return answer
+        print(f"  ! Enter one of: {', '.join(TOOL_PROFILES)}.")
+
+
 def _bool_from_env(env: dict[str, str], key: str, fallback: bool = False) -> bool:
     """Reads the SAME truthy/falsy vocabulary as runtime's _parse_bool (config.py) --
     NOT a hand-maintained second one. A narrower wizard-only vocabulary previously
@@ -1396,6 +1404,15 @@ def _collect_credentials(
                     write[group.key] = False
 
         print()
+        print("Tool profile — 'core' registers a compact starter set of about 20 tools (projects, work packages,")
+        print("relations, time entries); 'full' registers every tool your settings allow. Scopes still apply.")
+        # A config without the key means `full` (see _minimal_env: the answer is always written out).
+        stored_profile = existing.get("OPENPROJECT_TOOL_PROFILE", "").strip().lower()
+        if stored_profile not in TOOL_PROFILES:
+            stored_profile = "full" if existing else "core"
+        tool_profile = _prompt_tool_profile(stored_profile)
+
+        print()
 
         hide_project = existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", "")
         hide_wp = existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "")
@@ -1489,6 +1506,7 @@ def _collect_credentials(
         env: dict[str, str] = {
             "OPENPROJECT_BASE_URL": base_url,
             "OPENPROJECT_API_TOKEN": token,
+            "OPENPROJECT_TOOL_PROFILE": tool_profile,
             "OPENPROJECT_READ_PROJECTS": read_projects,
             "OPENPROJECT_WRITE_PROJECTS": write_projects,
             **tool_env,
@@ -1682,7 +1700,7 @@ _DEFAULT_SETTINGS = Settings.from_env(
 )
 
 # (env key, Settings attribute) — every generated env key except BASE_URL/
-# API_TOKEN (always kept).
+# API_TOKEN/TOOL_PROFILE (always kept).
 _MINIMAL_ENV_FIELD_MAP: tuple[tuple[str, str], ...] = (
     ("OPENPROJECT_READ_PROJECTS", "read_projects"),
     ("OPENPROJECT_WRITE_PROJECTS", "write_projects"),
@@ -1730,6 +1748,9 @@ def _minimal_env(env: dict[str, str], candidate: Settings) -> dict[str, str]:
     minimal: dict[str, str] = {
         "OPENPROJECT_BASE_URL": env["OPENPROJECT_BASE_URL"],
         "OPENPROJECT_API_TOKEN": env["OPENPROJECT_API_TOKEN"],
+        # Always written, even when it equals the default: a config that names its profile stays what it is if
+        # the default ever changes.
+        "OPENPROJECT_TOOL_PROFILE": env["OPENPROJECT_TOOL_PROFILE"],
     }
     for env_key, attr in _MINIMAL_ENV_FIELD_MAP:
         if getattr(candidate, attr) != getattr(_DEFAULT_SETTINGS, attr):

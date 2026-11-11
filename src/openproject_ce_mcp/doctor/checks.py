@@ -9,7 +9,7 @@ import re
 import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..config import TOOL_GROUPS, ConfigConsistencyError, ConfigError, Settings
@@ -241,7 +241,16 @@ def preview_tools(evaluations: Sequence[Evaluation]) -> None:
             names = tool_names(settings)
             previews.append((settings, evaluation.assumed_local, names))
         sample = ", ".join(names[:5])
-        evaluation.findings.append(ok(f"Tools: {len(names)} would register (based on settings): {sample}, ..."))
+        evaluation.findings.append(ok(f"Tools: {len(names)} would register ({_profile_note(settings)}): {sample}, ..."))
+
+
+def _profile_note(settings: Settings) -> str:
+    if settings.tool_profile == "full":
+        return "profile full"
+    from ..tools import enabled_tool_names
+
+    under_full = len(enabled_tool_names(replace(settings, tool_profile="full")))
+    return f"profile {settings.tool_profile}; {under_full} under full"
 
 
 def tool_names(settings: Settings) -> list[str]:

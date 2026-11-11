@@ -16,7 +16,7 @@ import pytest
 import openproject_ce_mcp.tools_projects as project_tools
 import openproject_ce_mcp.tools_work_packages as work_package_tools
 from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION
-from openproject_ce_mcp.config import READ_SCOPE_ENV_VAR, TOOL_GROUPS
+from openproject_ce_mcp.config import DEFAULT_TOOL_PROFILE, READ_SCOPE_ENV_VAR, TOOL_GROUPS, TOOL_PROFILES
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, _build_parser
 from openproject_ce_mcp.tools import (
     _PROJECT_SCOPED_READ_TOOLS,
@@ -24,6 +24,7 @@ from openproject_ce_mcp.tools import (
     ATTACHMENT_UPLOAD_TOOLS,
     CONTAINER_UPLOAD_TOOLS,
     CONTAINER_UPLOAD_WRITE_SCOPES,
+    CORE_TOOLS,
     PERSONAL_MUTATION_TOOLS,
     READ_TOOLS_BY_SCOPE,
     WORK_PACKAGE_UPLOAD_TOOLS,
@@ -314,10 +315,10 @@ def test_server_instructions_name_every_field_the_update_validator_clears() -> N
     assert {"assignee", "sprint", "estimated_time", "duration", "parent"} <= clearable
 
     section = _instructions_section("Clearing an assigned field")
-    named = re.search(r"work-package (.*?), and project `parent`", section, re.DOTALL)
+    named = re.search(r"clear a field: work-package (.*?), and project `parent`", section, re.DOTALL)
     assert named
     assert set(re.findall(r"`([^`]+)`", named.group(1))) == clearable
-    assert "`bulk_update_work_packages`" in section
+    assert "bulk items" in section
     assert '`description` is cleared with `""`' in section.replace("\n", " ")
 
 
@@ -373,3 +374,25 @@ def test_server_instructions_state_that_opt_in_write_tools_need_their_write_flag
         assert write.default is False, write.env_var
         assert re.fullmatch(r"OPENPROJECT_ENABLE_[A-Z_]+_WRITE", write.env_var), write.env_var
     assert "`OPENPROJECT_ENABLE_*_WRITE` flag (default off)" in _instructions_section("Some tool groups are opt-in")
+
+
+def _tool_profile_section() -> str:
+    text = CONFIGURATION.read_text(encoding="utf-8")
+    match = re.search(r"^## Tool Profile\n(.*?)(?=^## )", text, re.DOTALL | re.MULTILINE)
+    assert match
+    return match.group(1)
+
+
+def test_the_configuration_doc_states_the_tool_profile_variable_and_its_values() -> None:
+    section = _tool_profile_section()
+
+    row = next(line for line in section.splitlines() if line.startswith("| `OPENPROJECT_TOOL_PROFILE`"))
+    assert f"| `{DEFAULT_TOOL_PROFILE}` |" in row
+    assert all(f"`{profile}`" in row for profile in TOOL_PROFILES)
+
+
+def test_the_configuration_doc_lists_exactly_the_core_profile_tools() -> None:
+    section = " ".join(_tool_profile_section().split())
+    listed = section.split("exactly these tools register:")[1].split(". The six starter writes")[0]
+
+    assert set(re.findall(r"`([a-z_]+)`", listed)) == CORE_TOOLS

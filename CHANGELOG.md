@@ -23,6 +23,8 @@ to install and discover.
 - `get_work_package` lists the statuses OpenProject offers the current user for
   a work package when `include_allowed_statuses` is set.
 - A rejected unknown argument names the closest allowed one, e.g. `id (did you mean work_package_id?)`.
+- `OPENPROJECT_TOOL_PROFILE=core` registers only a starter set of 21 tools; `configure` asks for it and `doctor` shows both counts.
+- A rejected time entry activity name lists the allowed activities.
 - `update_work_package` and `bulk_update_work_packages` edit a stored description in place with `description_append` and
   `description_replace`.
 - `update_work_package_comment` edits a stored comment in place with `comment_append` and `comment_replace`.
@@ -55,6 +57,7 @@ to install and discover.
 
 ### Changed
 
+- Tool descriptions and the server instructions no longer name a tool outside the `core` starter set; the docs call the six default-on groups "default groups".
 - `OPENPROJECT_VERIFY_SSL=false` on an `https://` base URL logs a startup warning naming the host and pointing to
   `SSL_CERT_FILE`; `doctor` repeats the hint.
 - **Breaking:** `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` match a project's identifier or numeric id
