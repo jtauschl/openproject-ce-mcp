@@ -376,6 +376,14 @@ def test_server_instructions_state_that_opt_in_write_tools_need_their_write_flag
     assert "`OPENPROJECT_ENABLE_*_WRITE` flag (default off)" in _instructions_section("Some tool groups are opt-in")
 
 
+def test_server_instructions_name_every_opt_in_read_flag() -> None:
+    section = _instructions_section("Some tool groups are opt-in")
+    opt_in_reads = [group.read_env_var for group in TOOL_GROUPS if not group.read_default]
+
+    assert opt_in_reads
+    assert [flag for flag in opt_in_reads if f"`{flag}" not in section] == []
+
+
 def _tool_profile_section() -> str:
     text = CONFIGURATION.read_text(encoding="utf-8")
     match = re.search(r"^## Tool Profile\n(.*?)(?=^## )", text, re.DOTALL | re.MULTILINE)
