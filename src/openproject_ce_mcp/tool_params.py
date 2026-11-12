@@ -167,13 +167,16 @@ Offset = Annotated[int, Field(description="1-based page number; pass the previou
 Limit = Annotated[int | None, Field(description="Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.")]
 
 
-def _top_level_select_fields(row_type: type, wrapper_fields: frozenset[str]) -> frozenset[str]:
-    return frozenset(field.name for field in dataclass_fields(row_type)) | wrapper_fields
+def _top_level_select_fields(
+    row_type: type, wrapper_fields: frozenset[str], unfilled: frozenset[str]
+) -> frozenset[str]:
+    return (frozenset(field.name for field in dataclass_fields(row_type)) - unfilled) | wrapper_fields
 
 
-def _nested_select_fields(nested: Mapping[str, type] | None) -> dict[str, frozenset[str]]:
+def _nested_select_fields(nested: Mapping[str, type] | None, unfilled: frozenset[str]) -> dict[str, frozenset[str]]:
     return {
-        prefix: frozenset(field.name for field in dataclass_fields(model)) for prefix, model in (nested or {}).items()
+        prefix: frozenset(field.name for field in dataclass_fields(model) if f"{prefix}.{field.name}" not in unfilled)
+        for prefix, model in (nested or {}).items()
     }
 
 
@@ -182,10 +185,17 @@ def allowed_select_fields(
     *,
     wrapper_fields: frozenset[str] = frozenset(),
     nested: Mapping[str, type] | None = None,
+    unfilled: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
-    """Every name ``select`` accepts for rows of ``row_type``, nested ones as ``<field>.<name>``."""
-    nested_names = {f"{prefix}.{name}" for prefix, names in _nested_select_fields(nested).items() for name in names}
-    return _top_level_select_fields(row_type, wrapper_fields) | nested_names
+    """Every name ``select`` accepts for rows of ``row_type``, nested ones as ``<field>.<name>``.
+
+    ``unfilled`` names fields this tool's producer never sets (a nested one as ``<field>.<name>``): offering
+    one would hand back ``null`` that reads like "no value" instead of "never read".
+    """
+    nested_names = {
+        f"{prefix}.{name}" for prefix, names in _nested_select_fields(nested, unfilled).items() for name in names
+    }
+    return _top_level_select_fields(row_type, wrapper_fields, unfilled) | nested_names
 
 
 def select_field(
@@ -193,9 +203,10 @@ def select_field(
     *,
     wrapper_fields: frozenset[str] = frozenset(),
     nested: Mapping[str, type] | None = None,
+    unfilled: frozenset[str] = frozenset(),
 ) -> FieldInfo:
     """Schema description for a ``select`` parameter, naming every field it accepts."""
-    allowed = ", ".join(sorted(_top_level_select_fields(row_type, wrapper_fields)))
-    for prefix, names in sorted(_nested_select_fields(nested).items()):
+    allowed = ", ".join(sorted(_top_level_select_fields(row_type, wrapper_fields, unfilled)))
+    for prefix, names in sorted(_nested_select_fields(nested, unfilled).items()):
         allowed += f"; {prefix}.<field> for {', '.join(sorted(names))}"
     return Field(description=f"Fields to return; a requested unset field comes back as null. Allowed: {allowed}.")

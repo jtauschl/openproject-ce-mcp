@@ -421,7 +421,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Fields to return; a requested unset "
                     "field comes back as null. Allowed: "
                     "action, error, index, message, "
-                    "parent_target, payload, project, "
+                    "payload, project, "
                     "ready, result, state, success, target, "
                     "validation_errors, work_package_id; "
                     "result.<field> for allowed_statuses, "
@@ -5093,7 +5093,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "list_relations": {
-        "description_hash": "8d2e3870f3aec488c52410574dac280928b48d51cef9096d222991f20e24faa3",
+        "description_hash": "1c9bd6cbb3e316b784fac736f6beaaa18a76dd978aec986964d45419685d16ee",
         "input_schema": {
             "properties": {
                 "relation_type": {
@@ -5116,7 +5116,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: description, description_length, description_truncated, from_id, from_subject, id, queried_perspective, to_id, to_subject, type.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: description, description_length, description_truncated, from_id, from_subject, id, to_id, to_subject, type.",
                     "title": "Select",
                 },
             },

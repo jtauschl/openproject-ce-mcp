@@ -485,6 +485,7 @@ def test_bulk_select_description_lists_top_level_and_nested_fields(catalog: dict
     top_level, nested = _allowed_lists(_properties(catalog[tool])["select"]["description"])
     prefix, nested_fields = nested.split(" for ", 1)
 
-    assert set(top_level.split(", ")) == _field_names(WorkPackageWriteResult) | {"index", "success", "error"}
+    unfilled = {"parent_target"} if tool == "bulk_create_work_packages" else set()
+    assert set(top_level.split(", ")) == _field_names(WorkPackageWriteResult) - unfilled | {"index", "success", "error"}
     assert prefix == "result.<field>"
     assert set(nested_fields.split(", ")) == _field_names(WorkPackageDetail)

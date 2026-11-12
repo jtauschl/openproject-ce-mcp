@@ -946,6 +946,9 @@ def _resolve_bulk_parent_field(item: Mapping[str, Any], index: int) -> tuple[Any
 
 _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(BulkCreateWorkPackageItem.__annotations__)
 
+# A create names its parent in `target`; `parent_target` belongs to the update.
+_BULK_CREATE_UNFILLED = frozenset({"parent_target"})
+
 
 @register_tool
 async def bulk_create_work_packages(
@@ -954,7 +957,10 @@ async def bulk_create_work_packages(
     select: Annotated[
         list[str] | None,
         select_field(
-            WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS, nested={"result": WorkPackageDetail}
+            WorkPackageWriteResult,
+            wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
+            nested={"result": WorkPackageDetail},
+            unfilled=_BULK_CREATE_UNFILLED,
         ),
     ] = None,
     confirm: BulkConfirm = False,
@@ -1023,6 +1029,7 @@ async def bulk_create_work_packages(
         row_type=WorkPackageWriteResult,
         wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
         nested={"result": WorkPackageDetail},
+        unfilled=_BULK_CREATE_UNFILLED,
     )
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):

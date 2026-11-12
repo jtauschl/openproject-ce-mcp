@@ -1085,7 +1085,8 @@ async def test_bulk_select_error_for_a_bare_nested_field_is_exact(tool, item) ->
 async def test_bulk_select_error_for_an_unknown_top_level_field_is_exact(tool, item) -> None:
     from openproject_ce_mcp.models import WorkPackageWriteResult
 
-    allowed = ", ".join(sorted({*_field_names(WorkPackageWriteResult), "index", "success", "error"}))
+    unfilled = {"parent_target"} if tool is bulk_create_work_packages else set()
+    allowed = ", ".join(sorted({*set(_field_names(WorkPackageWriteResult)) - unfilled, "index", "success", "error"}))
 
     with pytest.raises(ValueError) as error:
         await tool(FakeContext(None), items=[item], select=["bogus"])  # type: ignore[arg-type]

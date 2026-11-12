@@ -912,6 +912,7 @@ def _validate_select(
     row_type: type,
     wrapper_fields: frozenset[str] = frozenset(),
     nested: Mapping[str, type] | None = None,
+    unfilled: frozenset[str] = frozenset(),
 ) -> list[str] | None:
     """Validate a field-selection list against a result-row dataclass.
 
@@ -929,8 +930,8 @@ def _validate_select(
     if select is None:
         return None
     nested = nested or {}
-    row_fields = allowed_select_fields(row_type)
-    accepted = allowed_select_fields(row_type, wrapper_fields=wrapper_fields, nested=nested)
+    row_fields = allowed_select_fields(row_type, unfilled=unfilled)
+    accepted = allowed_select_fields(row_type, wrapper_fields=wrapper_fields, nested=nested, unfilled=unfilled)
     chosen: list[str] = []
     wrapper_only = False
     for raw in select:
