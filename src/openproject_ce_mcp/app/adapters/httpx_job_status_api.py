@@ -21,6 +21,7 @@ from ...models import JobStatusDetail
 from ..ports.job_status_api import JobStatusRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
@@ -88,7 +89,9 @@ def normalize_job_status(payload: dict[str, Any]) -> JobStatusDetail:
         status=_trim_text(
             payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
         ),
-        message=_trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT),
+        message=_delimit_user_content(
+            _trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT)
+        ),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
         project=_link_title(project_link),
         created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT)

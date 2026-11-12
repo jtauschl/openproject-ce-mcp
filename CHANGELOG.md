@@ -10,6 +10,7 @@ and 0.2.0 the first one published to PyPI.
 
 ### Fixed
 
+- `get_job_status` returns the job message between the `<user-content>` tags like every other long-form text.
 - A redirect, an absolute URL or a link that leaves the instance's origin or `/api/v3` is refused before it is sent; a redirected write could replay its body at another origin. `OPENPROJECT_BASE_URL` with credentials in the URL is refused.
 - The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
 - `get_project_work_package_context` honours the hidden-field settings through `OPENPROJECT_HIDE_PROJECT_WORK_PACKAGE_CONTEXT_FIELDS`; it returned names and option titles unmasked.
