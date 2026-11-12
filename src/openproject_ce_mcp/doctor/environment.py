@@ -10,16 +10,47 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from ..config import ConfigConsistencyError
+from ..config import API_TOKEN_ENV_VAR, API_TOKEN_VAR_ENV_VAR, ENV_VAR_NAME, ConfigConsistencyError
 from .report import Finding
 
-REQUIRED_KEYS = ("OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN")
+BASE_URL_KEY = "OPENPROJECT_BASE_URL"
+REQUIRED_KEYS = (BASE_URL_KEY, API_TOKEN_ENV_VAR)
 # Syntactically valid values that let the remaining keys be validated while a
 # required key is missing or unresolvable; an entry using one is never probed.
+STAND_IN_TOKEN = "stand-in-token"
+# The name given to a stand-in token when the real name is a placeholder this doctor cannot resolve.
+STAND_IN_TOKEN_VARIABLE = "STAND_IN_TOKEN_VARIABLE"
 STAND_INS = {
-    "OPENPROJECT_BASE_URL": "https://openproject.invalid",
-    "OPENPROJECT_API_TOKEN": "stand-in-token",
+    BASE_URL_KEY: "https://openproject.invalid",
+    API_TOKEN_ENV_VAR: STAND_IN_TOKEN,
 }
+# What a finding calls the variable that OPENPROJECT_API_TOKEN_VAR names: the name itself is never printed, because
+# a token pasted into OPENPROJECT_API_TOKEN_VAR would end up in output that people paste into issues.
+NAMED_TOKEN_LABEL = f"the variable that {API_TOKEN_VAR_ENV_VAR} names"
+
+
+def token_variable(values: Mapping[str, str]) -> str | None:
+    """The variable that `OPENPROJECT_API_TOKEN_VAR` names, or None when it is unset or not a name (the settings
+    check reports the latter)."""
+    named = (values.get(API_TOKEN_VAR_ENV_VAR) or "").strip()
+    return named if ENV_VAR_NAME.fullmatch(named) else None
+
+
+def token_keys(values: Mapping[str, str]) -> tuple[str, ...]:
+    """The variable that must hold the token: `OPENPROJECT_API_TOKEN`, or the one `OPENPROJECT_API_TOKEN_VAR` names.
+    None when that value is not a name: the settings check reports it, and a stand-in would hide it."""
+    if not (values.get(API_TOKEN_VAR_ENV_VAR) or "").strip():
+        return (API_TOKEN_ENV_VAR,)
+    named = token_variable(values)
+    return () if named is None else (named,)
+
+
+def with_stand_ins(values: Mapping[str, str]) -> dict[str, str]:
+    """`values` with a stand-in for what they leave out, so the other settings can be validated on their own."""
+    stand_ins = {BASE_URL_KEY: STAND_INS[BASE_URL_KEY]}
+    stand_ins |= dict.fromkeys(token_keys(values), STAND_IN_TOKEN)
+    return {**stand_ins, **values}
+
 
 # The minimum a Python child needs to start and open sockets; without SYSTEMROOT a
 # Windows child cannot create sockets at all.

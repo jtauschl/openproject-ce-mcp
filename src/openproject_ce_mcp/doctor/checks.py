@@ -12,8 +12,20 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from ..config import TOOL_GROUPS, ConfigConsistencyError, ConfigError, Settings
-from .environment import REQUIRED_KEYS, STAND_INS, EffectiveEnv, EnvMap, HostContext, certain_contradiction
+from ..config import API_TOKEN_VAR_ENV_VAR, TOOL_GROUPS, ConfigConsistencyError, ConfigError, Settings
+from .environment import (
+    BASE_URL_KEY,
+    NAMED_TOKEN_LABEL,
+    STAND_IN_TOKEN,
+    STAND_IN_TOKEN_VARIABLE,
+    STAND_INS,
+    EffectiveEnv,
+    EnvMap,
+    HostContext,
+    certain_contradiction,
+    token_keys,
+    token_variable,
+)
 from .hosts import Host, Subject, launcher_package
 from .probe import ProbeResult
 from .report import Finding, Level, fail, info, ok, unverified, warn
@@ -72,31 +84,46 @@ def _check_settings(host: Host, effective: EffectiveEnv, evaluation: Evaluation)
     """Resolve placeholders and required keys, validate as the server would, and add warnings."""
     values = effective.env.copy()
     findings = evaluation.findings
-    required = {values.fold(key): key for key in REQUIRED_KEYS}
+    token_var = token_variable(values)
+    token_var_folded = None if token_var is None else values.fold(token_var)
+    required_keys = (BASE_URL_KEY, *token_keys(values))
+    required = {values.fold(key): key for key in required_keys}
     probe_ready = True
+    unresolved = set(effective.unresolved)
+    if values.fold(API_TOKEN_VAR_ENV_VAR) in unresolved:
+        unresolved.discard(values.fold(API_TOKEN_VAR_ENV_VAR))
+        # The name is unknown: the settings are validated with a stand-in name and a stand-in token under it.
+        values[API_TOKEN_VAR_ENV_VAR] = STAND_IN_TOKEN_VARIABLE
+        values[STAND_IN_TOKEN_VARIABLE] = STAND_IN_TOKEN
+        findings.append(unverified(f"{API_TOKEN_VAR_ENV_VAR} uses a placeholder this doctor cannot resolve"))
+        probe_ready = False
+        required = {values.fold(BASE_URL_KEY): BASE_URL_KEY}
     for name in list(values):
         folded = values.fold(name)
-        if folded not in effective.unresolved:
+        if folded not in unresolved:
             continue
         probe_ready = False
         if folded in required:
-            values[name] = STAND_INS[required[folded]]
-            findings.append(unverified(f"{name} uses a placeholder this doctor cannot resolve"))
+            values[name] = STAND_INS.get(required[folded], STAND_IN_TOKEN)
+            findings.append(
+                unverified(f"{_label(folded, token_var_folded, name)} uses a placeholder this doctor cannot resolve")
+            )
         else:
             del values[name]
             findings.append(
                 unverified(f"{name} uses a placeholder this doctor cannot resolve; checked with its default")
             )
-    for key in REQUIRED_KEYS:
+    for key in required_keys:
         if key in values:
             continue
         probe_ready = False
+        label = _label(values.fold(key), token_var_folded, key)
         reason = effective.may_supply.get(values.fold(key)) or effective.inherits
         if reason:
-            findings.append(unverified(f"{key} is not set in the entry; {reason}"))
+            findings.append(unverified(f"{label} is not set in the entry; {reason}"))
         else:
-            findings.append(fail(f"{key} is not set, and {host.label} cannot get it from anywhere else"))
-        values[key] = STAND_INS[key]
+            findings.append(fail(f"{label} is not set, and {host.label} cannot get it from anywhere else"))
+        values[key] = STAND_INS.get(key, STAND_IN_TOKEN)
 
     try:
         settings = Settings.from_env(environ=values)
@@ -120,6 +147,10 @@ def _check_settings(host: Host, effective: EffectiveEnv, evaluation: Evaluation)
     evaluation.scope_summary = _project_scope_summary(settings)
     findings += _insecure_findings(settings)
     return values, probe_ready
+
+
+def _label(folded: str, token_var_folded: str | None, name: str) -> str:
+    return NAMED_TOKEN_LABEL if folded == token_var_folded else name
 
 
 def _value_known(folded: str, effective: EffectiveEnv) -> bool:
@@ -204,6 +235,9 @@ def probe_key(evaluation: Evaluation) -> tuple[object, ...]:
     assert env is not None
     relevant = {env.fold(name) for name in _PROXY_AND_CA_KEYS}
     prefix = env.fold("OPENPROJECT_")
+    token_var = token_variable(env)
+    if token_var is not None:
+        relevant.add(env.fold(token_var))
     items = [
         (env.fold(name), env[name]) for name in env if env.fold(name).startswith(prefix) or env.fold(name) in relevant
     ]

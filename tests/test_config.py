@@ -862,3 +862,121 @@ def test_the_token_is_unwrapped_only_where_it_is_used() -> None:
                 found[path.relative_to(_ROOT).as_posix()] = count
 
     assert found == _UNWRAP_SITES
+
+
+# ── OPENPROJECT_API_TOKEN_VAR: the token is read from the variable it names ─────
+
+_NAMED_TOKEN = "TOKEN_OP_EXAMPLE_USER"
+_SECRET = "secret-value-0123456789"
+_PASTED_INVALID = "opapi-0a1b2c3d4e5f-pasted-token"
+_PASTED_VALID_SHAPE = "a3f9" * 16
+
+
+def _token_env(**extra: str) -> dict[str, str]:
+    return {"OPENPROJECT_BASE_URL": "https://op.example.com", **extra}
+
+
+def test_the_token_is_read_from_the_variable_that_the_name_variable_gives() -> None:
+    settings = Settings.from_env(_token_env(OPENPROJECT_API_TOKEN_VAR=_NAMED_TOKEN, **{_NAMED_TOKEN: f"  {_SECRET} "}))
+
+    assert settings.api_token.get_secret_value() == _SECRET
+
+
+@pytest.mark.parametrize("name", ["A", "_a1", "TOKEN_OP_X9", "token_lower"])
+def test_a_variable_name_of_letters_digits_and_underscores_is_accepted(name: str) -> None:
+    settings = Settings.from_env(_token_env(OPENPROJECT_API_TOKEN_VAR=f" {name} ", **{name: _SECRET}))
+
+    assert settings.api_token.get_secret_value() == _SECRET
+
+
+def test_the_direct_token_is_used_when_the_name_variable_is_empty() -> None:
+    settings = Settings.from_env(_token_env(OPENPROJECT_API_TOKEN=_SECRET, OPENPROJECT_API_TOKEN_VAR="  "))
+
+    assert settings.api_token.get_secret_value() == _SECRET
+
+
+def test_a_missing_token_names_both_ways_to_set_it() -> None:
+    with pytest.raises(ConfigError) as raised:
+        Settings.from_env(_token_env())
+
+    assert str(raised.value) == (
+        "OPENPROJECT_API_TOKEN is required; or set OPENPROJECT_API_TOKEN_VAR to the name of the variable that holds it."
+    )
+
+
+@pytest.mark.parametrize("name", ["1X", "A-B", "A B", "A=B", "A.B", "A$", _PASTED_INVALID])
+def test_a_value_that_is_not_a_variable_name_is_refused(name: str) -> None:
+    with pytest.raises(ConfigError, match="must be an environment variable name"):
+        Settings.from_env(_token_env(OPENPROJECT_API_TOKEN_VAR=name, **{name: _SECRET}))
+
+
+@pytest.mark.parametrize("held", [None, "", "   "])
+def test_a_named_variable_that_is_unset_or_empty_is_refused(held: str | None) -> None:
+    env = _token_env(OPENPROJECT_API_TOKEN_VAR=_NAMED_TOKEN)
+    if held is not None:
+        env[_NAMED_TOKEN] = held
+
+    with pytest.raises(ConfigError, match="The environment variable that OPENPROJECT_API_TOKEN_VAR names is not set"):
+        Settings.from_env(env)
+
+
+def test_both_ways_set_are_a_contradiction_not_a_precedence() -> None:
+    with pytest.raises(ConfigConsistencyError) as raised:
+        Settings.from_env(
+            _token_env(OPENPROJECT_API_TOKEN=_SECRET, OPENPROJECT_API_TOKEN_VAR=_NAMED_TOKEN, **{_NAMED_TOKEN: _SECRET})
+        )
+
+    ((message, keys),) = raised.value.violations
+    assert "both set; set only one" in message
+    assert keys == ("OPENPROJECT_API_TOKEN", "OPENPROJECT_API_TOKEN_VAR")
+
+
+def test_both_ways_set_are_reported_even_when_the_named_variable_is_not_a_usable_name() -> None:
+    with pytest.raises(ConfigConsistencyError):
+        Settings.from_env(_token_env(OPENPROJECT_API_TOKEN=_SECRET, OPENPROJECT_API_TOKEN_VAR="not a name"))
+
+
+def _frames(error: BaseException):
+    traceback = error.__traceback__
+    while traceback is not None:
+        yield traceback.tb_frame
+        traceback = traceback.tb_next
+
+
+_FAILING_SCENARIOS = {
+    "invalid name": _token_env(OPENPROJECT_API_TOKEN_VAR=_PASTED_INVALID, **{_PASTED_INVALID: _SECRET}),
+    "pasted token that looks like a name": _token_env(OPENPROJECT_API_TOKEN_VAR=_PASTED_VALID_SHAPE),
+    "named variable unset": _token_env(OPENPROJECT_API_TOKEN_VAR=_NAMED_TOKEN),
+    "both set": _token_env(
+        OPENPROJECT_API_TOKEN=_SECRET, OPENPROJECT_API_TOKEN_VAR=_NAMED_TOKEN, **{_NAMED_TOKEN: _SECRET}
+    ),
+    "a later error after the token was read": _token_env(
+        OPENPROJECT_API_TOKEN_VAR=_NAMED_TOKEN, OPENPROJECT_TIMEOUT="soon", **{_NAMED_TOKEN: _SECRET}
+    ),
+    "neither": _token_env(),
+}
+
+
+@pytest.mark.parametrize("scenario", sorted(_FAILING_SCENARIOS))
+def test_no_failure_shows_a_token_or_a_pasted_name_and_no_frame_holds_the_token(
+    scenario: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    env = _FAILING_SCENARIOS[scenario]
+    with caplog.at_level("DEBUG"), pytest.raises(ConfigError) as raised:
+        Settings.from_env(env)
+
+    shown = " ".join([str(raised.value), repr(raised.value), *(record.getMessage() for record in caplog.records)])
+    for secret in (_SECRET, _PASTED_INVALID, _PASTED_VALID_SHAPE):
+        assert secret not in shown
+    for frame in _frames(raised.value):
+        for local in frame.f_locals.values():
+            if local is env:
+                continue
+            assert not (isinstance(local, str) and _SECRET in local), frame.f_code.co_name
+
+
+def test_settings_keep_the_token_out_of_their_repr_when_it_comes_from_a_named_variable() -> None:
+    settings = Settings.from_env(_token_env(OPENPROJECT_API_TOKEN_VAR=_NAMED_TOKEN, **{_NAMED_TOKEN: _SECRET}))
+
+    assert _SECRET not in repr(settings)
+    assert _NAMED_TOKEN not in repr(settings)

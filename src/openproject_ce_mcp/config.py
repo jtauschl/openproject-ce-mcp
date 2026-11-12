@@ -401,9 +401,7 @@ class Settings:
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
         env = os.environ if environ is None else environ
         base_url = _parse_base_url(env.get("OPENPROJECT_BASE_URL"))
-        # Wrapped at once: a traceback tool that captures locals must not find the plain token in this frame. `env` is the
-        # caller's mapping and stays the caller's.
-        api_token = SecretStr(_require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN"))
+        api_token, token_sources_conflict = _api_token(env)
         read_projects = _parse_project_scope(env, "OPENPROJECT_READ_PROJECTS")
         write_projects = _parse_project_scope(env, "OPENPROJECT_WRITE_PROJECTS")
         group_flags = {g.read_attr: _bool_env(env, g.read_env_var, default=g.read_default) for g in TOOL_GROUPS}
@@ -479,6 +477,14 @@ class Settings:
         # Every single-value check above runs before these cross-value checks, so a
         # ConfigConsistencyError means each value parsed on its own.
         violations: list[tuple[str, tuple[str, ...]]] = []
+        if token_sources_conflict:
+            violations.append(
+                (
+                    "OPENPROJECT_API_TOKEN and OPENPROJECT_API_TOKEN_VAR are both set; set only one "
+                    "(an entry can clear an inherited OPENPROJECT_API_TOKEN with an empty value).",
+                    (API_TOKEN_ENV_VAR, API_TOKEN_VAR_ENV_VAR),
+                )
+            )
         if retry_max_delay < retry_base_delay:
             violations.append(
                 (
@@ -547,6 +553,38 @@ def configure_logging(level: str, log_format: str = "text") -> None:
     formatter = build_formatter(log_format)
     for handler in root.handlers:
         handler.setFormatter(formatter)
+
+
+API_TOKEN_ENV_VAR = "OPENPROJECT_API_TOKEN"
+API_TOKEN_VAR_ENV_VAR = "OPENPROJECT_API_TOKEN_VAR"
+ENV_VAR_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _api_token(env: Mapping[str, str]) -> tuple[SecretStr, bool]:
+    """The token, wrapped at once so that no frame holds the plain value, and whether both sources are set.
+
+    `OPENPROJECT_API_TOKEN_VAR` names the variable that holds the token for a host that forwards a variable only
+    under its own name. No error repeats the name it was given: a token pasted there is a typical mistake.
+    """
+    named = (env.get(API_TOKEN_VAR_ENV_VAR) or "").strip()
+    direct = (env.get(API_TOKEN_ENV_VAR) or "").strip()
+    if not named:
+        if not direct:
+            raise ConfigError(
+                f"{API_TOKEN_ENV_VAR} is required; or set {API_TOKEN_VAR_ENV_VAR} to the name of the variable "
+                "that holds it."
+            )
+        return SecretStr(direct), False
+    if direct:
+        return SecretStr(direct), True
+    if ENV_VAR_NAME.fullmatch(named) is None:
+        raise ConfigError(
+            f"{API_TOKEN_VAR_ENV_VAR} must be an environment variable name: letters, digits and underscores, "
+            "not starting with a digit."
+        )
+    if not (env.get(named) or "").strip():
+        raise ConfigError(f"The environment variable that {API_TOKEN_VAR_ENV_VAR} names is not set or is empty.")
+    return SecretStr(env[named].strip()), False
 
 
 def _require_non_empty(value: str | None, name: str) -> str:

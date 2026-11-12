@@ -15,14 +15,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..config import API_TOKEN_ENV_VAR, API_TOKEN_VAR_ENV_VAR
 from .environment import (
-    REQUIRED_KEYS,
+    BASE_URL_KEY,
     EffectiveEnv,
     EnvMap,
     HostContext,
     Syntax,
     overlay_entry_env,
     resolve,
+    token_keys,
+    token_variable,
 )
 from .files import parse_env_file
 from .report import Finding, State, fail, info, unverified, warn
@@ -328,11 +331,21 @@ class CursorHost(Host):
         overlay_entry_env(
             result.env, spec.env, source.syntax, ctx.shell_env, workspace=None, home=ctx.home, result=result
         )
-        for key in REQUIRED_KEYS:
+        reason = "it works only if Cursor inherits this shell's variables"
+        required = (BASE_URL_KEY, *token_keys(result.env))
+        for key in required:
             if key in ctx.shell_env:
-                result.may_supply[ctx.shell_env.fold(key)] = "it works only if Cursor inherits this shell's variables"
+                result.may_supply[ctx.shell_env.fold(key)] = reason
+        shell_token_variable = token_variable(ctx.shell_env)
+        if (
+            API_TOKEN_VAR_ENV_VAR not in result.env
+            and shell_token_variable is not None
+            and shell_token_variable in ctx.shell_env
+        ):
+            # No token in the entry, but the shell names the variable that holds one.
+            result.may_supply[ctx.shell_env.fold(API_TOKEN_ENV_VAR)] = reason
         for name in ctx.shell_env.names_with_prefix("OPENPROJECT_"):
-            if ctx.shell_env.fold(name) not in result.entry_keys and name not in REQUIRED_KEYS:
+            if ctx.shell_env.fold(name) not in result.entry_keys and name not in required:
                 result.notes.append(
                     unverified(
                         f"{name} is set in this shell but not in the entry; it changes the server if Cursor inherits it"

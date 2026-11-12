@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import ConfigConsistencyError, ConfigError, Settings
-from .environment import STAND_INS, EffectiveEnv, HostContext, certain_contradiction
+from .environment import EffectiveEnv, HostContext, certain_contradiction, with_stand_ins
 from .hosts import Host, Subject, is_openproject_name, names_openproject
 from .report import Finding, State, fail, info, unverified, warn
 
@@ -419,7 +419,7 @@ def fragment_value_error(env: Mapping[str, str]) -> str | None:
     if not values:
         return None
     try:
-        Settings.from_env(environ={**STAND_INS, **values})
+        Settings.from_env(environ=with_stand_ins(values))
     except ConfigConsistencyError as exc:
         return certain_contradiction(exc, lambda key: key in values)
     except ConfigError as exc:

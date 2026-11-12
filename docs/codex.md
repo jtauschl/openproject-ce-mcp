@@ -28,9 +28,26 @@ launches Codex — a shell profile is enough if Codex starts from that same
 initialized shell; a GUI/IDE launch may need an OS-level environment mechanism
 or a secret manager instead. If the variable isn't set when Codex starts, it
 isn't forwarded and the MCP server exits at startup with `OPENPROJECT_API_TOKEN
-is required.`, rather than silently running with an empty token. Only the token
+is required; or set OPENPROJECT_API_TOKEN_VAR to the name of the variable that holds it.`, rather than silently running with an empty token. Only the token
 needs this treatment — the other, non-sensitive values can stay as literals in
 the `env` table as shown above.
+
+If the token lives in a variable with another name, such as a user-level
+`TOKEN_OP_EXAMPLE_JDOE`, Codex cannot rename it (`env_vars` forwards a name under
+itself), so name it for the server:
+
+```toml
+[mcp_servers.openproject]
+command = "openproject-ce-mcp"
+env_vars = ["TOKEN_OP_EXAMPLE_JDOE"]
+
+[mcp_servers.openproject.env]
+OPENPROJECT_API_TOKEN_VAR = "TOKEN_OP_EXAMPLE_JDOE"
+OPENPROJECT_BASE_URL = "https://op.example.com"
+```
+
+The server reads the token from that variable; set only one of
+`OPENPROJECT_API_TOKEN` and `OPENPROJECT_API_TOKEN_VAR`.
 
 Codex loads project-scoped config files (`.codex/config.toml`) only when you
 trust the project. You do not need the Codex CLI installed for this setup if you

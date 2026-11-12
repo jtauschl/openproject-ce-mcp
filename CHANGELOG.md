@@ -15,6 +15,7 @@ to install and discover.
 
 ### Added
 
+- `OPENPROJECT_API_TOKEN_VAR` names the environment variable that holds the token, for clients such as Codex that cannot map a variable by name.
 - `update_work_package_comment` previews and confirms replacement of an existing
   comment, including permission checks and warnings about notifications and
   irreversible text replacement.

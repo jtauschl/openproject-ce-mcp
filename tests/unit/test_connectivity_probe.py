@@ -123,7 +123,7 @@ async def test_check_reports_configuration_errors(monkeypatch):
     assert await connectivity_probe.check() == {
         "ok": False,
         "category": "configuration_error",
-        "message": "OPENPROJECT_API_TOKEN is required.",
+        "message": "OPENPROJECT_API_TOKEN is required; or set OPENPROJECT_API_TOKEN_VAR to the name of the variable that holds it.",
     }
 
 

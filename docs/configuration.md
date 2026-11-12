@@ -58,9 +58,14 @@ flag skips the connection test and preview and writes directly.
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `OPENPROJECT_BASE_URL` | yes | — | Base URL of your OpenProject instance, e.g. `https://op.example.com`; no credentials in the URL |
-| `OPENPROJECT_API_TOKEN` | yes | — | Personal API token |
+| `OPENPROJECT_API_TOKEN` | yes, or `OPENPROJECT_API_TOKEN_VAR` | — | Personal API token |
+| `OPENPROJECT_API_TOKEN_VAR` | no | — | Name of the environment variable that holds the token, for a client that can forward a variable only under its own name (Codex). Set only one of the two; no error repeats the name |
 
 Every request stays on the instance's origin (scheme, host and port of `OPENPROJECT_BASE_URL`) below its `/api/v3` path. A redirect to another origin or scheme is refused with an error that names both origins, so set `OPENPROJECT_BASE_URL` to the final URL when a proxy redirects `http` to `https`; a redirect out of `/api/v3`, or to a URL that carries credentials, is refused too. `OPENPROJECT_BASE_URL` itself must not contain credentials. An attachment download is the one exception: it may follow OpenProject's redirect to a storage host, without credentials. A redirected write may already have been carried out by the server when its redirect is refused.
+
+### Keep the token out of the file
+
+A client that can map a variable by name (Claude Code) needs no server option: set a user-level variable such as `TOKEN_OP_EXAMPLE_JDOE` once per machine and write `"OPENPROJECT_API_TOKEN": "${TOKEN_OP_EXAMPLE_JDOE}"` in `.mcp.json`. A client that forwards a variable only under its own name (Codex) names it instead: `OPENPROJECT_API_TOKEN_VAR = "TOKEN_OP_EXAMPLE_JDOE"` together with `env_vars = ["TOKEN_OP_EXAMPLE_JDOE"]`, see [Codex](codex.md). Setting both `OPENPROJECT_API_TOKEN` and `OPENPROJECT_API_TOKEN_VAR` is an error, not a precedence; an entry can clear an inherited token with an empty `OPENPROJECT_API_TOKEN`. `openproject-ce-mcp configure` keeps writing the token as a literal, and re-running it on an entry that uses `OPENPROJECT_API_TOKEN_VAR` replaces the entry, `env_vars` included, with a literal token.
 
 ## Project Scope
 

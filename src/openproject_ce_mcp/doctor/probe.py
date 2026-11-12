@@ -49,9 +49,7 @@ async def check() -> dict[str, object]:
     try:
         user = await client.current_user.get_current_user()
     except AuthenticationError:
-        return _failure(
-            "auth_error", "authentication failed; check that OPENPROJECT_API_TOKEN is current and not revoked"
-        )
+        return _failure("auth_error", "authentication failed; check that the API token is current and not revoked")
     except PermissionDeniedError:
         return _failure("permission_error", "the token may not read the current user")
     except NotFoundError:

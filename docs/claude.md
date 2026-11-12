@@ -103,6 +103,10 @@ chmod 600 .mcp.json
 Add `.mcp.json` and `.mcp.json.bak*` to your project's `.gitignore` so neither
 the file nor its timestamped backups are ever committed.
 
+A user-level variable keeps the token out of the file: write
+`"OPENPROJECT_API_TOKEN": "${TOKEN_OP_EXAMPLE_JDOE}"` in `.mcp.json`; Claude Code
+expands the reference, and the server needs no further setting.
+
 ## Reload and verify
 
 Restart Claude Code, or run "Developer: Reload Window" from the command palette
