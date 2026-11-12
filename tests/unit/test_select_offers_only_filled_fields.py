@@ -40,7 +40,11 @@ class _Sample:
 
 def _offered(tool: Callable[..., Any]) -> frozenset[str]:
     """The field names the tool's `select` schema offers, read from its description text."""
-    metadata = typing.get_type_hints(tool, include_extras=True)["select"].__metadata__
+    hint = typing.get_type_hints(tool, include_extras=True)["select"]
+    if not hasattr(hint, "__metadata__"):
+        # Python 3.10 wraps a parameter defaulting to None in Optional[...] around the Annotated type.
+        hint = next(argument for argument in typing.get_args(hint) if hasattr(argument, "__metadata__"))
+    metadata = hint.__metadata__
     description = next(item.description for item in metadata if getattr(item, "description", None))
     return frozenset(part.strip() for part in description.split("Allowed: ", 1)[1].rstrip(".").split(","))
 
