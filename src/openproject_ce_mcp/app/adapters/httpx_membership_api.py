@@ -1,27 +1,24 @@
 """HTTP-backed MembershipApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
-`_link_title`/`_id_from_href`/`_origin_from_url`/`SUBJECT_LIMIT` are shared
-via `app/adapters/_text.py`. Still has its own `_link_to_api_path` (see
-HttpxProjectApi's copy of the same name for the full rationale: an absolute
-href whose origin differs from this instance's configured origin is rejected
-BEFORE any authenticated request is made).
+`_link_title`/`_id_from_href`/`link_to_api_path`/`SUBJECT_LIMIT` are shared
+via `app/adapters/_text.py`; `link_to_api_path` rejects an href that leaves the
+instance BEFORE any authenticated request is made.
 """
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
-from urllib.parse import parse_qsl, urlparse
+from urllib.parse import parse_qsl
 
 from ...models import MembershipSummary
-from ..errors import OpenProjectServerError
 from ..ports.membership_api import MembershipFormResult, MembershipPage, MembershipRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, link_to_api_path
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_validation_errors
-from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
 
 
@@ -63,28 +60,7 @@ def normalize_membership(payload: dict[str, Any]) -> MembershipSummary:
 class HttpxMembershipApi:
     def __init__(self, transport: Transport, *, base_url: str, api_prefix: str = "/api/v3/") -> None:
         self._transport = transport
-        self._origin = _origin_from_url(base_url)
-        self._api_prefix = api_prefix
-
-    def _link_to_api_path(self, href: str) -> str:
-        """Same-origin-checked href -> API-relative path (with the API prefix
-        stripped, since the Transport's own base URL already includes it).
-
-        An absolute href whose origin differs from this instance's configured
-        origin is rejected BEFORE any authenticated request is made -- a
-        manipulated/foreign `memberships` href must never be contacted.
-        """
-        parsed = urlparse(href)
-        if not parsed.scheme:
-            path = parsed.path or href
-        else:
-            if _origin_from_url(href) != self._origin:
-                raise OpenProjectServerError("OpenProject returned an unexpected link host.")
-            path = parsed.path
-        relative_path = path[len(self._api_prefix) :] if path.startswith(self._api_prefix) else path.lstrip("/")
-        if parsed.query:
-            return f"{relative_path}?{parsed.query}"
-        return relative_path
+        self._link_to_api_path = partial(link_to_api_path, base_url=base_url, api_prefix=api_prefix)
 
     def _record(self, payload: dict[str, Any]) -> MembershipRecord:
         return MembershipRecord(

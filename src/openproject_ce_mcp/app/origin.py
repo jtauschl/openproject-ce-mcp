@@ -13,9 +13,24 @@ same same-origin check as `app/adapters/_text.py`'s `origin_from_url`, but
 
 from __future__ import annotations
 
+import re
 from urllib.parse import urlparse, urlsplit
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+_PATH_SEPARATORS = re.compile(r"[/\\]")
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def has_dot_segment(decoded_path: str) -> bool:
+    """A `.` or `..` segment in a path that is already percent-decoded. A backslash separates segments too:
+    a proxy or server that treats it as a slash would otherwise read `..\\` as a step up."""
+    return any(segment in (".", "..") for segment in _PATH_SEPARATORS.split(decoded_path))
+
+
+def has_control_character(text: str) -> bool:
+    """urlsplit drops tabs, newlines and leading control characters silently, so they have to be caught
+    before parsing, not after."""
+    return _CONTROL_CHARACTERS.search(text) is not None
 
 
 def origin_from_url(url: str) -> str:

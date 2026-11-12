@@ -565,6 +565,8 @@ def _parse_base_url(value: str | None) -> str:
         raise ConfigError("OPENPROJECT_BASE_URL must use http or https.")
     if not parsed.netloc:
         raise ConfigError("OPENPROJECT_BASE_URL must include a hostname.")
+    if parsed.username is not None or parsed.password is not None:
+        raise ConfigError("OPENPROJECT_BASE_URL must not contain credentials; set OPENPROJECT_API_TOKEN instead.")
     if parsed.query or parsed.fragment:
         raise ConfigError("OPENPROJECT_BASE_URL must not contain query parameters or fragments.")
     # Warn (don't block) when the API token would travel unencrypted to a remote

@@ -57,8 +57,10 @@ flag skips the connection test and preview and writes directly.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `OPENPROJECT_BASE_URL` | yes | — | Base URL of your OpenProject instance, e.g. `https://op.example.com` |
+| `OPENPROJECT_BASE_URL` | yes | — | Base URL of your OpenProject instance, e.g. `https://op.example.com`; no credentials in the URL |
 | `OPENPROJECT_API_TOKEN` | yes | — | Personal API token |
+
+Every request stays on the instance's origin (scheme, host and port of `OPENPROJECT_BASE_URL`) below its `/api/v3` path. A redirect to another origin or scheme is refused with an error that names both origins, so set `OPENPROJECT_BASE_URL` to the final URL when a proxy redirects `http` to `https`; a redirect out of `/api/v3`, or to a URL that carries credentials, is refused too. `OPENPROJECT_BASE_URL` itself must not contain credentials. An attachment download is the one exception: it may follow OpenProject's redirect to a storage host, without credentials. A redirected write may already have been carried out by the server when its redirect is refused.
 
 ## Project Scope
 

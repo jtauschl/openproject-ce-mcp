@@ -232,7 +232,7 @@ from .app.services.work_package_picker_service import WorkPackagePickerService
 # the Service now has its own copy.
 from .app.services.work_package_service import CLEAR, CLEAR_PARENT, CLEAR_VERSION, WorkPackageService  # noqa: F401
 from .app.transport.errors import raise_for_status as _map_status_to_error
-from .app.transport.httpx_transport import HttpxTransport
+from .app.transport.httpx_transport import HttpxTransport, confine_to_instance
 from .app.transport.learning_transport import LearningTransport
 from .config import Settings
 from .hal import normalize_links
@@ -1488,6 +1488,8 @@ def _build_http_client(settings: Settings, transport: httpx.AsyncBaseTransport |
     from .retry_transport import RetryTransport
     from .transport_chain import find_innermost_in_chain, remove_from_chain
 
+    api_base_url = f"{settings.api_base_url.rstrip('/')}/"
+
     # A caller who explicitly passed their own `transport` gets exactly
     # what they asked for -- opting into a custom transport already
     # means opting out of httpx's own verify=/trust_env-based proxy
@@ -1519,7 +1521,8 @@ def _build_http_client(settings: Settings, transport: httpx.AsyncBaseTransport |
                     max_delay=settings.retry_max_delay,
                 )
         http = httpx.AsyncClient(
-            base_url=f"{settings.api_base_url.rstrip('/')}/",
+            base_url=api_base_url,
+            event_hooks={"request": [confine_to_instance(httpx.URL(api_base_url))]},
             headers={
                 "Accept": "application/hal+json, application/json",
                 "Authorization": _basic_authorization(settings.api_token),
@@ -1552,7 +1555,8 @@ def _build_http_client(settings: Settings, transport: httpx.AsyncBaseTransport |
         # each scheme-specific proxy transport) without ever
         # influencing which one httpx picks for a given URL.
         http = httpx.AsyncClient(
-            base_url=f"{settings.api_base_url.rstrip('/')}/",
+            base_url=api_base_url,
+            event_hooks={"request": [confine_to_instance(httpx.URL(api_base_url))]},
             headers={
                 "Accept": "application/hal+json, application/json",
                 "Authorization": _basic_authorization(settings.api_token),

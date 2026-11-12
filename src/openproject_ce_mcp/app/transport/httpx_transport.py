@@ -7,12 +7,14 @@ architecture-boundary test, Slice 6).
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
 
 from ...hal import normalize_links
 from ..errors import OpenProjectServerError, TransportError
+from ..origin import has_dot_segment
 from .errors import raise_for_status
 from .protocol import BinaryContent, TransportResponse
 
@@ -29,6 +31,13 @@ _MAX_REDIRECTS = 5
 # credential leaves the origin whatever the request picked up, not only the
 # Authorization header this client sets.
 _CROSS_ORIGIN_HEADERS = frozenset({"accept", "accept-encoding", "user-agent"})
+
+
+# Request extension that exempts a request from `confine_to_instance`. Only the redirect hops `get_binary`
+# builds carry it: a download may leave the instance for a storage origin. Its value is an object private to this
+# module, so a marker set to `True` or a string anywhere else exempts nothing.
+UNCONFINED = "openproject_ce_mcp.unconfined"
+_UNCONFINED_TOKEN = object()
 
 
 def _origin_of(url: httpx.URL) -> tuple[str, str, int | None]:
@@ -61,7 +70,41 @@ def _redirect_request(request: httpx.Request, location: str) -> httpx.Request:
         headers = [
             (name, value) for name, value in request.headers.multi_items() if name.lower() in _CROSS_ORIGIN_HEADERS
         ]
-    return httpx.Request("GET", target, headers=headers)
+    return httpx.Request("GET", target, headers=headers, extensions={UNCONFINED: _UNCONFINED_TOKEN})
+
+
+def _describe_origin(url: httpx.URL) -> str:
+    host = f"[{url.host}]" if ":" in url.host else url.host
+    port = "" if url.port is None else f":{url.port}"
+    return f"{url.scheme}://{host}{port}"
+
+
+def confine_to_instance(base_url: httpx.URL) -> Callable[[httpx.Request], Awaitable[None]]:
+    """A `request` hook that refuses every request outside the instance: another origin, or a path that is not
+    below the client's base path.
+
+    httpx runs the hook for every hop of a redirect chain after it built the hop and before it sends it, so a
+    redirect to another origin is refused before the write body that httpx would replay there leaves. The
+    decoded path is checked for dot segments because httpx normalizes only the literal `..`: `%2e%2e` and
+    `..%2f` reach the server, where a proxy that decodes first would step out of `/api/v3`.
+    """
+    origin = _origin_of(base_url)
+    prefix = base_url.path
+
+    async def confine(request: httpx.Request) -> None:
+        if request.extensions.get(UNCONFINED) is _UNCONFINED_TOKEN:
+            return
+        url = request.url
+        if url.userinfo:
+            raise OpenProjectServerError("OpenProject request carried credentials in its URL.")
+        if _origin_of(url) != origin:
+            raise OpenProjectServerError(
+                f"OpenProject request left the instance: {_describe_origin(url)} is not {_describe_origin(base_url)}."
+            )
+        if not url.path.startswith(prefix) or has_dot_segment(url.path):
+            raise OpenProjectServerError("OpenProject request left the API path of the instance.")
+
+    return confine
 
 
 async def _read_bounded(response: httpx.Response, max_bytes: int) -> BinaryContent:

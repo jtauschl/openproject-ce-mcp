@@ -770,6 +770,7 @@ skip their own confirmation for read-only tools), not one of these gates:
   `Accept`, `Accept-Encoding` and `User-Agent`, and once the chain has left
   the instance's origin no hop gets the client's authentication, so no
   credential reaches a pre-signed object-storage URL
+- every request, the redirect hops of a write included, is confined to the instance: a request hook of the client refuses another origin or scheme, userinfo, a path outside the API path and a dot segment, before the hop is sent; only the redirect hops of an attachment download are exempt
 
 **Layer 2: OpenProject server permissions** (enforced by the API, not the MCP):
 

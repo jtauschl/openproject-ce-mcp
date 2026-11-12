@@ -377,6 +377,12 @@ def test_settings_from_env_rejects_base_url_with_query_string() -> None:
         )
 
 
+@pytest.mark.parametrize("base_url", ["https://apikey:token@op.example.com", "https://user@op.example.com/OP"])
+def test_settings_from_env_rejects_base_url_with_credentials(base_url: str) -> None:
+    with pytest.raises(ConfigError, match="must not contain credentials"):
+        Settings.from_env({"OPENPROJECT_BASE_URL": base_url, "OPENPROJECT_API_TOKEN": "token-value"})
+
+
 def test_settings_from_env_rejects_invalid_bool_value() -> None:
     with pytest.raises(ConfigError, match="boolean"):
         Settings.from_env(
@@ -491,8 +497,8 @@ def test_disabled_tls_verification_warns_and_names_the_host_but_not_the_token(ca
     assert "token-value" not in " ".join(record.getMessage() for record in caplog.records)
 
 
-def test_disabled_tls_verification_warning_leaves_url_credentials_out(caplog) -> None:
-    with caplog.at_level("WARNING"):
+def test_a_base_url_with_credentials_is_refused_without_echoing_them(caplog) -> None:
+    with caplog.at_level("WARNING"), pytest.raises(ConfigError, match="must not contain credentials") as raised:
         Settings.from_env(
             {
                 **_TLS_ENV,
@@ -500,10 +506,9 @@ def test_disabled_tls_verification_warning_leaves_url_credentials_out(caplog) ->
                 "OPENPROJECT_VERIFY_SSL": "false",
             }
         )
-    logged = " ".join(record.getMessage() for record in caplog.records)
-    assert "op.example.com" in logged
-    assert "s3cret" not in logged
-    assert "admin" not in logged
+    shown = " ".join([str(raised.value), *(record.getMessage() for record in caplog.records)])
+    assert "s3cret" not in shown
+    assert "admin" not in shown
 
 
 @pytest.mark.parametrize(

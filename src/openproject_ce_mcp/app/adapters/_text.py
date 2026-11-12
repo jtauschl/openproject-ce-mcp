@@ -14,12 +14,12 @@ below; a structural test keeps a second copy from reappearing.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse, urlsplit
 
 from ...user_content import delimit_user_content as delimit_user_content
-from ..errors import InvalidInputError
+from ..errors import InvalidInputError, OpenProjectServerError
 from ..form_result import ValidationFailure, error_code
-from ..origin import origin_from_url
+from ..origin import has_control_character, has_dot_segment, origin_from_url, strict_origin
 
 # This project's own client-side response-truncation limits, applied when
 # normalizing an OpenProject response for context-token economy -- not a
@@ -205,6 +205,34 @@ def normalize_form_validation_errors(value: Any, *, limit: int = SUBJECT_LIMIT) 
             code = error_code(entry)
             normalized[str(key)] = ValidationFailure(message, (code,) if code and code != _MULTIPLE_ERRORS else ())
     return normalized
+
+
+def link_to_api_path(href: str, *, base_url: str, api_prefix: str) -> str:
+    """A link's href as a path relative to the API root, with its query kept.
+
+    The href is relative or on the instance's own origin; anything else is refused before any request is made,
+    so a foreign or manipulated link is never contacted with the token. A dot segment (also percent-encoded) is
+    refused too: httpx would normalize it out of `/api/v3` and the request would reach another path of the
+    instance with the token. A relative href outside the API prefix is read as relative to it.
+    """
+    if has_control_character(href):
+        raise OpenProjectServerError("OpenProject returned an unexpected link path.")
+    try:
+        parts = urlsplit(href)
+    except ValueError as exc:
+        raise OpenProjectServerError("OpenProject returned an unexpected link path.") from exc
+    if parts.scheme or parts.netloc:
+        origin = strict_origin(href)
+        if origin is None or origin != strict_origin(base_url):
+            raise OpenProjectServerError("OpenProject returned an unexpected link host.")
+    if has_dot_segment(unquote(parts.path)):
+        raise OpenProjectServerError("OpenProject returned an unexpected link path.")
+    path = parts.path
+    relative_path = path[len(api_prefix) :] if path.startswith(api_prefix) else path.lstrip("/")
+    leftover = urlsplit(relative_path)
+    if leftover.scheme or leftover.netloc:
+        raise OpenProjectServerError("OpenProject returned an unexpected link path.")
+    return f"{relative_path}?{parts.query}" if parts.query else relative_path
 
 
 def link_to_web_url(href: str | None, *, base_url: str, origin: str) -> str | None:
