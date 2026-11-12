@@ -205,12 +205,25 @@ async def test_get_project_admin_context_filters_parent_candidates_and_writable_
             return httpx.Response(
                 200,
                 json={
+                    "total": 2,
                     "_embedded": {
                         "elements": [
-                            {"_type": "Project", "id": 2, "name": "Allowed Parent", "identifier": "allowed-parent"},
-                            {"_type": "Project", "id": 3, "name": "Secret Project", "identifier": "secret-project"},
-                        ]
-                    }
+                            {
+                                "_type": "Project",
+                                "id": 2,
+                                "name": "Allowed Parent",
+                                "identifier": "allowed-parent",
+                                "_links": {"self": {"href": "/api/v3/projects/2"}},
+                            },
+                            {
+                                "_type": "Project",
+                                "id": 3,
+                                "name": "Secret Project",
+                                "identifier": "secret-project",
+                                "_links": {"self": {"href": "/api/v3/projects/3"}},
+                            },
+                        ],
+                    },
                 },
                 request=request,
             )
@@ -417,6 +430,7 @@ async def test_instance_configuration_and_project_phase_definitions() -> None:
             return httpx.Response(
                 200,
                 json={
+                    "total": 2,
                     "_embedded": {
                         "elements": [
                             {
@@ -427,6 +441,7 @@ async def test_instance_configuration_and_project_phase_definitions() -> None:
                                 "finishGateName": "Approved",
                                 "createdAt": "2026-03-01T10:00:00Z",
                                 "updatedAt": "2026-03-02T10:00:00Z",
+                                "_links": {"self": {"href": "/api/v3/project_phase_definitions/1"}},
                             },
                             {
                                 "_type": "ProjectPhaseDefinition",
@@ -434,9 +449,10 @@ async def test_instance_configuration_and_project_phase_definitions() -> None:
                                 "name": "Executing",
                                 "startGateName": "Kickoff",
                                 "finishGateName": "Done",
+                                "_links": {"self": {"href": "/api/v3/project_phase_definitions/2"}},
                             },
-                        ]
-                    }
+                        ],
+                    },
                 },
                 request=request,
             )
