@@ -12,7 +12,7 @@ and 0.2.0 the first one published to PyPI.
 
 - The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
 - `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
-- `list_relations` no longer offers `queried_perspective` in `select`, and `bulk_create_work_packages` no longer offers `parent_target`: the first is only filled by `get_work_package_relations`, the second never on a create, so selecting them returned `null` that read like "no value".
+- `select` of `list_relations` no longer offers `queried_perspective`, and `select` of `bulk_create_work_packages` no longer offers `parent_target`; both were never filled.
 
 ## [0.4.5] - 2026-11-08
 
