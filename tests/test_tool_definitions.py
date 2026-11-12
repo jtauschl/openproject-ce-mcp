@@ -456,4 +456,5 @@ def test_select_description_lists_the_complete_allowed_set(catalog: dict[str, di
 def test_bulk_select_description_lists_the_write_result_and_item_fields(catalog: dict[str, dict], tool: str) -> None:
     (allowed,) = _allowed_lists(_properties(catalog[tool])["select"]["description"])
 
-    assert set(allowed.split(", ")) == _field_names(WorkPackageWriteResult) | {"index", "success", "error"}
+    unfilled = {"parent_target"} if tool == "bulk_create_work_packages" else set()
+    assert set(allowed.split(", ")) == _field_names(WorkPackageWriteResult) - unfilled | {"index", "success", "error"}

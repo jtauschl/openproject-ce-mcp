@@ -164,7 +164,7 @@ def test_list_relations_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_relations"]
     assert (
         tool.description
-        == "List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').\n\ntype/from_id/to_id reflect how OpenProject actually stored the relation (it does not change depending\non which work package's relations you're viewing), which can differ from how it was originally\nrequested; OpenProject canonicalizes some relation types at creation time (e.g. a relation requested\nas 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).\nFiltering by relation_type matches the stored (canonical) type, not necessarily the type a caller\noriginally requested when creating it.\n\nEach result's queried_perspective field is always null here; a caller-relative reading needs one\nanchor work package to read the relation FROM, and this instance-wide listing has none. Use\nget_work_package_relations instead when you need queried_perspective populated.\n\ntotal is only the count of allowed relations returned on THIS page, not a full count of all matches; the search\nstops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.\n"
+        == "List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').\n\ntype/from_id/to_id reflect how OpenProject actually stored the relation (it does not change depending\non which work package's relations you're viewing), which can differ from how it was originally\nrequested; OpenProject canonicalizes some relation types at creation time (e.g. a relation requested\nas 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).\nFiltering by relation_type matches the stored (canonical) type, not necessarily the type a caller\noriginally requested when creating it.\n\nResults carry no queried_perspective and select does not offer it: a caller-relative reading needs one\nanchor work package to read the relation FROM, and this instance-wide listing has none. Use\nget_work_package_relations instead when you need queried_perspective.\n\ntotal is only the count of allowed relations returned on THIS page, not a full count of all matches; the search\nstops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -189,7 +189,7 @@ def test_list_relations_schema() -> None:
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: description, description_length, description_truncated, from_id, from_subject, id, queried_perspective, to_id, to_subject, type.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: description, description_length, description_truncated, from_id, from_subject, id, to_id, to_subject, type.",
                 "title": "Select",
             },
         },

@@ -125,12 +125,20 @@ Offset = Annotated[int, Field(description="1-based page number; pass the previou
 Limit = Annotated[int | None, Field(description="Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.")]
 
 
-def allowed_select_fields(row_type: type, *, wrapper_fields: frozenset[str] = frozenset()) -> frozenset[str]:
-    """Every name ``select`` accepts for rows of ``row_type``."""
-    return frozenset(field.name for field in dataclass_fields(row_type)) | wrapper_fields
+def allowed_select_fields(
+    row_type: type, *, wrapper_fields: frozenset[str] = frozenset(), unfilled: frozenset[str] = frozenset()
+) -> frozenset[str]:
+    """Every name ``select`` accepts for rows of ``row_type``.
+
+    ``unfilled`` names fields of the shared row model that this tool's producer never sets: offering one
+    would hand back ``null`` that reads like "no value" instead of "never read".
+    """
+    return (frozenset(field.name for field in dataclass_fields(row_type)) - unfilled) | wrapper_fields
 
 
-def select_field(row_type: type, *, wrapper_fields: frozenset[str] = frozenset()) -> FieldInfo:
+def select_field(
+    row_type: type, *, wrapper_fields: frozenset[str] = frozenset(), unfilled: frozenset[str] = frozenset()
+) -> FieldInfo:
     """Schema description for a ``select`` parameter, naming every field it accepts."""
-    allowed = ", ".join(sorted(allowed_select_fields(row_type, wrapper_fields=wrapper_fields)))
+    allowed = ", ".join(sorted(allowed_select_fields(row_type, wrapper_fields=wrapper_fields, unfilled=unfilled)))
     return Field(description=f"Fields to return; a requested unset field comes back as null. Allowed: {allowed}.")

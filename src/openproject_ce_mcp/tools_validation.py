@@ -856,7 +856,11 @@ _SELECT_NOTHING_SENT = "No request was sent."
 
 
 def _validate_select(
-    select: list[str] | None, *, row_type: type, wrapper_fields: frozenset[str] = frozenset()
+    select: list[str] | None,
+    *,
+    row_type: type,
+    wrapper_fields: frozenset[str] = frozenset(),
+    unfilled: frozenset[str] = frozenset(),
 ) -> list[str] | None:
     """Validate a field-selection list against a result-row dataclass.
 
@@ -869,7 +873,7 @@ def _validate_select(
     """
     if select is None:
         return None
-    valid = allowed_select_fields(row_type)
+    valid = allowed_select_fields(row_type, unfilled=unfilled)
     chosen: list[str] = []
     wrapper_only = False
     for raw in select:
@@ -880,7 +884,9 @@ def _validate_select(
         elif name in wrapper_fields:
             wrapper_only = True
         else:
-            allowed = ", ".join(sorted(allowed_select_fields(row_type, wrapper_fields=wrapper_fields)))
+            allowed = ", ".join(
+                sorted(allowed_select_fields(row_type, wrapper_fields=wrapper_fields, unfilled=unfilled))
+            )
             raise ValueError(
                 f"select field '{name}' is not a valid {row_type.__name__} field. Allowed: {allowed}. "
                 f"{_SELECT_NOTHING_SENT}"

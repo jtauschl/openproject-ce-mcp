@@ -705,7 +705,7 @@ def test_bulk_create_work_packages_schema() -> None:
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: action, error, index, message, payload, project, ready, result, state, success, target, validation_errors, work_package_id.",
                 "title": "Select",
             },
             "confirm": {

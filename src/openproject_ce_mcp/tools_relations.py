@@ -44,6 +44,9 @@ from .tools_validation import (
     _validate_work_package_ref,
 )
 
+# The instance-wide listing has no anchor work package to read a relation from.
+_ANCHORLESS_UNFILLED = frozenset({"queried_perspective"})
+
 
 @register_tool
 async def create_work_package_relation(
@@ -145,7 +148,7 @@ async def list_relations(
     relation_type: str | None = None,
     offset: Offset = 1,
     limit: Limit = None,
-    select: Annotated[list[str] | None, select_field(RelationSummary)] = None,
+    select: Annotated[list[str] | None, select_field(RelationSummary, unfilled=_ANCHORLESS_UNFILLED)] = None,
 ) -> RelationListResult:
     """List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').
 
@@ -156,9 +159,9 @@ async def list_relations(
     Filtering by relation_type matches the stored (canonical) type, not necessarily the type a caller
     originally requested when creating it.
 
-    Each result's queried_perspective field is always null here; a caller-relative reading needs one
+    Results carry no queried_perspective and select does not offer it: a caller-relative reading needs one
     anchor work package to read the relation FROM, and this instance-wide listing has none. Use
-    get_work_package_relations instead when you need queried_perspective populated.
+    get_work_package_relations instead when you need queried_perspective.
 
     total is only the count of allowed relations returned on THIS page, not a full count of all matches; the search
     stops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.
@@ -167,7 +170,7 @@ async def list_relations(
     safe_type = _validate_relation_type(relation_type) if relation_type else None
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    _validate_select(select, row_type=RelationSummary)
+    _validate_select(select, row_type=RelationSummary, unfilled=_ANCHORLESS_UNFILLED)
     return await _run_tool(client.relation.list_all(relation_type=safe_type, offset=safe_offset, limit=safe_limit))
 
 
