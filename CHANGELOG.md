@@ -97,15 +97,13 @@ to install and discover.
 - `update_work_package`, `update_project`, `update_version`, `update_document`, `update_news` and
   `update_work_package_comment` refuse a full text that holds a truncated read copy ending in `…`.
 - The preview and result of a change to a stored long text state its length before and after.
-- The display-id guard and the `target` fields are described once in the server instructions, not in each tool;
-  the tool catalog shrinks by 500 to 700 tokens.
+- The display-id guard and the `target` fields are described once in the server instructions, not in each tool; the catalog shrinks by 500 to 700 tokens.
 
 ### Removed
 
-- **Breaking:** `get_status`, `get_priority`, `get_type` and `get_help_text` are removed; read the one row from
-  `list_statuses`, `list_priorities`, `list_types` or `list_help_texts`; an unknown id is no longer reported as not found.
-  The status and priority lists are cached for up to 300 seconds, and with `OPENPROJECT_HIDE_STATUS_FIELDS=id` (or the
-  priority, type and help text equivalents) their rows carry no id.
+- **Breaking:** `get_status`, `get_priority`, `get_type` and `get_help_text` are removed; read the row from the matching `list_*` tool, which no longer reports an unknown id as not found.
+- `list_statuses` and `list_priorities` are cached for up to 300 seconds.
+- With `OPENPROJECT_HIDE_STATUS_FIELDS=id` or the priority, type or help text equivalent, the list rows carry no id.
 - **Breaking:** `create_board` and `update_board` no longer accept `hidden`,
   which OpenProject ignores and the tools have not sent since 0.4.3.
 - **Breaking:** `OPENPROJECT_ALLOWED_PROJECTS`/`_READ`/`_WRITE` no longer emit
@@ -121,7 +119,7 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 - The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
 - `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
-- `list_relations` no longer offers `queried_perspective` in `select`, and `bulk_create_work_packages` no longer offers `parent_target`: the first is only filled by `get_work_package_relations`, the second never on a create, so selecting them returned `null` that read like "no value".
+- `select` of `list_relations` no longer offers `queried_perspective`, and `select` of `bulk_create_work_packages` no longer offers `parent_target`; both were never filled.
 
 ## [0.4.5] - 2026-11-08
 

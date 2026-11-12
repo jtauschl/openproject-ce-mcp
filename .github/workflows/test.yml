@@ -176,6 +176,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies at their newest allowed versions
+        # lockfile-reresolve: this job tests the newest releases the declared ranges allow, so it resolves anew.
         run: uv sync --dev --group build --upgrade --no-build-isolation-package openproject-ce-mcp
 
       - name: Run tests
