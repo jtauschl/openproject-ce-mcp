@@ -106,9 +106,15 @@ cannot show or compare the display id, so the guard is off and
 the expectation is refused with an error naming the hiding setting. The
 refusal messages leave out any other hidden field (`project`, `subject`) as well.
 
+## Context entities: options are hidden as a whole
+
+The context entities (`project_access`, `project_admin_context`, `project_configuration`, `project_work_package_context`) hide
+each listed field of their own result as a whole, including a list of options such as `available_statuses`; the rules of
+the entity an option belongs to (for example `status`) are not applied to the options inside such a field.
+
 Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `membership`, `role`, `principal`, `user`, `group`, `project_access`,
-`project_admin_context`, `project_configuration`, `action`, `capability`,
+`project_admin_context`, `project_configuration`, `project_work_package_context`, `action`, `capability`,
 `job_status`, `project_phase_definition`, `project_phase`, `view`,
 `query_filter`, `query_column`, `query_operator`, `query_sort_by`,
 `query_filter_instance_schema`, `document`, `news`, `wiki_page`, `post`,
