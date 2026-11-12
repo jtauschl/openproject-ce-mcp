@@ -588,9 +588,7 @@ Tool names are `<verb>_<object>`, in snake_case.
 | `toggle_` | Only where OpenProject itself toggles and the result depends on the current state (`toggle_activity_emoji_reaction`) |
 | A domain verb | Only when OpenProject names the action itself and it isn't a plain create, update or delete (`copy_project`, `execute_query`, `cancel_recurring_meeting_occurrence`, `init_recurring_meeting_occurrence`, `end_recurring_meeting`, `render_text`, `mark_notifications_read`, `mark_notifications_unread`) |
 
-Exceptions to this scheme: `add_work_package_comment`, and
-`get_work_package_relations` and `get_work_package_activities`, which return
-collections.
+Exception to this scheme: `add_work_package_comment`.
 
 #### Annotations
 
@@ -840,7 +838,7 @@ Important properties of the current model:
   a query of a project needs that project in the write allowlist, a public
   query without a project needs the write scope `*`, and a private query may
   be starred only by its owner, compared with the current user
-- `get_work_package_activities` serves the change details of an entry only
+- `list_work_package_activities` serves the change details of an entry only
   when `OPENPROJECT_READ_PROJECTS` is `*` and no work package or custom field
   is hidden. OpenProject renders them as text in the API user's language with
   no structure to check against the allowlist, and the text can name parents,

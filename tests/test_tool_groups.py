@@ -468,11 +468,8 @@ _EXPECTED_GLOBAL_READ_TOOLS = frozenset(
         "get_project_phase_definition",
         "get_instance_configuration",
         "list_statuses",
-        "get_status",
         "list_priorities",
-        "get_priority",
         "list_types",
-        "get_type",
         "list_roles",
         "get_current_user",
         "list_actions",
@@ -502,7 +499,7 @@ def _all_core_scope_tools() -> set[str]:
 
 def test_project_scoped_and_global_read_tools_partition_the_core_scopes() -> None:
     all_core_scope_tools = _all_core_scope_tools()
-    assert len(all_core_scope_tools) == 88  # list_project_storages/get_project_storage, get_attachment_content added
+    assert len(all_core_scope_tools) == 85
     assert _EXPECTED_GLOBAL_READ_TOOLS <= all_core_scope_tools
     core_project_scoped = all_core_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS == core_project_scoped | _EXPECTED_PROJECT_BOUND_OPT_IN_TOOLS

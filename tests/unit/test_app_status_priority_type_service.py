@@ -78,22 +78,13 @@ class _FakeStatusPriorityTypeApi:
         self.list_statuses_calls += 1
         return list(self._statuses.values())
 
-    async def get_status(self, status_id: int) -> StatusRecord:
-        return self._statuses[status_id]
-
     async def list_priorities(self) -> list[PriorityRecord]:
         self.list_priorities_calls += 1
         return list(self._priorities.values())
 
-    async def get_priority(self, priority_id: int) -> PriorityRecord:
-        return self._priorities[priority_id]
-
     async def list_types(self, *, project_id: int | None) -> list[TypeRecord]:
         self.list_types_calls.append(project_id)
         return list(self._types.values())
-
-    async def get_type(self, type_id: int) -> TypeRecord:
-        return self._types[type_id]
 
 
 async def _resolve_project_ref(project_ref: str, *, write: bool = False, context=None) -> dict:
@@ -136,16 +127,6 @@ async def test_list_statuses_returns_summaries() -> None:
 
     assert result.count == 1
     assert result.results[0].id == 1
-
-
-@pytest.mark.asyncio
-async def test_get_status_returns_summary() -> None:
-    api = _FakeStatusPriorityTypeApi(statuses=[StatusRecord(summary=_status_summary(7), lookup_name="In progress")])
-    service = _service(api)
-
-    status = await service.get_status(7)
-
-    assert status.id == 7
 
 
 @pytest.mark.asyncio
@@ -212,16 +193,6 @@ async def test_list_priorities_returns_summaries() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_priority_returns_summary() -> None:
-    api = _FakeStatusPriorityTypeApi(priorities=[PriorityRecord(summary=_priority_summary(3), lookup_name="High")])
-    service = _service(api)
-
-    priority = await service.get_priority(3)
-
-    assert priority.id == 3
-
-
-@pytest.mark.asyncio
 async def test_list_priorities_applies_hidden_field_masking() -> None:
     # OPENPROJECT_HIDE_PRIORITY_FIELDS must actually take effect on priority
     # reads, not be a no-op.
@@ -235,18 +206,6 @@ async def test_list_priorities_applies_hidden_field_masking() -> None:
     assert priority.color == "#FF0000"  # preserved on the dataclass
     serialized = _to_payload(priority)
     assert "color" not in serialized
-
-
-@pytest.mark.asyncio
-async def test_get_priority_applies_hidden_field_masking() -> None:
-    settings = dataclasses.replace(make_settings(), hidden_fields={"priority": ("position",)})
-    service = _service(settings=settings)
-
-    priority = await service.get_priority(1)
-
-    assert priority._hidden_keys == frozenset({"position"})
-    serialized = _to_payload(priority)
-    assert "position" not in serialized
 
 
 @pytest.mark.asyncio
@@ -342,16 +301,6 @@ async def test_list_types_denies_when_project_ref_resolution_denies() -> None:
 
     with pytest.raises(PermissionDeniedError):
         await service.list_types(project="demo")
-
-
-@pytest.mark.asyncio
-async def test_get_type_returns_summary() -> None:
-    api = _FakeStatusPriorityTypeApi(types=[TypeRecord(summary=_type_summary(4), lookup_name="Task")])
-    service = _service(api)
-
-    work_package_type = await service.get_type(4)
-
-    assert work_package_type.id == 4
 
 
 @pytest.mark.asyncio

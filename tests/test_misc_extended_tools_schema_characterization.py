@@ -1,5 +1,5 @@
-"""Characterization test: freezes the 6 Misc Extended MCP tool schemas
-(render_text, list_help_texts, get_help_text, list_working_days,
+"""Characterization test: freezes the 5 Misc Extended MCP tool schemas
+(render_text, list_help_texts, list_working_days,
 list_non_working_days, get_custom_option).
 
 Proves that where these tool functions live (tools.py vs. their own per-domain
@@ -75,23 +75,6 @@ def test_list_help_texts_schema() -> None:
     }
     # Dict equality above doesn't check key order -- assert it separately.
     assert list(tool.parameters["properties"]) == []
-
-
-def test_get_help_text_schema() -> None:
-    tool = _tools(create_app(_make_settings()))["get_help_text"]
-    assert tool.description == "Get a single help text by id."
-    assert tool.output_schema is None
-    assert tool.parameters == {
-        "properties": {
-            "help_text_id": {"title": "Help Text Id", "type": "integer"},
-        },
-        "required": ["help_text_id"],
-        "title": "get_help_textArguments",
-        "type": "object",
-        "additionalProperties": False,
-    }
-    # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["help_text_id"]
 
 
 def test_list_working_days_schema() -> None:

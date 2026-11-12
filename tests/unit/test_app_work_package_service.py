@@ -342,13 +342,7 @@ class _FakeStatusApi:
     async def list_priorities(self):
         raise NotImplementedError
 
-    async def get_priority(self, priority_id: int):
-        raise NotImplementedError
-
     async def list_types(self, *, project_id):
-        raise NotImplementedError
-
-    async def get_type(self, type_id: int):
         raise NotImplementedError
 
 

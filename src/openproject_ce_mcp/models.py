@@ -1240,7 +1240,7 @@ class QueriedRelationPerspective:
     queried relations FOR). Purely derived, additive: never changes type/
     from_id/to_id, which stay OpenProject's raw, perspective-stable values.
     Only present when a query anchor exists (list_for_work_package/
-    get_work_package_relations); absent (None on the summary) for a global,
+    list_work_package_relations); absent (None on the summary) for a global,
     unanchored list_all() result, where no single work package is "the one
     being queried" to read the relation relative to.
 

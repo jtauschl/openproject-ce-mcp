@@ -456,7 +456,6 @@ _METADATA_TOOLS = {
     "get_query_filter_instance_schema",
     "render_text",
     "list_help_texts",
-    "get_help_text",
     "list_working_days",
     "list_non_working_days",
     "get_custom_option",

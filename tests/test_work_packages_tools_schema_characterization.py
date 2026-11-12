@@ -1238,7 +1238,7 @@ def test_update_work_package_comment_schema() -> None:
         },
         "properties": {
             "activity_id": {
-                "description": "The comment's activity id, from get_work_package_activities or add_work_package_comment's result.",
+                "description": "The comment's activity id, from list_work_package_activities or add_work_package_comment's result.",
                 "title": "Activity Id",
                 "type": "integer",
             },
@@ -1317,11 +1317,11 @@ def test_list_my_open_work_packages_schema() -> None:
     assert list(tool.parameters["properties"]) == ["offset", "limit", "select"]
 
 
-def test_get_work_package_activities_schema() -> None:
-    tool = _tools(create_app(_make_settings()))["get_work_package_activities"]
+def test_list_work_package_activities_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["list_work_package_activities"]
     assert (
         tool.description
-        == "Get the activity log for a work package, most recent first.\n\nComments are returned in full by default (this is one work package's own\nhistory, not an open-ended multi-row list; same rationale as\nget_work_package). Pass ``text_limit`` to cap each comment at that many\ncharacters; when a comment is cut, ``comment_truncated`` is true and\n``comment_length`` reports its real length.\n\nWhen OPENPROJECT_READ_PROJECTS is not `*`, or a work package or custom field\nis hidden, change details are left out and ``details_omitted`` is true:\nOpenProject returns them as text in the API user's language with no\nstructure to check against the read scope or the hidden fields, and the\ntext can name parents, projects and versions of projects outside it and\ncarry the values of hidden fields. Comments, user and time are\nunaffected.\n"
+        == "List the activity log of one work package, most recent first.\n\nComments are returned in full by default (this is one work package's own\nhistory, not an open-ended multi-row list; same rationale as\nget_work_package). Pass ``text_limit`` to cap each comment at that many\ncharacters; when a comment is cut, ``comment_truncated`` is true and\n``comment_length`` reports its real length.\n\nWhen OPENPROJECT_READ_PROJECTS is not `*`, or a work package or custom field\nis hidden, change details are left out and ``details_omitted`` is true:\nOpenProject returns them as text in the API user's language with no\nstructure to check against the read scope or the hidden fields, and the\ntext can name parents, projects and versions of projects outside it and\ncarry the values of hidden fields. Comments, user and time are\nunaffected.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -1346,7 +1346,7 @@ def test_get_work_package_activities_schema() -> None:
             },
         },
         "required": ["work_package_id"],
-        "title": "get_work_package_activitiesArguments",
+        "title": "list_work_package_activitiesArguments",
         "type": "object",
         "additionalProperties": False,
     }

@@ -2,7 +2,7 @@
 
 Full surface: fetch_page (raw HAL page, walked by
 app.pagination.fetch_bounded_and_paginate for both list_relations and
-get_work_package_relations) + to_record (raw payload -> RelationRecord,
+list_work_package_relations) + to_record (raw payload -> RelationRecord,
 called per raw element BEFORE the Service's allowlist filter) + get
 (single relation, used by update()/delete()) + create + update + delete.
 

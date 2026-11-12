@@ -3,7 +3,7 @@ get_work_package, get_work_packages, create_work_package, update_work_package,
 bulk_create_work_packages, bulk_update_work_packages, delete_work_package,
 create_subtask, add_work_package_comment, update_work_package_comment,
 list_my_open_work_packages,
-get_work_package_activities, list_work_package_reactions,
+list_work_package_activities, list_work_package_reactions,
 toggle_activity_emoji_reaction.
 
 Other resources whose names contain "work_package" (relations, attachments,
@@ -11,7 +11,7 @@ watchers, time entries, costs, and integrations) belong to separate domains.
 This module contains work-package CRUD, reads, comments, activities, and
 reactions. Twelve functions delegate to
 `app/services/work_package_service.py`'s `WorkPackageService`,
-`get_work_package_activities` delegates to `ActivityService`, and the two
+`list_work_package_activities` delegates to `ActivityService`, and the two
 reaction tools delegate to `EmojiReactionService`. Only input validation,
 `select` validation, and bulk-item shaping remain at this presentation layer.
 
@@ -1378,7 +1378,7 @@ async def update_work_package_comment(
         int,
         Field(
             description=(
-                "The comment's activity id, from get_work_package_activities or add_work_package_comment's result."
+                "The comment's activity id, from list_work_package_activities or add_work_package_comment's result."
             )
         ),
     ],
@@ -1456,7 +1456,7 @@ async def list_my_open_work_packages(
 
 
 @register_tool
-async def get_work_package_activities(
+async def list_work_package_activities(
     ctx: Context,
     work_package_id: WorkPackageRef,
     limit: Annotated[
@@ -1466,7 +1466,7 @@ async def get_work_package_activities(
     text_limit: int | None = None,
     select: Annotated[list[str] | None, select_field(ActivitySummary)] = None,
 ) -> ActivityListResult:
-    """Get the activity log for a work package, most recent first.
+    """List the activity log of one work package, most recent first.
 
     Comments are returned in full by default (this is one work package's own
     history, not an open-ended multi-row list; same rationale as

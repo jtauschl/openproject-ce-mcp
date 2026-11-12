@@ -58,6 +58,8 @@ to install and discover.
 ### Changed
 
 - Tool descriptions and the server instructions no longer name a tool outside the `core` starter set; the docs call the six default-on groups "default groups".
+- **Breaking:** `get_work_package_activities` is now `list_work_package_activities` and `get_work_package_relations` is
+  `list_work_package_relations`: both return collections, like every other per-work-package list.
 - `OPENPROJECT_VERIFY_SSL=false` on an `https://` base URL logs a startup warning naming the host and pointing to
   `SSL_CERT_FILE`; `doctor` repeats the hint.
 - **Breaking:** `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` match a project's identifier or numeric id
@@ -100,6 +102,10 @@ to install and discover.
 
 ### Removed
 
+- **Breaking:** `get_status`, `get_priority`, `get_type` and `get_help_text` are removed; read the one row from
+  `list_statuses`, `list_priorities`, `list_types` or `list_help_texts`; an unknown id is no longer reported as not found.
+  The status and priority lists are cached for up to 300 seconds, and with `OPENPROJECT_HIDE_STATUS_FIELDS=id` (or the
+  priority, type and help text equivalents) their rows carry no id.
 - **Breaking:** `create_board` and `update_board` no longer accept `hidden`,
   which OpenProject ignores and the tools have not sent since 0.4.3.
 - **Breaking:** `OPENPROJECT_ALLOWED_PROJECTS`/`_READ`/`_WRITE` no longer emit

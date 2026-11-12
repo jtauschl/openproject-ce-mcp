@@ -59,17 +59,6 @@ async def test_list_help_texts(client: OpenProjectClient) -> None:
     assert result.results[0].attribute_name
 
 
-async def test_get_help_text(client: OpenProjectClient) -> None:
-    listed = await client.extended_metadata.list_help_texts()
-    if listed.count == 0:
-        pytest.skip("no help texts available on this instance")
-
-    help_text_id = listed.results[0].id
-    help_text = await client.extended_metadata.get_help_text(help_text_id)
-
-    assert help_text.id == help_text_id
-
-
 async def test_list_working_days(client: OpenProjectClient) -> None:
     result = await client.extended_metadata.list_working_days()
     assert result.count > 0

@@ -1098,7 +1098,7 @@ def test_tool_preview_names_the_core_profile_with_the_count_under_full(box, caps
     run = box.run(capsys)
 
     line = _tools_line(run.out)
-    assert re.search(r"Tools: 15 would register \(profile core; 88 under full\): ", line), line
+    assert re.search(r"Tools: 15 would register \(profile core; 85 under full\): ", line), line
 
 
 def test_failed_probe_fails_the_entry_and_shows_no_token(box, capsys):

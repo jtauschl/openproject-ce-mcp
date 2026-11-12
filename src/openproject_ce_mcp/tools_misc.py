@@ -1,5 +1,5 @@
 """Misc Extended domain MCP tool handlers: render_text, list_help_texts,
-get_help_text, list_working_days, list_non_working_days, get_custom_option.
+list_working_days, list_non_working_days, get_custom_option.
 
 Their `@register_tool` decorators come from `tools_runtime`, never from
 `tools.py` -- see that module's own docstring for why. `tools.py` imports
@@ -15,7 +15,6 @@ from mcp.server.mcpserver import Context
 from .models import (
     CustomOptionSummary,
     HelpTextListResult,
-    HelpTextSummary,
     NonWorkingDayListResult,
     RenderedText,
     WorkingDayListResult,
@@ -47,14 +46,6 @@ async def list_help_texts(ctx: Context) -> HelpTextListResult:
     """List all help texts configured for work-package and project attributes."""
     client = _client_from_context(ctx)
     return await _run_tool(client.extended_metadata.list_help_texts())
-
-
-@register_tool
-async def get_help_text(ctx: Context, help_text_id: int) -> HelpTextSummary:
-    """Get a single help text by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(help_text_id, field_name="help_text_id")
-    return await _run_tool(client.extended_metadata.get_help_text(safe_id))
 
 
 @register_tool

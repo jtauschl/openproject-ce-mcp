@@ -113,18 +113,20 @@ provider may transform or cache the catalog before billing it.
 
 | Configuration | Tools | Catalog tokens |
 | --- | ---: | ---: |
-| Fresh install, no project scope | 14 | ~1,960 |
-| Project reads, no writes | 88 | ~29,555 |
-| Work-package writes only | 114 | ~46,727 |
-| Every project readable and writable, other settings default (Glama build) | 153 | ~63,951 |
-| Every write scope | 187 | ~74,634 |
-| Every write scope plus extended tools | 204 | ~77,771 |
+| Fresh install, no project scope | 11 | ~1,648 |
+| Project reads, no writes | 85 | ~29,245 |
+| Work-package writes only | 111 | ~46,389 |
+| Every project readable and writable, other settings default (Glama build) | 150 | ~63,613 |
+| Every write scope | 184 | ~74,296 |
+| Every write scope plus extended tools | 200 | ~77,325 |
+| Project reads, no writes, `OPENPROJECT_TOOL_PROFILE=core` | 15 | ~11,075 |
+| Every project readable and writable, `OPENPROJECT_TOOL_PROFILE=core` | 21 | ~16,602 |
 
 The figures include each tool's MCP annotations (read-only, destructive,
 idempotent and open-world hints) and the parameter descriptions in its input
 schema.
 
-The extended group adds 17 rarely used tools (12 metadata tools and 5 project-bound lists) and is opt-in through
+The extended group adds 16 rarely used tools (11 metadata tools and 5 project-bound lists) and is opt-in through
 `OPENPROJECT_ENABLE_EXTENDED_READ=true`; see
 [Configuration](configuration.md#tool-groups). Confirmed writes also omit the
 echoed request `payload` from their response.

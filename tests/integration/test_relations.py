@@ -233,10 +233,10 @@ async def test_update_relation_changes_description_and_type(
         await client.relation.delete(relation_id=relation_id, confirm=True)
 
 
-async def test_get_work_package_relations_stamps_queried_perspective_from_both_sides(
+async def test_list_work_package_relations_stamps_queried_perspective_from_both_sides(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    """A "follows" relation read from get_work_package_relations
+    """A "follows" relation read from list_work_package_relations
     must carry a caller-relative queried_perspective alongside the raw,
     unchanged type/from_id/to_id -- from BOTH involved work packages'
     perspectives, not just the one the relation happened to be created

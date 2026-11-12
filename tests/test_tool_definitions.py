@@ -32,7 +32,7 @@ PER_ITEM_WRITES = {
 # Tools whose limit does not page: it bounds a single listing, so it has its
 # own description and there is no offset next to it.
 LIMIT_EXCEPTIONS = {
-    "get_work_package_activities",
+    "list_work_package_activities",
     "list_recurring_meeting_occurrences",
     "list_work_package_available_relation_candidates",
 }

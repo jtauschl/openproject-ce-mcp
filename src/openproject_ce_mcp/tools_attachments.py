@@ -68,7 +68,7 @@ from .user_content import delimit_user_content
 ATTACHMENT_CONTAINER_TYPES = {"wiki_page", "post", "meeting", "activity"}
 _CONTAINER_TYPE = (
     "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from "
-    "get_work_package_activities)."
+    "list_work_package_activities)."
 )
 
 

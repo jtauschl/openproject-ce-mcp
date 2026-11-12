@@ -90,10 +90,6 @@ class HttpxExtendedMetadataApi:
         elements = payload.get("_embedded", {}).get("elements", [])
         return [HelpTextRecord(summary=normalize_help_text(item)) for item in elements if isinstance(item, dict)]
 
-    async def get_help_text(self, help_text_id: int) -> HelpTextRecord:
-        payload = await self._transport.get_json(f"help_texts/{help_text_id}")
-        return HelpTextRecord(summary=normalize_help_text(payload))
-
     async def list_working_days(self) -> list[WorkingDayRecord]:
         payload = await self._transport.get_json("days/week")
         elements = payload.get("_embedded", {}).get("elements", [])

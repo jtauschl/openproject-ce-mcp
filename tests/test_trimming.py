@@ -1052,7 +1052,7 @@ async def test_get_work_package_include_allowed_statuses_is_threaded_through_the
 
 
 def test_single_entity_read_keeps_other_null_fields_when_hide_config_active() -> None:
-    # A select-less single-entity read (e.g. get_status) is registered with
+    # A select-less single-entity read (e.g. get_current_user) is registered with
     # elide_none=False, so it is routed through
     # _to_payload with elide_none=False (Rule 1 applies) purely to drop a
     # hidden key -- its other None fields must stay explicit, not newly

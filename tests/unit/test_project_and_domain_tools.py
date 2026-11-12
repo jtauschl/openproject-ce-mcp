@@ -41,14 +41,11 @@ from openproject_ce_mcp.tools import (
     get_job_status,
     get_my_project_access,
     get_news,
-    get_priority,
     get_project_configuration,
     get_project_phase,
     get_project_phase_definition,
     get_sprint,
-    get_status,
     get_time_entry,
-    get_type,
     get_version,
     get_view,
     get_wiki_page,
@@ -888,16 +885,11 @@ async def test_status_tools_pass_expected_arguments() -> None:
         async def list_statuses(self):
             return {"statuses": True}
 
-        async def get_status(self, status_id):
-            return {"status_id": status_id}
-
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_statuses(ctx)
-    detail = await get_status(ctx, 3)
 
     assert listed["statuses"] is True
-    assert detail["status_id"] == 3
 
 
 @pytest.mark.asyncio
@@ -910,16 +902,11 @@ async def test_priority_tools_pass_expected_arguments() -> None:
         async def list_priorities(self):
             return {"priorities": True}
 
-        async def get_priority(self, priority_id):
-            return {"priority_id": priority_id}
-
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_priorities(ctx)
-    detail = await get_priority(ctx, 2)
 
     assert listed["priorities"] is True
-    assert detail["priority_id"] == 2
 
 
 @pytest.mark.asyncio
@@ -932,16 +919,11 @@ async def test_type_tools_pass_expected_arguments() -> None:
         async def list_types(self, **kwargs):
             return kwargs
 
-        async def get_type(self, type_id):
-            return {"type_id": type_id}
-
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_types(ctx, project="demo")
-    detail = await get_type(ctx, 4)
 
     assert listed["project"] == "demo"
-    assert detail["type_id"] == 4
 
 
 @pytest.mark.asyncio

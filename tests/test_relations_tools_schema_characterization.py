@@ -113,7 +113,7 @@ def test_delete_relation_schema() -> None:
     assert tool.parameters == {
         "properties": {
             "relation_id": {
-                "description": "Relation id, from get_work_package_relations.",
+                "description": "Relation id, from list_work_package_relations.",
                 "title": "Relation Id",
                 "type": "integer",
             },
@@ -133,11 +133,11 @@ def test_delete_relation_schema() -> None:
     assert list(tool.parameters["properties"]) == ["relation_id", "confirm"]
 
 
-def test_get_work_package_relations_schema() -> None:
-    tool = _tools(create_app(_make_settings()))["get_work_package_relations"]
+def test_list_work_package_relations_schema() -> None:
+    tool = _tools(create_app(_make_settings()))["list_work_package_relations"]
     assert (
         tool.description
-        == 'Get the relations of one work package (blocks, relates to, duplicates, etc.).\n\ntype/from_id/to_id reflect how OpenProject actually stored the relation, which does not depend on\nwhich work package\'s relations you query, but can differ from how it was originally requested, since\nOpenProject canonicalizes some relation types at creation time (e.g. a relation requested as \'precedes\'\nis stored as \'follows\' with from_id/to_id swapped; see create_work_package_relation). Use from_id/to_id\ntogether with type, not the request you expect to have made, to determine the actual direction.\n\nEach result additionally carries queried_perspective, a caller-relative reading of the same relation\nfrom work_package_id\'s own side; never a replacement for type/from_id/to_id, which stay unchanged.\nqueried_perspective.direction is "from" or "to" (which raw id equals work_package_id);\nqueried_perspective.effective_type is the type as read FROM work_package_id\'s side (e.g. a stored\n"blocks" relation reads as effective_type="blocked" when work_package_id is the to_id side, "blocks"\nwhen it\'s the from_id side). queried_perspective.predecessor_id/successor_id are populated only for\nthe precedes/follows type pair (OpenProject\'s own scheduling-relevant relation types); both stay null\nfor every other type, since no other type has an equivalent first/second concept.\n\ntotal is only the count of allowed relations returned on THIS page, not a full count of all matches; the search\nstops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.\n'
+        == 'List the relations of one work package (blocks, relates to, duplicates, etc.).\n\ntype/from_id/to_id reflect how OpenProject actually stored the relation, which does not depend on\nwhich work package\'s relations you query, but can differ from how it was originally requested, since\nOpenProject canonicalizes some relation types at creation time (e.g. a relation requested as \'precedes\'\nis stored as \'follows\' with from_id/to_id swapped; see create_work_package_relation). Use from_id/to_id\ntogether with type, not the request you expect to have made, to determine the actual direction.\n\nEach result additionally carries queried_perspective, a caller-relative reading of the same relation\nfrom work_package_id\'s own side; never a replacement for type/from_id/to_id, which stay unchanged.\nqueried_perspective.direction is "from" or "to" (which raw id equals work_package_id);\nqueried_perspective.effective_type is the type as read FROM work_package_id\'s side (e.g. a stored\n"blocks" relation reads as effective_type="blocked" when work_package_id is the to_id side, "blocks"\nwhen it\'s the from_id side). queried_perspective.predecessor_id/successor_id are populated only for\nthe precedes/follows type pair (OpenProject\'s own scheduling-relevant relation types); both stay null\nfor every other type, since no other type has an equivalent first/second concept.\n\ntotal is only the count of allowed relations returned on THIS page, not a full count of all matches; the search\nstops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.\n'
     )
     assert tool.output_schema is None
     assert tool.parameters == {
@@ -167,7 +167,7 @@ def test_get_work_package_relations_schema() -> None:
             },
         },
         "required": ["work_package_id"],
-        "title": "get_work_package_relationsArguments",
+        "title": "list_work_package_relationsArguments",
         "type": "object",
         "additionalProperties": False,
     }
@@ -179,7 +179,7 @@ def test_list_relations_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_relations"]
     assert (
         tool.description
-        == "List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').\n\ntype/from_id/to_id reflect how OpenProject actually stored the relation (it does not change depending\non which work package's relations you're viewing), which can differ from how it was originally\nrequested; OpenProject canonicalizes some relation types at creation time (e.g. a relation requested\nas 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).\nFiltering by relation_type matches the stored (canonical) type, not necessarily the type a caller\noriginally requested when creating it.\n\nEach result's queried_perspective field is always null here; a caller-relative reading needs one\nanchor work package to read the relation FROM, and this instance-wide listing has none. Use\nget_work_package_relations instead when you need queried_perspective populated.\n\ntotal is only the count of allowed relations returned on THIS page, not a full count of all matches; the search\nstops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.\n"
+        == "List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').\n\ntype/from_id/to_id reflect how OpenProject actually stored the relation (it does not change depending\non which work package's relations you're viewing), which can differ from how it was originally\nrequested; OpenProject canonicalizes some relation types at creation time (e.g. a relation requested\nas 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).\nFiltering by relation_type matches the stored (canonical) type, not necessarily the type a caller\noriginally requested when creating it.\n\nEach result's queried_perspective field is always null here; a caller-relative reading needs one\nanchor work package to read the relation FROM, and this instance-wide listing has none. Use\nlist_work_package_relations instead when you need queried_perspective populated.\n\ntotal is only the count of allowed relations returned on THIS page, not a full count of all matches; the search\nstops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.\n"
     )
     assert tool.output_schema is None
     assert tool.parameters == {

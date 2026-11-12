@@ -34,7 +34,7 @@ _READ_FLAG_OF = {group.write.attr: group.read_attr for group in TOOL_GROUPS if g
 
 # Tools a description names to say that no such tool exists.
 _NAMED_AS_ABSENT = frozenset(
-    {"list_cost_types", "list_forums", "list_posts", "get_gitlab_issue", "get_gitlab_merge_request"}
+    {"list_cost_types", "list_forums", "list_posts", "list_wiki_pages", "get_gitlab_issue", "get_gitlab_merge_request"}
 )
 
 

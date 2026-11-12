@@ -1,4 +1,4 @@
-"""Characterization test: freezes the 6 Reference Data MCP tool schemas.
+"""Characterization test: freezes the 3 Reference Data MCP tool schemas.
 
 Proves that where these tool functions live (tools.py vs. their own per-domain
 file) has zero effect on what an MCP client actually sees -- parameter names/
@@ -61,26 +61,6 @@ def test_list_statuses_schema() -> None:
     assert list(tool.parameters["properties"]) == []
 
 
-def test_get_status_schema() -> None:
-    tool = _tools(create_app(_make_settings()))["get_status"]
-    assert tool.description == "Get a single work package status by id."
-    assert tool.output_schema is None
-    assert tool.parameters == {
-        "properties": {
-            "status_id": {
-                "title": "Status Id",
-                "type": "integer",
-            },
-        },
-        "required": ["status_id"],
-        "title": "get_statusArguments",
-        "type": "object",
-        "additionalProperties": False,
-    }
-    # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["status_id"]
-
-
 def test_list_priorities_schema() -> None:
     tool = _tools(create_app(_make_settings()))["list_priorities"]
     assert tool.description == "List all available work package priorities."
@@ -93,26 +73,6 @@ def test_list_priorities_schema() -> None:
     }
     # Dict equality above doesn't check key order -- assert it separately.
     assert list(tool.parameters["properties"]) == []
-
-
-def test_get_priority_schema() -> None:
-    tool = _tools(create_app(_make_settings()))["get_priority"]
-    assert tool.description == "Get a single work package priority by id."
-    assert tool.output_schema is None
-    assert tool.parameters == {
-        "properties": {
-            "priority_id": {
-                "title": "Priority Id",
-                "type": "integer",
-            },
-        },
-        "required": ["priority_id"],
-        "title": "get_priorityArguments",
-        "type": "object",
-        "additionalProperties": False,
-    }
-    # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["priority_id"]
 
 
 def test_list_types_schema() -> None:
@@ -137,23 +97,3 @@ def test_list_types_schema() -> None:
     }
     # Dict equality above doesn't check key order -- assert it separately.
     assert list(tool.parameters["properties"]) == ["project"]
-
-
-def test_get_type_schema() -> None:
-    tool = _tools(create_app(_make_settings()))["get_type"]
-    assert tool.description == "Get a single work package type by id."
-    assert tool.output_schema is None
-    assert tool.parameters == {
-        "properties": {
-            "type_id": {
-                "title": "Type Id",
-                "type": "integer",
-            },
-        },
-        "required": ["type_id"],
-        "title": "get_typeArguments",
-        "type": "object",
-        "additionalProperties": False,
-    }
-    # Dict equality above doesn't check key order -- assert it separately.
-    assert list(tool.parameters["properties"]) == ["type_id"]

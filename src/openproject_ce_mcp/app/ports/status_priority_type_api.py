@@ -7,10 +7,10 @@ concept at all, and Type's project-optional `list()` branch shapes the
 *request* (which endpoint to call: `projects/{id}/types` vs `types`), not a
 per-record link to allowlist-check after the fact.
 
-No `to_detail` split on any of the three Records: `get_status`/`get_priority`/
-`get_type` are plain single-item fetches through the same normalizer as list
-rows, with no separate detail-only fields to compute lazily (unlike Users/
-Documents/Versions).
+No `to_detail` split on any of the three Records: they carry no detail-only
+fields to compute lazily (unlike Users/Documents/Versions). `get_status` is a
+plain single-item fetch through the same normalizer as list rows; it has no tool
+and exists for work-package writes that close a work package.
 
 Each Record also carries `lookup_name`: the raw payload's `name` field
 (`str(payload.get("name", ""))`), independent of `summary.name`. The two
@@ -69,8 +69,4 @@ class StatusPriorityTypeApi(Protocol):
 
     async def list_priorities(self) -> list[PriorityRecord]: ...
 
-    async def get_priority(self, priority_id: int) -> PriorityRecord: ...
-
     async def list_types(self, *, project_id: int | None) -> list[TypeRecord]: ...
-
-    async def get_type(self, type_id: int) -> TypeRecord: ...

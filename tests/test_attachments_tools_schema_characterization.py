@@ -228,7 +228,7 @@ def test_list_container_attachments_schema() -> None:
     assert tool.parameters == {
         "properties": {
             "container_type": {
-                "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from get_work_package_activities).",
+                "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from list_work_package_activities).",
                 "title": "Container Type",
                 "type": "string",
             },
@@ -275,7 +275,7 @@ def test_create_container_attachment_schema() -> None:
     assert tool.parameters == {
         "properties": {
             "container_type": {
-                "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from get_work_package_activities).",
+                "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from list_work_package_activities).",
                 "title": "Container Type",
                 "type": "string",
             },

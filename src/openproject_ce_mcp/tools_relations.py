@@ -1,5 +1,5 @@
 """Relations domain MCP tool handlers: create_work_package_relation, delete_relation,
-get_work_package_relations, list_relations, update_relation.
+list_work_package_relations, list_relations, update_relation.
 
 These wrap the RELATIONS resource (an edge between two work packages, with a
 type such as blocks/relates/precedes/follows), not work-package CRUD itself
@@ -11,7 +11,7 @@ this module for the decorator's registration side effect and re-exports all
 five names: `create_work_package_relation`, `delete_relation`, and
 `update_relation` because existing tests (`tests/test_trimming.py`,
 `tests/unit/test_work_package_tools.py`, `tests/unit/test_tool_validation.py`)
-import them directly from `openproject_ce_mcp.tools`; `get_work_package_relations`
+import them directly from `openproject_ce_mcp.tools`; `list_work_package_relations`
 and `list_relations` are re-exported alongside for consistency, matching
 `tools_projects.py`'s and `tools_admin.py`'s precedent of re-exporting the
 full moved set rather than only the names a test happens to import today.
@@ -108,7 +108,7 @@ async def create_work_package_relation(
 @register_tool
 async def delete_relation(
     ctx: Context,
-    relation_id: Annotated[int, Field(description="Relation id, from get_work_package_relations.")],
+    relation_id: Annotated[int, Field(description="Relation id, from list_work_package_relations.")],
     confirm: Confirm = False,
 ) -> RelationWriteResult:
     """Delete a relation between work packages; this cannot be undone.
@@ -121,14 +121,14 @@ async def delete_relation(
 
 
 @register_tool
-async def get_work_package_relations(
+async def list_work_package_relations(
     ctx: Context,
     work_package_id: WorkPackageRef,
     offset: Offset = 1,
     limit: Limit = None,
     select: Annotated[list[str] | None, select_field(RelationSummary)] = None,
 ) -> RelationListResult:
-    """Get the relations of one work package (blocks, relates to, duplicates, etc.).
+    """List the relations of one work package (blocks, relates to, duplicates, etc.).
 
     type/from_id/to_id reflect how OpenProject actually stored the relation, which does not depend on
     which work package's relations you query, but can differ from how it was originally requested, since
@@ -175,7 +175,7 @@ async def list_relations(
 
     Each result's queried_perspective field is always null here; a caller-relative reading needs one
     anchor work package to read the relation FROM, and this instance-wide listing has none. Use
-    get_work_package_relations instead when you need queried_perspective populated.
+    list_work_package_relations instead when you need queried_perspective populated.
 
     total is only the count of allowed relations returned on THIS page, not a full count of all matches; the search
     stops as soon as it has enough, so an exact total would need an extra full walk. Page until next_offset is null.

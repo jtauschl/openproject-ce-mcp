@@ -50,7 +50,6 @@ class _FakeExtendedMetadataApi:
     def __init__(self) -> None:
         self.render_text_calls: list[tuple[str, str]] = []
         self.list_help_texts_calls = 0
-        self.get_help_text_calls: list[int] = []
         self.list_working_days_calls = 0
         self.list_non_working_days_calls: list[int | None] = []
         self.get_custom_option_calls: list[int] = []
@@ -62,10 +61,6 @@ class _FakeExtendedMetadataApi:
     async def list_help_texts(self) -> list[HelpTextRecord]:
         self.list_help_texts_calls += 1
         return [_help_text_record()]
-
-    async def get_help_text(self, help_text_id: int) -> HelpTextRecord:
-        self.get_help_text_calls.append(help_text_id)
-        return _help_text_record(help_text_id)
 
     async def list_working_days(self) -> list[WorkingDayRecord]:
         self.list_working_days_calls += 1
@@ -192,18 +187,6 @@ async def test_list_help_texts_returns_stamped_summaries_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_help_text_checks_extended_read_enabled() -> None:
-    settings = dataclasses.replace(make_settings(), enable_metadata_tools=False)
-    api = _FakeExtendedMetadataApi()
-    service = _service(api, settings=settings)
-
-    with pytest.raises(PermissionDeniedError):
-        await service.get_help_text(5)
-
-    assert api.get_help_text_calls == []
-
-
-@pytest.mark.asyncio
 async def test_list_working_days_checks_extended_read_enabled() -> None:
     settings = dataclasses.replace(make_settings(), enable_metadata_tools=False)
     api = _FakeExtendedMetadataApi()
@@ -267,14 +250,14 @@ async def test_get_custom_option_returns_stamped_summary_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_help_text_applies_hidden_field_masking() -> None:
+async def test_list_help_texts_applies_hidden_field_masking() -> None:
     settings = dataclasses.replace(
         make_settings(), enable_metadata_tools=True, hidden_fields={"help_text": ("help_text",)}
     )
     api = _FakeExtendedMetadataApi()
     service = _service(api, settings=settings)
 
-    result = await service.get_help_text(5)
+    result = (await service.list_help_texts()).results[0]
 
     assert getattr(result, "_hidden_keys", frozenset()) == {"help_text"}
 
@@ -289,19 +272,19 @@ async def test_help_text_hidden_by_help_text_scope_not_working_day_or_custom_opt
     settings_working_day_hidden = dataclasses.replace(
         make_settings(), enable_metadata_tools=True, hidden_fields={"working_day": ("attribute_name",)}
     )
-    result_working_day_hidden = await _service(settings=settings_working_day_hidden).get_help_text(5)
+    result_working_day_hidden = (await _service(settings=settings_working_day_hidden).list_help_texts()).results[0]
     assert getattr(result_working_day_hidden, "_hidden_keys", frozenset()) == frozenset()
 
     settings_custom_option_hidden = dataclasses.replace(
         make_settings(), enable_metadata_tools=True, hidden_fields={"custom_option": ("attribute_name",)}
     )
-    result_custom_option_hidden = await _service(settings=settings_custom_option_hidden).get_help_text(5)
+    result_custom_option_hidden = (await _service(settings=settings_custom_option_hidden).list_help_texts()).results[0]
     assert getattr(result_custom_option_hidden, "_hidden_keys", frozenset()) == frozenset()
 
     settings_help_text_hidden = dataclasses.replace(
         make_settings(), enable_metadata_tools=True, hidden_fields={"help_text": ("attribute_name",)}
     )
-    result_help_text_hidden = await _service(settings=settings_help_text_hidden).get_help_text(5)
+    result_help_text_hidden = (await _service(settings=settings_help_text_hidden).list_help_texts()).results[0]
     assert getattr(result_help_text_hidden, "_hidden_keys", frozenset()) == {"attribute_name"}
 
 

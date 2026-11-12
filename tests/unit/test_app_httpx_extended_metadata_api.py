@@ -109,19 +109,6 @@ async def test_list_help_texts_sends_get_and_builds_records() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_help_text_sends_get_single_path() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/help_texts/5"
-        return httpx.Response(200, json={"id": 5, "attributeName": "description"}, request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
-        record = await api.get_help_text(5)
-
-    assert record.summary.id == 5
-
-
-@pytest.mark.asyncio
 async def test_list_working_days_sends_days_week_path() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/days/week"

@@ -104,7 +104,7 @@ write still needs `confirm=true`. With `core` and both project lists set to `*`
 exactly these tools register: `list_projects`, `get_project`,
 `get_current_user`, `list_work_packages`, `search_work_packages`,
 `list_my_open_work_packages`, `get_work_package`,
-`get_work_package_activities`, `get_work_package_relations`, `list_statuses`,
+`list_work_package_activities`, `list_work_package_relations`, `list_statuses`,
 `list_types`, `list_priorities`, `list_available_assignees`, `list_versions`,
 `create_work_package`, `update_work_package`, `add_work_package_comment`,
 `create_work_package_relation`, `delete_relation`, `create_time_entry`,
@@ -193,8 +193,8 @@ above or the table after it keep a tool unregistered. While
 `OPENPROJECT_READ_PROJECTS` is empty, the read switches of the default groups
 register only these project-independent tools:
 `list_project_phase_definitions`, `get_project_phase_definition`,
-`get_instance_configuration`, `list_statuses`, `get_status`,
-`list_priorities`, `get_priority`, `list_types`, `get_type`, `get_cost_type`,
+`get_instance_configuration`, `list_statuses`, `list_priorities`,
+`list_types`, `get_cost_type`,
 `get_github_pull_request`, `list_roles`, `get_current_user`, `list_actions`.
 The project-scoped write switches register their tools only while both
 `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` are non-empty.
@@ -212,7 +212,7 @@ is hidden.
 | Switch | Tools |
 | --- | --- |
 | `OPENPROJECT_ENABLE_PROJECT_READ` | `list_projects`, `get_project`, `get_project_admin_context`, `get_project_configuration`, `list_sprints`, `get_sprint`, `list_backlog_buckets`, `get_backlog_bucket`, `list_documents`, `get_document`, `list_project_storages`, `get_project_storage`, `list_news`, `get_news`, `get_wiki_page`, `get_post`, `list_views`, `get_view`, `list_grids`, `get_grid`, `list_categories`, `get_category`, `list_project_phase_definitions`, `get_project_phase_definition`, `get_project_phase`, `get_my_project_access`, `get_project_work_package_context`, `get_instance_configuration`, `get_job_status` |
-| `OPENPROJECT_ENABLE_WORK_PACKAGE_READ` | `list_work_packages`, `search_work_packages`, `get_work_package`, `get_work_packages`, `list_my_open_work_packages`, `get_work_package_activities`, `list_work_package_reactions`, `list_reminders`, `get_work_package_relations`, `list_container_attachments`, `list_work_package_attachments`, `get_attachment`, `get_attachment_content`, `list_work_package_file_links`, `list_work_package_watchers`, `list_available_assignees`, `list_work_package_available_relation_candidates`, `list_statuses`, `get_status`, `list_priorities`, `get_priority`, `list_types`, `get_type`, `list_time_entry_activities`, `list_time_entries`, `get_time_entry`, `get_cost_entry`, `list_work_package_cost_entries`, `get_work_package_costs_by_type`, `get_cost_type`, `get_github_pull_request`, `list_work_package_github_pull_requests`, `list_work_package_gitlab_issues`, `list_work_package_gitlab_merge_requests`, `list_relations`, `list_work_package_wiki_links`, `execute_query` |
+| `OPENPROJECT_ENABLE_WORK_PACKAGE_READ` | `list_work_packages`, `search_work_packages`, `get_work_package`, `get_work_packages`, `list_my_open_work_packages`, `list_work_package_activities`, `list_work_package_reactions`, `list_reminders`, `list_work_package_relations`, `list_container_attachments`, `list_work_package_attachments`, `get_attachment`, `get_attachment_content`, `list_work_package_file_links`, `list_work_package_watchers`, `list_available_assignees`, `list_work_package_available_relation_candidates`, `list_statuses`, `list_priorities`, `list_types`, `list_time_entry_activities`, `list_time_entries`, `get_time_entry`, `get_cost_entry`, `list_work_package_cost_entries`, `get_work_package_costs_by_type`, `get_cost_type`, `get_github_pull_request`, `list_work_package_github_pull_requests`, `list_work_package_gitlab_issues`, `list_work_package_gitlab_merge_requests`, `list_relations`, `list_work_package_wiki_links`, `execute_query` |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_READ` | `list_project_memberships`, `get_membership`, `list_roles`, `get_current_user`, `list_actions`, `list_capabilities` |
 | `OPENPROJECT_ENABLE_VERSION_READ` | `list_versions`, `get_version` |
 | `OPENPROJECT_ENABLE_BOARD_READ` | `list_boards`, `get_board` |
@@ -220,7 +220,7 @@ is hidden.
 | `OPENPROJECT_ENABLE_PERSONAL_READ` | `get_my_preferences`, `list_notifications`, `get_notification` |
 | `OPENPROJECT_ENABLE_ADMIN_READ` | `list_principals`, `list_users`, `get_user`, `list_groups`, `get_group`, `list_storages`, `get_storage` |
 | `OPENPROJECT_ENABLE_USER_SCHEDULE_READ` | `list_user_non_working_times`, `list_user_working_hours`, `get_user_working_hours` |
-| `OPENPROJECT_ENABLE_EXTENDED_READ` | `get_query_filter`, `get_query_column`, `get_query_operator`, `get_query_sort_by`, `list_query_filter_instance_schemas`, `get_query_filter_instance_schema`, `render_text`, `list_help_texts`, `get_help_text`, `list_working_days`, `list_non_working_days`, `get_custom_option`, `list_project_budgets`, `list_version_projects`, `list_work_package_available_watchers`, `list_work_package_available_projects`, `list_work_package_revisions` |
+| `OPENPROJECT_ENABLE_EXTENDED_READ` | `get_query_filter`, `get_query_column`, `get_query_operator`, `get_query_sort_by`, `list_query_filter_instance_schemas`, `get_query_filter_instance_schema`, `render_text`, `list_help_texts`, `list_working_days`, `list_non_working_days`, `get_custom_option`, `list_project_budgets`, `list_version_projects`, `list_work_package_available_watchers`, `list_work_package_available_projects`, `list_work_package_revisions` |
 | `OPENPROJECT_ENABLE_PROJECT_WRITE` | `create_project`, `update_project`, `delete_project`, `copy_project`, `set_project_favorite`, `create_news`, `update_news`, `delete_news`, `update_document`, `create_grid`, `update_grid`, `delete_grid`, `create_container_attachment` |
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` | `create_work_package`, `create_subtask`, `update_work_package`, `bulk_create_work_packages`, `bulk_update_work_packages`, `delete_work_package`, `add_work_package_comment`, `update_work_package_comment`, `toggle_activity_emoji_reaction`, `create_work_package_reminder`, `update_reminder`, `delete_reminder`, `create_work_package_relation`, `delete_relation`, `delete_attachment`, `set_work_package_watcher`, `create_time_entry`, `update_time_entry`, `create_time_entry_until`, `update_time_entry_until`, `delete_time_entry`, `update_relation`, `delete_file_link`, `set_query_starred`, `create_work_package_wiki_link`, `delete_work_package_wiki_link`, `create_work_package_attachment`, `create_container_attachment` |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE` | `create_membership`, `update_membership`, `delete_membership` |
@@ -274,7 +274,7 @@ defense in depth.
 | `OPENPROJECT_DEFAULT_PAGE_SIZE` | no | `10` | Default results per page (kept small to bound list context; raise if you want more rows per call). Must not exceed `OPENPROJECT_MAX_PAGE_SIZE` |
 | `OPENPROJECT_MAX_PAGE_SIZE` | no | `50` | Hard cap on results per request. Must not exceed `OPENPROJECT_MAX_RESULTS`. At startup it is lowered, with a warning, to the maximum page size of the OpenProject API (Administration, API and webhooks) when that is smaller |
 | `OPENPROJECT_MAX_RESULTS` | no | `100` | Hard cap on total results returned by a tool |
-| `OPENPROJECT_TEXT_LIMIT` | no | `500` | Char cap for the description preview in list/search results (context protection across many rows), max `50000`. Single-item reads (`get_work_package`, `get_work_package_activities`) return full text regardless; a per-call `text_limit` overrides this |
+| `OPENPROJECT_TEXT_LIMIT` | no | `500` | Char cap for the description preview in list/search results (context protection across many rows), max `50000`. Single-item reads (`get_work_package`, `list_work_package_activities`) return full text regardless; a per-call `text_limit` overrides this |
 
 ## Security / Privacy
 

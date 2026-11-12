@@ -2740,7 +2740,7 @@ async def test_update_work_package_clears_duration_fields_via_clear_sentinel() -
 
 
 async def test_update_work_package_close_succeeds_with_work_package_read_disabled() -> None:
-    """Closing must not route the internal status lookup through get_status()'s read gate."""
+    """Closing must not route the internal status lookup through the status service's read gate."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":

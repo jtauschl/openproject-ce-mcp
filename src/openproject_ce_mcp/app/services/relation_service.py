@@ -273,7 +273,7 @@ class RelationService:
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
     ) -> RelationListResult:
         # Gate before resolving the anchor -- resolving it already issues a
-        # work-package GET, and the original get_work_package_relations checks
+        # work-package GET, and the original list_work_package_relations checks
         # this before that fetch, not after.
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_limit = effective_limit(limit, settings=self._settings)

@@ -235,7 +235,7 @@ def tool_exposure_violations(
 
 # Cap for a work-package description shown in list/summary results — a per-row
 # preview so a multi-row list stays scannable without flooding the agent's context
-# window. Single-item reads (get_work_package, get_work_package_activities) are NOT
+# window. Single-item reads (get_work_package, list_work_package_activities) are NOT
 # capped by default. ``OPENPROJECT_TEXT_LIMIT`` overrides this default; a per-call
 # ``text_limit`` overrides that. TEXT_LIMIT_MAX is an absolute sanity ceiling that
 # no explicit ``text_limit`` may exceed.

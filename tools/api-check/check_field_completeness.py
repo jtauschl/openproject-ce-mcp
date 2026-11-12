@@ -258,7 +258,7 @@ EXCLUSIONS: list[FieldExclusion] = [
         "relations",
         ExclusionCategory.LARGE_EMBEDDED,
         "Embedded relation collection (property :relations, line 478); exposed "
-        "instead via relations_url + the get_work_package_relations tool.",
+        "instead via relations_url + the list_work_package_relations tool.",
     ),
     FieldExclusion(
         "work_package",

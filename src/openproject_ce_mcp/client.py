@@ -252,7 +252,7 @@ LOGGER = logging.getLogger(__name__)
 # WINDOW — not to save memory or bandwidth: the full text has already been fetched
 # from OpenProject and lives in this process; trimming only bounds how much lands
 # in the model's limited read context. Single-item reads (get_work_package,
-# get_work_package_activities) return their full text because one item is cheap;
+# list_work_package_activities) return their full text because one item is cheap;
 # only list/search results are capped, because many rows at full length flood the
 # context. That list-preview cap is configurable via OPENPROJECT_TEXT_LIMIT
 # (settings.text_limit, default 500) — see normalize_work_package_summary.

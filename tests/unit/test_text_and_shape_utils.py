@@ -822,8 +822,8 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
 
 
 @pytest.mark.asyncio
-async def test_get_work_package_relations_filters_out_of_scope_other_side() -> None:
-    """get_work_package_relations must not leak the id/subject of a
+async def test_list_work_package_relations_filters_out_of_scope_other_side() -> None:
+    """list_work_package_relations must not leak the id/subject of a
     linked work package whose project is outside READ_PROJECTS, even though
     the anchor work package itself is in an allowed project."""
     work_package_projects = {10: "demo", 11: "demo", 20: "other"}
@@ -888,8 +888,8 @@ async def test_get_work_package_relations_filters_out_of_scope_other_side() -> N
 
 
 @pytest.mark.asyncio
-async def test_get_work_package_relations_paginates_allowed_results() -> None:
-    # get_work_package_relations must paginate, not return every relation in
+async def test_list_work_package_relations_paginates_allowed_results() -> None:
+    # list_work_package_relations must paginate, not return every relation in
     # one unbounded response. Pagination is applied to the ACL-filtered
     # survivors (not the raw server page), so a restrictive allowlist can't
     # produce a sparse page -- same pattern as list_project_sprints.

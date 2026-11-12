@@ -135,19 +135,6 @@ async def test_list_priorities_requests_priorities_collection() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_priority_requests_single_item_endpoint() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/priorities/3"
-        return httpx.Response(200, json=_priority_payload(3), request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
-        record = await api.get_priority(3)
-
-    assert record.summary.id == 3
-
-
-@pytest.mark.asyncio
 async def test_list_types_without_project_id_requests_global_endpoint() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/types"
@@ -171,19 +158,6 @@ async def test_list_types_with_project_id_requests_project_scoped_endpoint() -> 
         records = await api.list_types(project_id=9)
 
     assert len(records) == 1
-
-
-@pytest.mark.asyncio
-async def test_get_type_requests_single_item_endpoint() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/types/4"
-        return httpx.Response(200, json=_type_payload(4), request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
-        record = await api.get_type(4)
-
-    assert record.summary.id == 4
 
 
 @pytest.mark.asyncio

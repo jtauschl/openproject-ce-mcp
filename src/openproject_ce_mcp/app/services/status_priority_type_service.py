@@ -2,8 +2,7 @@
 
 Depends on the StatusPriorityTypeApi Protocol, never HttpxStatusPriorityTypeApi
 concretely (enforced by the architecture-boundary test). No dedicated
-Resolver for any of the three: `status_id`/`priority_id`/`type_id` are always
-numeric values already validated by tools_reference_data.py.
+Resolver for any of the three.
 
 All three share `access.ensure_read_enabled("work_package", ...)` as their
 gate, so one Service bundling all three, rather than three separate
@@ -21,8 +20,8 @@ additional Policy/allowlist check belongs here; `list_types` never filters
 *returned* type rows by project link, the `project` ref only picks the
 request URL.
 
-`list_priorities`/`get_priority` call
-`hidden_fields.apply_hidden_fields("priority", ...)`, matching Status/Type.
+`list_priorities` calls `hidden_fields.apply_hidden_fields("priority", ...)`,
+matching Status/Type.
 `PriorityRecord`/`PrioritySummary` are structurally near-identical to
 `TypeRecord`/`TypeSummary` (id/name/color/position/is_default), so Priority
 gets the identical masking treatment as its siblings.
@@ -39,14 +38,7 @@ enabled-type set into another's.
 from __future__ import annotations
 
 from ...config import Settings
-from ...models import (
-    PriorityListResult,
-    PrioritySummary,
-    StatusListResult,
-    StatusSummary,
-    TypeListResult,
-    TypeSummary,
-)
+from ...models import PriorityListResult, StatusListResult, TypeListResult
 from ..caches import CachedValue
 from ..policies import access, hidden_fields
 from ..ports.project_ref import ProjectRefResolver
@@ -77,11 +69,6 @@ class StatusPriorityTypeService:
         ]
         return StatusListResult(count=len(results), results=results)
 
-    async def get_status(self, status_id: int) -> StatusSummary:
-        access.ensure_read_enabled("work_package", settings=self._settings)
-        record = await self._api.get_status(status_id)
-        return hidden_fields.apply_hidden_fields("status", record.summary, settings=self._settings)
-
     async def list_priorities(self) -> PriorityListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         records = await self._priorities_cache.get(self._api.list_priorities)
@@ -89,11 +76,6 @@ class StatusPriorityTypeService:
             hidden_fields.apply_hidden_fields("priority", record.summary, settings=self._settings) for record in records
         ]
         return PriorityListResult(count=len(results), results=results)
-
-    async def get_priority(self, priority_id: int) -> PrioritySummary:
-        access.ensure_read_enabled("work_package", settings=self._settings)
-        record = await self._api.get_priority(priority_id)
-        return hidden_fields.apply_hidden_fields("priority", record.summary, settings=self._settings)
 
     async def list_types(self, *, project: str | None = None) -> TypeListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
@@ -106,8 +88,3 @@ class StatusPriorityTypeService:
             hidden_fields.apply_hidden_fields("type", record.summary, settings=self._settings) for record in records
         ]
         return TypeListResult(count=len(results), results=results)
-
-    async def get_type(self, type_id: int) -> TypeSummary:
-        access.ensure_read_enabled("work_package", settings=self._settings)
-        record = await self._api.get_type(type_id)
-        return hidden_fields.apply_hidden_fields("type", record.summary, settings=self._settings)

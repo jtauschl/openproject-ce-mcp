@@ -57,8 +57,8 @@ def _handler(request: httpx.Request) -> httpx.Response:
     path = request.url.path
     if request.method == "GET" and path == "/api/v3/statuses":
         return httpx.Response(200, json={"_embedded": {"elements": [_status(1, "New"), _status(2, "In progress")]}})
-    if request.method == "GET" and path == "/api/v3/statuses/2":
-        return httpx.Response(200, json=_status(2, "In progress"))
+    if request.method == "GET" and path == "/api/v3/users/me":
+        return httpx.Response(200, json={"id": 4, "name": "Ada Lovelace", "login": "ada"})
     if request.method == "GET" and path == "/api/v3/activities/5":
         return httpx.Response(200, json={"_links": {"workPackage": {"href": "/api/v3/work_packages/77"}}})
     if request.method == "GET" and path == "/api/v3/work_packages/77":
@@ -105,13 +105,13 @@ async def test_a_trimmed_list_result_is_one_compact_text_block() -> None:
 
 
 async def test_a_result_the_sdk_used_to_serialise_itself_is_one_compact_text_block() -> None:
-    text = _only_text(await _call("get_status", {"status_id": 2}))
+    text = _only_text(await _call("get_current_user", {}))
 
     payload = json.loads(text)
-    assert payload["name"] == "In progress"
+    assert payload["name"] == "Ada Lovelace"
     assert "\n" not in text
     assert text == dump_payload(payload)
-    assert '"id":2,"name":"In progress"' in text
+    assert '"id":4,"name":"Ada Lovelace"' in text
 
 
 async def test_a_nested_collection_drops_its_derivable_count_through_the_real_seam() -> None:

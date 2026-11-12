@@ -128,5 +128,5 @@ _None — every checked field is modeled or has a documented exclusion._
 
 ### large_embedded
 
-- `work_package.relations` — Embedded relation collection (property :relations, line 478); exposed instead via relations_url + the get_work_package_relations tool.
+- `work_package.relations` — Embedded relation collection (property :relations, line 478); exposed instead via relations_url + the list_work_package_relations tool.
 - `work_package.attachments` — Embedded attachment collection (property :attachments, from the AttachableRepresenterMixin source pulled in via source_files); exposed instead via the list_work_package_attachments tool, same precedent as relations.

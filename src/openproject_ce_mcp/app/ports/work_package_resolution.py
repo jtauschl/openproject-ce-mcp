@@ -13,7 +13,7 @@ class WorkPackageAllowedContext:
     """Request-scoped cache for `WorkPackageResolver.project_link_allowed` results.
 
     Lifetime is bounded to a single top-level call (e.g. one
-    list_relations/list_notifications/list_reminders/get_work_package_relations
+    list_relations/list_notifications/list_reminders/list_work_package_relations
     invocation) -- construct a new instance per call, never store one on self.
 
     Much simpler than `ProjectResolutionContext`: a work-package href is a

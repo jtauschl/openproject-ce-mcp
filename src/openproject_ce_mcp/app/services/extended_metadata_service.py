@@ -16,7 +16,7 @@ varies its Resolver usage per-method within one Service, establishing the
 same precedent one layer over (there: which Resolver runs; here: which scope
 string is checked).
 
-The other four methods (list_help_texts, get_help_text, list_working_days,
+The other four methods (list_help_texts, list_working_days,
 list_non_working_days, get_custom_option) require the "extended" scope
 (OPENPROJECT_ENABLE_EXTENDED_READ) via `access.ensure_read_enabled("extended", ...)`.
 """
@@ -27,7 +27,6 @@ from ...config import Settings
 from ...models import (
     CustomOptionSummary,
     HelpTextListResult,
-    HelpTextSummary,
     NonWorkingDayListResult,
     RenderedText,
     WorkingDayListResult,
@@ -55,11 +54,6 @@ class ExtendedMetadataService:
             for record in records
         ]
         return HelpTextListResult(count=len(results), results=results)
-
-    async def get_help_text(self, help_text_id: int) -> HelpTextSummary:
-        access.ensure_read_enabled("extended", settings=self._settings)
-        record = await self._api.get_help_text(help_text_id)
-        return hidden_fields.apply_hidden_fields("help_text", record.summary, settings=self._settings)
 
     async def list_working_days(self) -> WorkingDayListResult:
         access.ensure_read_enabled("extended", settings=self._settings)

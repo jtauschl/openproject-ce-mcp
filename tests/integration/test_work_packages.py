@@ -579,10 +579,10 @@ async def test_update_work_package_comment(client: OpenProjectClient, test_proje
     assert edited and edited[0].comment == "<user-content>Integration test comment, edited</user-content>"
 
 
-async def test_get_work_package_activities_includes_creation_and_comment(
+async def test_list_work_package_activities_includes_creation_and_comment(
     client: OpenProjectClient, test_project: str, wp_ids: list[int], start_scoped_client
 ) -> None:
-    """Dedicated test for get_work_package_activities itself (previously only
+    """Dedicated test for list_work_package_activities itself (previously only
     ever exercised as a side-effect assertion inside other tests, e.g.
     test_add_work_package_comment above) -- checks the actual activity
     shape, not just a non-zero count."""
@@ -615,7 +615,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
 
     comment = await client.work_package.add_comment(
         work_package_id=await write_ref(client, result.work_package_id),
-        comment="Integration test comment for get_work_package_activities",
+        comment="Integration test comment for list_work_package_activities",
         confirm=True,
     )
     assert comment.ready, comment.validation_errors
@@ -626,7 +626,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
     # populated instead) -- so >= growth, not exact +1, is the only safe assertion.
     after_comment = await client.activity.list_for_work_package(result.work_package_id)
     assert after_comment.count >= activities.count
-    # get_work_package_activities returns newest-first (client.py's own
+    # list_work_package_activities returns newest-first (client.py's own
     # docstring), so the comment's own entry is results[0] -- UNLESS
     # OpenProject aggregated it into the existing "created" entry instead of
     # creating a new one (see the comment above), in which case that same
@@ -636,7 +636,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
     # coincidence when aggregation kept the list at a single element.
     newest = after_comment.results[0]
     assert newest.comment is not None
-    assert "Integration test comment for get_work_package_activities" in newest.comment
+    assert "Integration test comment for list_work_package_activities" in newest.comment
 
 
 async def test_bulk_create_work_packages_rejects_unknown_item_field(

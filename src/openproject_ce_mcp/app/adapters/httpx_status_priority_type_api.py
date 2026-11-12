@@ -105,10 +105,6 @@ class HttpxStatusPriorityTypeApi:
             if _has_usable_id(item)
         ]
 
-    async def get_priority(self, priority_id: int) -> PriorityRecord:
-        payload = await self._transport.get_json(f"priorities/{priority_id}")
-        return PriorityRecord(summary=normalize_priority(payload), lookup_name=_lookup_name(payload))
-
     async def list_types(self, *, project_id: int | None) -> list[TypeRecord]:
         path = f"projects/{project_id}/types" if project_id is not None else "types"
         payload = await self._transport.get_json(path)
@@ -118,7 +114,3 @@ class HttpxStatusPriorityTypeApi:
             for item in elements
             if _has_usable_id(item)
         ]
-
-    async def get_type(self, type_id: int) -> TypeRecord:
-        payload = await self._transport.get_json(f"types/{type_id}")
-        return TypeRecord(summary=normalize_type(payload), lookup_name=_lookup_name(payload))

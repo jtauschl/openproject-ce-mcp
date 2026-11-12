@@ -179,7 +179,7 @@ matching `OPENPROJECT_HIDE_<ENTITY>_FIELDS` environment variable — see
 [Configuration](configuration.md).
 
 A subset of rarely-used metadata tools — the `get_query_*` schema tools,
-`render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`,
+`render_text`, `get_custom_option`, `list_help_texts`,
 `list_working_days`/`list_non_working_days`, `list_project_budgets`, `list_version_projects`, `list_work_package_available_watchers`, `list_work_package_available_projects`, `list_work_package_revisions` — is **opt-in**: they are registered
 only when `OPENPROJECT_ENABLE_EXTENDED_READ=true`, to keep them out of the
 default tool set and save context.
@@ -454,11 +454,8 @@ has
 | Tool | Description |
 | --- | --- |
 | `list_statuses` | List available work-package statuses |
-| `get_status` | Fetch a single work-package status by id |
 | `list_priorities` | List available work-package priorities |
-| `get_priority` | Fetch a single work-package priority by id |
 | `list_types` | List available work-package types globally or for a project |
-| `get_type` | Fetch a single work-package type by id |
 | `list_categories` | List work-package categories configured for a project |
 | `get_category` | Fetch a single category from a project's category list |
 | `get_project_work_package_context` | Return project metadata plus the writable work-package schema for an optional type, including custom fields, project phases, and allowed values |
@@ -476,8 +473,8 @@ has
 | `update_work_package_comment` | Validate and then replace the text of an existing comment (by activity id); reports up front when OpenProject would not let the configured user edit it; the result never carries change details (`details_omitted` is true); only writes when called again with `confirm=true` |
 | `create_work_package_relation` | Validate and then create a relation between work packages; only writes when called again with `confirm=true` |
 | `delete_relation` | Validate and then delete a work package relation; only deletes when called again with `confirm=true` |
-| `get_work_package_relations` | Fetch all relations for a work package (blocks, relates to, duplicates, …); each result also carries `queried_perspective`, a caller-relative reading of the relation from `work_package_id`'s own side (`direction`, `effective_type`, and — only for the precedes/follows pair — `predecessor_id`/`successor_id`), alongside the unchanged raw `type`/`from_id`/`to_id` |
-| `get_work_package_activities` | Fetch the activity log for a work package, most recent first; the change details of an entry are returned only when `OPENPROJECT_READ_PROJECTS` is `*` and no work package or custom field is hidden, otherwise `details_omitted` is true |
+| `list_work_package_relations` | List all relations of one work package (blocks, relates to, duplicates, …); each result also carries `queried_perspective`, a caller-relative reading of the relation from `work_package_id`'s own side (`direction`, `effective_type`, and, only for the precedes/follows pair, `predecessor_id`/`successor_id`), alongside the unchanged raw `type`/`from_id`/`to_id` |
+| `list_work_package_activities` | List the activity log of one work package, most recent first; the change details of an entry are returned only when `OPENPROJECT_READ_PROJECTS` is `*` and no work package or custom field is hidden, otherwise `details_omitted` is true |
 | `list_work_package_reactions` | List emoji reactions across a work package's comment activities |
 | `toggle_activity_emoji_reaction` | Toggle an emoji reaction on a work package comment activity (add if absent, remove if present) |
 | `list_reminders` | List the current user's active reminders across all work packages |
@@ -776,7 +773,6 @@ later still). Meeting Outcomes require 17.6+ throughout.
 | Tool | Description |
 | --- | --- |
 | `list_help_texts` | List all help texts configured for work-package and project attributes |
-| `get_help_text` | Fetch a single help text by id |
 
 ## Working days
 

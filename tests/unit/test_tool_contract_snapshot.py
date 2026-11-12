@@ -976,6 +976,55 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
         "profiles": ("full",),
     },
+    "create_container_attachment": {
+        "description_hash": "6857490e990b3874e64281fa948ba6dc29c0f00ef0f46b398bd37c75f9560b24",
+        "input_schema": {
+            "properties": {
+                "container_type": {
+                    "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from list_work_package_activities).",
+                    "title": "Container Type",
+                    "type": "string",
+                },
+                "container_id": {
+                    "description": "Numeric id of that wiki page, post, meeting or activity.",
+                    "title": "Container Id",
+                    "type": "integer",
+                },
+                "file_path": {
+                    "description": "Path on the MCP server's machine, inside OPENPROJECT_ATTACHMENT_ROOT; uploaded under its file name.",
+                    "title": "File Path",
+                    "type": "string",
+                },
+                "description": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Markdown text stored with the attachment.",
+                    "title": "Description",
+                },
+                "confirm": {
+                    "default": False,
+                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "title": "Confirm",
+                    "type": "boolean",
+                },
+            },
+            "required": ["container_type", "container_id", "file_path"],
+            "title": "create_container_attachmentArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+        "classification": "write",
+        "scope": "project|meeting|work_package",
+        "capability_env_vars": ("OPENPROJECT_ATTACHMENT_ROOT",),
+        "profiles": ("full",),
+    },
     "create_grid": {
         "description_hash": "4821d953034eef65d9ac10f2532f658909a6d7ca6a5a47e633e506937e41340c",
         "input_schema": {
@@ -2678,40 +2727,12 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
         "profiles": ("full",),
     },
-    "end_recurring_meeting": {
-        "description_hash": "1f05e06136bdafce99ec31c2db802e5fc6e205e20d6a1696d7e1281892de11f0",
-        "input_schema": {
-            "properties": {
-                "recurring_meeting_id": {
-                    "description": "Recurring meeting series id, from list_recurring_meetings.",
-                    "title": "Recurring Meeting Id",
-                    "type": "integer",
-                },
-                "confirm": {
-                    "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
-                    "title": "Confirm",
-                    "type": "boolean",
-                },
-            },
-            "required": ["recurring_meeting_id"],
-            "title": "end_recurring_meetingArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True},
-        "classification": "write",
-        "scope": "meeting",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
-        "profiles": ("full",),
-    },
     "delete_relation": {
         "description_hash": "7002cd8719c8fad2976753962f9ccee5bcdeb46c356b4a954571b00dcb4fedc7",
         "input_schema": {
             "properties": {
                 "relation_id": {
-                    "description": "Relation id, from get_work_package_relations.",
+                    "description": "Relation id, from list_work_package_relations.",
                     "title": "Relation Id",
                     "type": "integer",
                 },
@@ -2981,6 +3002,34 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
         "profiles": ("full",),
     },
+    "end_recurring_meeting": {
+        "description_hash": "1f05e06136bdafce99ec31c2db802e5fc6e205e20d6a1696d7e1281892de11f0",
+        "input_schema": {
+            "properties": {
+                "recurring_meeting_id": {
+                    "description": "Recurring meeting series id, from list_recurring_meetings.",
+                    "title": "Recurring Meeting Id",
+                    "type": "integer",
+                },
+                "confirm": {
+                    "default": False,
+                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "title": "Confirm",
+                    "type": "boolean",
+                },
+            },
+            "required": ["recurring_meeting_id"],
+            "title": "end_recurring_meetingArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True},
+        "classification": "write",
+        "scope": "meeting",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
+        "profiles": ("full",),
+    },
     "execute_query": {
         "description_hash": "1ef92a34c9fa59f1ebefe99b112e32f2a2ee0fccac67d771995c227140b17425",
         "input_schema": {
@@ -3238,22 +3287,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_ADMIN_READ",),
         "profiles": ("full",),
     },
-    "get_help_text": {
-        "description_hash": "3fe7b2ed18c2c58286f171577ff2935c804ca242d3691eaa63d8316924518276",
-        "input_schema": {
-            "properties": {"help_text_id": {"title": "Help Text Id", "type": "integer"}},
-            "required": ["help_text_id"],
-            "title": "get_help_textArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "extended",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ",),
-        "profiles": ("full",),
-    },
     "get_instance_configuration": {
         "description_hash": "3b9f7f3dd0ec5db0936991c5ddc0b0407cc7c49f2de4542f4002b019bb612dec",
         "input_schema": {
@@ -3449,6 +3482,22 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
         "profiles": ("full",),
     },
+    "get_notification": {
+        "description_hash": "9b2b6b7560292ac64bc06643208e71764a0f66843ea42426fc5c110c57d76a3e",
+        "input_schema": {
+            "properties": {"notification_id": {"title": "Notification Id", "type": "integer"}},
+            "required": ["notification_id"],
+            "title": "get_notificationArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "personal",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ",),
+        "profiles": ("full",),
+    },
     "get_post": {
         "description_hash": "ab7a167c534a68ef559ce34c9bac0b44736146b2271ce776ff5463f11ca0d155",
         "input_schema": {
@@ -3463,22 +3512,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "read",
         "scope": "project",
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
-        "profiles": ("full",),
-    },
-    "get_priority": {
-        "description_hash": "6a1b9479e687a9592e1ee336405f6c0de489ee7f6daef881304f8a5b138a10b4",
-        "input_schema": {
-            "properties": {"priority_id": {"title": "Priority Id", "type": "integer"}},
-            "required": ["priority_id"],
-            "title": "get_priorityArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
         "profiles": ("full",),
     },
     "get_project": {
@@ -3763,22 +3796,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
         "profiles": ("full",),
     },
-    "get_status": {
-        "description_hash": "b3c21a9e732d668a937ef1471da5cc40c1646b5f4fc752dcc9f048a735551b13",
-        "input_schema": {
-            "properties": {"status_id": {"title": "Status Id", "type": "integer"}},
-            "required": ["status_id"],
-            "title": "get_statusArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
-        "profiles": ("full",),
-    },
     "get_storage": {
         "description_hash": "ff666267e5e74a79bbaa2f626e840ecd020d3be88a90e67c274151aeea0a52b2",
         "input_schema": {
@@ -3808,22 +3825,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
             },
             "required": ["time_entry_id"],
             "title": "get_time_entryArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
-        "profiles": ("full",),
-    },
-    "get_type": {
-        "description_hash": "112ccd3cf668eeecd381621813dd320097c9d8c79aeac580a10900afe852ecf6",
-        "input_schema": {
-            "properties": {"type_id": {"title": "Type Id", "type": "integer"}},
-            "required": ["type_id"],
-            "title": "get_typeArguments",
             "type": "object",
             "additionalProperties": False,
         },
@@ -3966,45 +3967,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
         "profiles": ("full", "core"),
     },
-    "get_work_package_activities": {
-        "description_hash": "cbe56ef5069f2a1cfe870717af9dc09f24de5ea49987d5596ed6022a81c529ce",
-        "input_schema": {
-            "properties": {
-                "work_package_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
-                    "title": "Work Package Id",
-                },
-                "limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Number of most recent activities, capped at OPENPROJECT_MAX_PAGE_SIZE. Not paged.",
-                    "title": "Limit",
-                },
-                "text_limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "title": "Text Limit",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: comment, comment_length, comment_truncated, created_at, details, details_omitted, details_truncated, id, type, user, version.",
-                    "title": "Select",
-                },
-            },
-            "required": ["work_package_id"],
-            "title": "get_work_package_activitiesArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
-        "profiles": ("full", "core"),
-    },
     "get_work_package_costs_by_type": {
         "description_hash": "87664c746e28ac08e2de4b587d8d48a1813843a0818bf657478e6b446b74cd5e",
         "input_schema": {
@@ -4026,46 +3988,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "work_package",
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
         "profiles": ("full",),
-    },
-    "get_work_package_relations": {
-        "description_hash": "6b18a0eb971255be6584e442a7375b67fd696a548961b8dedf8055d82077115c",
-        "input_schema": {
-            "properties": {
-                "work_package_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
-                    "title": "Work Package Id",
-                },
-                "offset": {
-                    "default": 1,
-                    "description": "1-based page number; pass the previous result's next_offset.",
-                    "title": "Offset",
-                    "type": "integer",
-                },
-                "limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
-                    "title": "Limit",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: description, description_length, description_truncated, from_id, from_subject, id, queried_perspective, to_id, to_subject, type.",
-                    "title": "Select",
-                },
-            },
-            "required": ["work_package_id"],
-            "title": "get_work_package_relationsArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
-        "profiles": ("full", "core"),
     },
     "get_work_packages": {
         "description_hash": "2b31d5723392b780576c2211cb045aa6a5dd519ec9d8069c2ceca1c21575c035",
@@ -4164,6 +4086,40 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "scope": "membership",
         "capability_env_vars": ("OPENPROJECT_ENABLE_MEMBERSHIP_READ",),
         "profiles": ("full",),
+    },
+    "list_available_assignees": {
+        "description_hash": "47dbe31db43ba36d435f77b7ac3f937b8585eff9bfc10ea70e82b2cdf69e9e0d",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "title": "Work Package Id",
+                },
+                "project": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
+                    "title": "Project",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: email, id, name, type.",
+                    "title": "Select",
+                },
+            },
+            "title": "list_available_assigneesArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+        "profiles": ("full", "core"),
     },
     "list_backlog_buckets": {
         "description_hash": "80da7dd69c6ce679dd79811617bcf6dab9c37598e2bc3cda18ddbbc3be69a647",
@@ -4318,6 +4274,51 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "read",
         "scope": "project",
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
+        "profiles": ("full",),
+    },
+    "list_container_attachments": {
+        "description_hash": "ab96fbeb5bef6121e376ec779d8677dca684aed105ee2007cbdffd5177f57fd3",
+        "input_schema": {
+            "properties": {
+                "container_type": {
+                    "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from list_work_package_activities).",
+                    "title": "Container Type",
+                    "type": "string",
+                },
+                "container_id": {
+                    "description": "Numeric id of that wiki page, post, meeting or activity.",
+                    "title": "Container Id",
+                    "type": "integer",
+                },
+                "offset": {
+                    "default": 1,
+                    "description": "1-based page number; pass the previous result's next_offset.",
+                    "title": "Offset",
+                    "type": "integer",
+                },
+                "limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
+                    "title": "Limit",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: author, container_id, container_type, content_type, created_at, description, download_url, file_name, file_size_bytes, id, status, title.",
+                    "title": "Select",
+                },
+            },
+            "required": ["container_type", "container_id"],
+            "title": "list_container_attachmentsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
         "profiles": ("full",),
     },
     "list_documents": {
@@ -4790,6 +4791,38 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
         "profiles": ("full", "core"),
     },
+    "list_project_budgets": {
+        "description_hash": "7619cd8f401ea8501564ba3ccb5dc9e1376e5b4256428dbcb903f22369e0a5b7",
+        "input_schema": {
+            "properties": {
+                "project": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": "Project identifier, id, or name; a "
+                    "unique part of a name or identifier "
+                    "also matches.",
+                    "title": "Project",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: id, "
+                    "project, project_id, subject.",
+                    "title": "Select",
+                },
+            },
+            "required": ["project"],
+            "title": "list_project_budgetsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "extended",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_PROJECT_READ"),
+        "profiles": ("full",),
+    },
     "list_project_memberships": {
         "description_hash": "03acf2c00cb67b969bd6fba378399d6b72fcbdf80692f5b71e447e4af02c490f",
         "input_schema": {
@@ -5060,7 +5093,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "list_relations": {
-        "description_hash": "361501df973c14754db7dee827fd8769ee5b6eb9cd2cdc49659423918c88d9c9",
+        "description_hash": "8d2e3870f3aec488c52410574dac280928b48d51cef9096d222991f20e24faa3",
         "input_schema": {
             "properties": {
                 "relation_type": {
@@ -5444,6 +5477,60 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_ADMIN_READ",),
         "profiles": ("full",),
     },
+    "list_version_projects": {
+        "description_hash": "5f0ba56910edc4c707b08c9495460abb117fd4b8b8eafa31adf0754ae284f1a1",
+        "input_schema": {
+            "properties": {
+                "version_id": {"title": "Version Id", "type": "integer"},
+                "offset": {
+                    "default": 1,
+                    "description": "1-based page number; pass the previous result's next_offset.",
+                    "title": "Offset",
+                    "type": "integer",
+                },
+                "limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
+                    "title": "Limit",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: "
+                    "active, can_delete, can_update, "
+                    "created_at, custom_comments, "
+                    "custom_comments_truncated, "
+                    "custom_fields, "
+                    "custom_fields_truncated, description, "
+                    "description_length, "
+                    "description_truncated, favorited, id, "
+                    "identifier, name, parent_id, "
+                    "parent_name, public, status, "
+                    "status_explanation, "
+                    "status_explanation_length, "
+                    "status_explanation_truncated, "
+                    "updated_at.",
+                    "title": "Select",
+                },
+            },
+            "required": ["version_id"],
+            "title": "list_version_projectsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "extended",
+        "capability_env_vars": (
+            "OPENPROJECT_ENABLE_EXTENDED_READ",
+            "OPENPROJECT_ENABLE_PROJECT_READ",
+            "OPENPROJECT_ENABLE_VERSION_READ",
+        ),
+        "profiles": ("full",),
+    },
     "list_versions": {
         "description_hash": "d4397a53e965f20d30178d8e2c3181e20d3ddc78b61a04313c74abb39b30ae87",
         "input_schema": {
@@ -5527,6 +5614,45 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_READ",),
         "profiles": ("full",),
     },
+    "list_work_package_activities": {
+        "description_hash": "8cf2ddff09bba6ed356e760988a69938edf7f61569bc8e7261c91122eb202409",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "title": "Work Package Id",
+                },
+                "limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Number of most recent activities, capped at OPENPROJECT_MAX_PAGE_SIZE. Not paged.",
+                    "title": "Limit",
+                },
+                "text_limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Text Limit",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: comment, comment_length, comment_truncated, created_at, details, details_omitted, details_truncated, id, type, user, version.",
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_activitiesArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+        "profiles": ("full", "core"),
+    },
     "list_work_package_attachments": {
         "description_hash": "08d68cb02bde3d57d99230d81221ba026a3ff6b76dd933c6e0895047a22b7d5b",
         "input_schema": {
@@ -5567,6 +5693,146 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "read",
         "scope": "work_package",
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+        "profiles": ("full",),
+    },
+    "list_work_package_available_projects": {
+        "description_hash": "cd1f42b7f6f0568239819f7ab85ce8c012c4653b2da95c408323fd08a4d8cfb5",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "title": "Work Package Id",
+                },
+                "offset": {
+                    "default": 1,
+                    "description": "1-based page number; pass the previous result's next_offset.",
+                    "title": "Offset",
+                    "type": "integer",
+                },
+                "limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
+                    "title": "Limit",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: "
+                    "active, can_delete, can_update, "
+                    "created_at, custom_comments, "
+                    "custom_comments_truncated, "
+                    "custom_fields, "
+                    "custom_fields_truncated, description, "
+                    "description_length, "
+                    "description_truncated, favorited, id, "
+                    "identifier, name, parent_id, "
+                    "parent_name, public, status, "
+                    "status_explanation, "
+                    "status_explanation_length, "
+                    "status_explanation_truncated, "
+                    "updated_at.",
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_available_projectsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "extended",
+        "capability_env_vars": (
+            "OPENPROJECT_ENABLE_EXTENDED_READ",
+            "OPENPROJECT_ENABLE_PROJECT_READ",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
+        ),
+        "profiles": ("full",),
+    },
+    "list_work_package_available_relation_candidates": {
+        "description_hash": "94979f0df095c922df219dcf8f6e5239dc9d8d08b17fcfb0f05702b6c694bf34",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "title": "Work Package Id",
+                },
+                "query": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Query"},
+                "relation_type": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Relation Type",
+                },
+                "limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Maximum number of candidates, capped at OPENPROJECT_MAX_PAGE_SIZE. Not paged.",
+                    "title": "Limit",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: display_id, id, project, status, subject, type.",
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_available_relation_candidatesArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+        "profiles": ("full",),
+    },
+    "list_work_package_available_watchers": {
+        "description_hash": "7b4dff3f08b75fc44d0ba4b36553514e9b97f3b01b9ed619e53b9765caa0ad10",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "title": "Work Package Id",
+                },
+                "offset": {
+                    "default": 1,
+                    "description": "1-based page number; pass the previous result's next_offset.",
+                    "title": "Offset",
+                    "type": "integer",
+                },
+                "limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
+                    "title": "Limit",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: id, "
+                    "login, name.",
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_available_watchersArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "extended",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
         "profiles": ("full",),
     },
     "list_work_package_cost_entries": {
@@ -5768,6 +6034,80 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "read",
         "scope": "work_package",
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+        "profiles": ("full",),
+    },
+    "list_work_package_relations": {
+        "description_hash": "713aa9e942006240b182ec026e242f3963593ecd90311a8510c9caf758368c91",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "title": "Work Package Id",
+                },
+                "offset": {
+                    "default": 1,
+                    "description": "1-based page number; pass the previous result's next_offset.",
+                    "title": "Offset",
+                    "type": "integer",
+                },
+                "limit": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
+                    "title": "Limit",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: description, description_length, description_truncated, from_id, from_subject, id, queried_perspective, to_id, to_subject, type.",
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_relationsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
+        "profiles": ("full", "core"),
+    },
+    "list_work_package_revisions": {
+        "description_hash": "0ec6564315b07c808d97130c7a420b1eeb205e43cecfc91421352f3a7b1a2105",
+        "input_schema": {
+            "properties": {
+                "work_package_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
+                    "title": "Work Package Id",
+                },
+                "select": {
+                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Fields to return; a requested unset "
+                    "field comes back as null. Allowed: "
+                    "author_name, created_at, "
+                    "formatted_identifier, id, identifier, "
+                    "message, message_length, "
+                    "message_truncated, project, "
+                    "project_id.",
+                    "title": "Select",
+                },
+            },
+            "required": ["work_package_id"],
+            "title": "list_work_package_revisionsArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "classification": "read",
+        "scope": "extended",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
         "profiles": ("full",),
     },
     "list_work_package_watchers": {
@@ -6039,6 +6379,33 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ", "OPENPROJECT_ENABLE_PERSONAL_WRITE"),
         "profiles": ("full",),
     },
+    "mark_notifications_unread": {
+        "description_hash": "2db5064467f9b345a24b97aacd70a2bf22fe55d4c547d9d557425c8711fa4176",
+        "input_schema": {
+            "properties": {
+                "notification_id": {
+                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "default": None,
+                    "title": "Notification Id",
+                },
+                "confirm": {
+                    "default": False,
+                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "title": "Confirm",
+                    "type": "boolean",
+                },
+            },
+            "title": "mark_notifications_unreadArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True},
+        "classification": "write",
+        "scope": "personal",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ", "OPENPROJECT_ENABLE_PERSONAL_WRITE"),
+        "profiles": ("full",),
+    },
     "render_text": {
         "description_hash": "9286a4407546667f6471497502abe4031a0922101cfcbe0bda040b4f5def5e07",
         "input_schema": {
@@ -6193,6 +6560,31 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "classification": "write",
         "scope": "project",
         "capability_env_vars": ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
+        "profiles": ("full",),
+    },
+    "set_query_starred": {
+        "description_hash": "c13dd3d36c8735eb92c82889d1cad5ffba55f54c849b8c2641f88a3e46e531be",
+        "input_schema": {
+            "properties": {
+                "query_id": {"title": "Query Id", "type": "integer"},
+                "starred": {"title": "Starred", "type": "boolean"},
+                "confirm": {
+                    "default": False,
+                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
+                    "title": "Confirm",
+                    "type": "boolean",
+                },
+            },
+            "required": ["query_id", "starred"],
+            "title": "set_query_starredArguments",
+            "type": "object",
+            "additionalProperties": False,
+        },
+        "output_schema": None,
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
+        "classification": "write",
+        "scope": "work_package",
+        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
         "profiles": ("full",),
     },
     "set_user_locked": {
@@ -7739,7 +8131,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
             },
             "properties": {
                 "activity_id": {
-                    "description": "The comment's activity id, from get_work_package_activities or add_work_package_comment's result.",
+                    "description": "The comment's activity id, from list_work_package_activities or add_work_package_comment's result.",
                     "title": "Activity Id",
                     "type": "integer",
                 },
@@ -7774,462 +8166,6 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         },
         "output_schema": None,
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True},
-        "classification": "write",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
-        "profiles": ("full",),
-    },
-    "list_container_attachments": {
-        "description_hash": "ab96fbeb5bef6121e376ec779d8677dca684aed105ee2007cbdffd5177f57fd3",
-        "input_schema": {
-            "properties": {
-                "container_type": {
-                    "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from get_work_package_activities).",
-                    "title": "Container Type",
-                    "type": "string",
-                },
-                "container_id": {
-                    "description": "Numeric id of that wiki page, post, meeting or activity.",
-                    "title": "Container Id",
-                    "type": "integer",
-                },
-                "offset": {
-                    "default": 1,
-                    "description": "1-based page number; pass the previous result's next_offset.",
-                    "title": "Offset",
-                    "type": "integer",
-                },
-                "limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
-                    "title": "Limit",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: author, container_id, container_type, content_type, created_at, description, download_url, file_name, file_size_bytes, id, status, title.",
-                    "title": "Select",
-                },
-            },
-            "required": ["container_type", "container_id"],
-            "title": "list_container_attachmentsArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
-        "profiles": ("full",),
-    },
-    "list_work_package_available_relation_candidates": {
-        "description_hash": "94979f0df095c922df219dcf8f6e5239dc9d8d08b17fcfb0f05702b6c694bf34",
-        "input_schema": {
-            "properties": {
-                "work_package_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
-                    "title": "Work Package Id",
-                },
-                "query": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Query"},
-                "relation_type": {
-                    "anyOf": [{"type": "string"}, {"type": "null"}],
-                    "default": None,
-                    "title": "Relation Type",
-                },
-                "limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Maximum number of candidates, capped at OPENPROJECT_MAX_PAGE_SIZE. Not paged.",
-                    "title": "Limit",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: display_id, id, project, status, subject, type.",
-                    "title": "Select",
-                },
-            },
-            "required": ["work_package_id"],
-            "title": "list_work_package_available_relation_candidatesArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
-        "profiles": ("full",),
-    },
-    "list_available_assignees": {
-        "description_hash": "47dbe31db43ba36d435f77b7ac3f937b8585eff9bfc10ea70e82b2cdf69e9e0d",
-        "input_schema": {
-            "properties": {
-                "work_package_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
-                    "default": None,
-                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
-                    "title": "Work Package Id",
-                },
-                "project": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Project identifier, id, or name; a unique part of a name or identifier also matches.",
-                    "title": "Project",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: email, id, name, type.",
-                    "title": "Select",
-                },
-            },
-            "title": "list_available_assigneesArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "work_package",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ",),
-        "profiles": ("full", "core"),
-    },
-    "create_container_attachment": {
-        "description_hash": "6857490e990b3874e64281fa948ba6dc29c0f00ef0f46b398bd37c75f9560b24",
-        "input_schema": {
-            "properties": {
-                "container_type": {
-                    "description": "wiki_page, post (forum message), meeting, or activity (a work package comment, by its activity id from get_work_package_activities).",
-                    "title": "Container Type",
-                    "type": "string",
-                },
-                "container_id": {
-                    "description": "Numeric id of that wiki page, post, meeting or activity.",
-                    "title": "Container Id",
-                    "type": "integer",
-                },
-                "file_path": {
-                    "description": "Path on the MCP server's machine, inside OPENPROJECT_ATTACHMENT_ROOT; uploaded under its file name.",
-                    "title": "File Path",
-                    "type": "string",
-                },
-                "description": {
-                    "anyOf": [{"type": "string"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Markdown text stored with the attachment.",
-                    "title": "Description",
-                },
-                "confirm": {
-                    "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
-                    "title": "Confirm",
-                    "type": "boolean",
-                },
-            },
-            "required": ["container_type", "container_id", "file_path"],
-            "title": "create_container_attachmentArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": True,
-        },
-        "classification": "write",
-        "scope": "project|meeting|work_package",
-        "capability_env_vars": ("OPENPROJECT_ATTACHMENT_ROOT",),
-        "profiles": ("full",),
-    },
-    "list_project_budgets": {
-        "description_hash": "7619cd8f401ea8501564ba3ccb5dc9e1376e5b4256428dbcb903f22369e0a5b7",
-        "input_schema": {
-            "properties": {
-                "project": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": "Project identifier, id, or name; a "
-                    "unique part of a name or identifier "
-                    "also matches.",
-                    "title": "Project",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset "
-                    "field comes back as null. Allowed: id, "
-                    "project, project_id, subject.",
-                    "title": "Select",
-                },
-            },
-            "required": ["project"],
-            "title": "list_project_budgetsArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "extended",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_PROJECT_READ"),
-        "profiles": ("full",),
-    },
-    "list_version_projects": {
-        "description_hash": "5f0ba56910edc4c707b08c9495460abb117fd4b8b8eafa31adf0754ae284f1a1",
-        "input_schema": {
-            "properties": {
-                "version_id": {"title": "Version Id", "type": "integer"},
-                "offset": {
-                    "default": 1,
-                    "description": "1-based page number; pass the previous result's next_offset.",
-                    "title": "Offset",
-                    "type": "integer",
-                },
-                "limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
-                    "title": "Limit",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset "
-                    "field comes back as null. Allowed: "
-                    "active, can_delete, can_update, "
-                    "created_at, custom_comments, "
-                    "custom_comments_truncated, "
-                    "custom_fields, "
-                    "custom_fields_truncated, description, "
-                    "description_length, "
-                    "description_truncated, favorited, id, "
-                    "identifier, name, parent_id, "
-                    "parent_name, public, status, "
-                    "status_explanation, "
-                    "status_explanation_length, "
-                    "status_explanation_truncated, "
-                    "updated_at.",
-                    "title": "Select",
-                },
-            },
-            "required": ["version_id"],
-            "title": "list_version_projectsArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "extended",
-        "capability_env_vars": (
-            "OPENPROJECT_ENABLE_EXTENDED_READ",
-            "OPENPROJECT_ENABLE_PROJECT_READ",
-            "OPENPROJECT_ENABLE_VERSION_READ",
-        ),
-        "profiles": ("full",),
-    },
-    "list_work_package_available_watchers": {
-        "description_hash": "7b4dff3f08b75fc44d0ba4b36553514e9b97f3b01b9ed619e53b9765caa0ad10",
-        "input_schema": {
-            "properties": {
-                "work_package_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
-                    "title": "Work Package Id",
-                },
-                "offset": {
-                    "default": 1,
-                    "description": "1-based page number; pass the previous result's next_offset.",
-                    "title": "Offset",
-                    "type": "integer",
-                },
-                "limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
-                    "title": "Limit",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset "
-                    "field comes back as null. Allowed: id, "
-                    "login, name.",
-                    "title": "Select",
-                },
-            },
-            "required": ["work_package_id"],
-            "title": "list_work_package_available_watchersArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "extended",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
-        "profiles": ("full",),
-    },
-    "list_work_package_available_projects": {
-        "description_hash": "cd1f42b7f6f0568239819f7ab85ce8c012c4653b2da95c408323fd08a4d8cfb5",
-        "input_schema": {
-            "properties": {
-                "work_package_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
-                    "title": "Work Package Id",
-                },
-                "offset": {
-                    "default": 1,
-                    "description": "1-based page number; pass the previous result's next_offset.",
-                    "title": "Offset",
-                    "type": "integer",
-                },
-                "limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Page size, capped at OPENPROJECT_MAX_PAGE_SIZE.",
-                    "title": "Limit",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset "
-                    "field comes back as null. Allowed: "
-                    "active, can_delete, can_update, "
-                    "created_at, custom_comments, "
-                    "custom_comments_truncated, "
-                    "custom_fields, "
-                    "custom_fields_truncated, description, "
-                    "description_length, "
-                    "description_truncated, favorited, id, "
-                    "identifier, name, parent_id, "
-                    "parent_name, public, status, "
-                    "status_explanation, "
-                    "status_explanation_length, "
-                    "status_explanation_truncated, "
-                    "updated_at.",
-                    "title": "Select",
-                },
-            },
-            "required": ["work_package_id"],
-            "title": "list_work_package_available_projectsArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "extended",
-        "capability_env_vars": (
-            "OPENPROJECT_ENABLE_EXTENDED_READ",
-            "OPENPROJECT_ENABLE_PROJECT_READ",
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
-        ),
-        "profiles": ("full",),
-    },
-    "list_work_package_revisions": {
-        "description_hash": "0ec6564315b07c808d97130c7a420b1eeb205e43cecfc91421352f3a7b1a2105",
-        "input_schema": {
-            "properties": {
-                "work_package_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "string"}],
-                    "description": 'Work package id (e.g. 952) or display id (e.g. "PROJ-51"), not the bare number 51.',
-                    "title": "Work Package Id",
-                },
-                "select": {
-                    "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Fields to return; a requested unset "
-                    "field comes back as null. Allowed: "
-                    "author_name, created_at, "
-                    "formatted_identifier, id, identifier, "
-                    "message, message_length, "
-                    "message_truncated, project, "
-                    "project_id.",
-                    "title": "Select",
-                },
-            },
-            "required": ["work_package_id"],
-            "title": "list_work_package_revisionsArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "extended",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_EXTENDED_READ", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
-        "profiles": ("full",),
-    },
-    "get_notification": {
-        "description_hash": "9b2b6b7560292ac64bc06643208e71764a0f66843ea42426fc5c110c57d76a3e",
-        "input_schema": {
-            "properties": {"notification_id": {"title": "Notification Id", "type": "integer"}},
-            "required": ["notification_id"],
-            "title": "get_notificationArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-        "classification": "read",
-        "scope": "personal",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ",),
-        "profiles": ("full",),
-    },
-    "mark_notifications_unread": {
-        "description_hash": "2db5064467f9b345a24b97aacd70a2bf22fe55d4c547d9d557425c8711fa4176",
-        "input_schema": {
-            "properties": {
-                "notification_id": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "title": "Notification Id",
-                },
-                "confirm": {
-                    "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
-                    "title": "Confirm",
-                    "type": "boolean",
-                },
-            },
-            "title": "mark_notifications_unreadArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True},
-        "classification": "write",
-        "scope": "personal",
-        "capability_env_vars": ("OPENPROJECT_ENABLE_PERSONAL_READ", "OPENPROJECT_ENABLE_PERSONAL_WRITE"),
-        "profiles": ("full",),
-    },
-    "set_query_starred": {
-        "description_hash": "c13dd3d36c8735eb92c82889d1cad5ffba55f54c849b8c2641f88a3e46e531be",
-        "input_schema": {
-            "properties": {
-                "query_id": {"title": "Query Id", "type": "integer"},
-                "starred": {"title": "Starred", "type": "boolean"},
-                "confirm": {
-                    "default": False,
-                    "description": "false: preview only, nothing changes. true: applies it; get the user's approval of the preview first.",
-                    "title": "Confirm",
-                    "type": "boolean",
-                },
-            },
-            "required": ["query_id", "starred"],
-            "title": "set_query_starredArguments",
-            "type": "object",
-            "additionalProperties": False,
-        },
-        "output_schema": None,
-        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
         "classification": "write",
         "scope": "work_package",
         "capability_env_vars": ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),

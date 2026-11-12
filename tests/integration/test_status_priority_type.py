@@ -1,7 +1,7 @@
 """Integration tests for Statuses/Priorities/Types reads.
 
-All three are admin-UI-only resources -- GET list + GET single-item, no
-create/update/delete endpoint in the OpenProject v3 API.
+All three are admin-UI-only resources -- no create/update/delete endpoint in
+the OpenProject v3 API.
 """
 
 from __future__ import annotations
@@ -21,30 +21,10 @@ async def test_list_statuses(client: OpenProjectClient) -> None:
     assert result.results[0].name
 
 
-async def test_get_status(client: OpenProjectClient) -> None:
-    listed = await client.status_priority_type.list_statuses()
-    status_id = listed.results[0].id
-
-    status = await client.status_priority_type.get_status(status_id)
-
-    assert status.id == status_id
-    assert status.name
-
-
 async def test_list_priorities(client: OpenProjectClient) -> None:
     result = await client.status_priority_type.list_priorities()
     assert result.count > 0
     assert result.results[0].name
-
-
-async def test_get_priority(client: OpenProjectClient) -> None:
-    listed = await client.status_priority_type.list_priorities()
-    priority_id = listed.results[0].id
-
-    priority = await client.status_priority_type.get_priority(priority_id)
-
-    assert priority.id == priority_id
-    assert priority.name
 
 
 async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProjectClient, open_client) -> None:
@@ -68,13 +48,3 @@ async def test_list_types(client: OpenProjectClient) -> None:
     result = await client.status_priority_type.list_types()
     assert result.count > 0
     assert result.results[0].name
-
-
-async def test_get_type(client: OpenProjectClient) -> None:
-    listed = await client.status_priority_type.list_types()
-    type_id = listed.results[0].id
-
-    work_package_type = await client.status_priority_type.get_type(type_id)
-
-    assert work_package_type.id == type_id
-    assert work_package_type.name
