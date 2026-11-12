@@ -118,7 +118,8 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 ### Fixed
 
 - `get_job_status` returns the job message between the `<user-content>` tags like every other long-form text.
-- A redirect, an absolute URL or a link that leaves the instance's origin or `/api/v3` is refused before it is sent; a redirected write could replay its body at another origin. `OPENPROJECT_BASE_URL` with credentials in the URL is refused.
+- A redirect, absolute URL or link that leaves the instance's origin or `/api/v3` is refused; a redirect no longer replays a write body elsewhere.
+- `OPENPROJECT_BASE_URL` with credentials in the URL is refused at startup.
 - The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
 - `get_project_work_package_context` honours the hidden-field settings through `OPENPROJECT_HIDE_PROJECT_WORK_PACKAGE_CONTEXT_FIELDS`; it returned names and option titles unmasked.
 - `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
