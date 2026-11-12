@@ -39,7 +39,7 @@ survive its own allowlist filter, then call it again for `get()`'s single
 payload.
 
 `_trim_text`/`_link_title`/`_id_from_href`/`_delimit_user_content`/
-`_origin_from_url`/`_reject_path_traversal_segments`/`SUBJECT_LIMIT`/
+`link_to_api_path`/`_reject_path_traversal_segments`/`SUBJECT_LIMIT`/
 `_normalize_text`/`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/
 `FORMATTABLE_LIMIT` are shared via `app/adapters/_text.py`.
 `work_package_ref()` (reference validation for `work_packages/{id}` paths) is
@@ -50,11 +50,10 @@ imported from `app/ports/work_package_ref.py`, shared with
 from __future__ import annotations
 
 import json
+from functools import partial
 from typing import Any
-from urllib.parse import urlparse
 
 from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
-from ..errors import OpenProjectServerError
 from ..ports.project_resolution import WorkPackageResolutionContext
 from ..ports.scoped_reference import ScopedReference, VisibleReferences
 from ..ports.work_package_api import (
@@ -74,13 +73,12 @@ from ._custom_fields import (
     links_references,
 )
 from ._linked_options import read_linked_options
-from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
+from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT, link_to_api_path
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_form_validation_errors
-from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
 
 WORK_PACKAGE_CHILDREN_LIMIT = 50
@@ -340,29 +338,8 @@ def _group_records(raw_groups: Any, links: ResourceLinks) -> list[WorkPackageGro
 class HttpxWorkPackageApi:
     def __init__(self, transport: Transport, *, base_url: str, api_prefix: str = "/api/v3/") -> None:
         self._transport = transport
-        self._origin = _origin_from_url(base_url)
-        self._api_prefix = api_prefix
+        self._link_to_api_path = partial(link_to_api_path, base_url=base_url, api_prefix=api_prefix)
         self._resource_links = ResourceLinks(base_url)
-
-    def _link_to_api_path(self, href: str) -> str:
-        """Same-origin-checked href -> API-relative path. Mirrored by
-        `HttpxProjectApi._link_to_api_path`/`HttpxWorkPackageLookupApi._link_to_api_path`
-        -- deliberately duplicated per adapter rather than shared, so a future
-        change to one cannot silently change another's contract."""
-        parsed = urlparse(href)
-        if not parsed.scheme:
-            path = parsed.path or href
-        else:
-            if _origin_from_url(href) != self._origin:
-                raise OpenProjectServerError("OpenProject returned an unexpected link host.")
-            path = parsed.path
-        if path.startswith(self._api_prefix):
-            relative_path = path[len(self._api_prefix) :]
-        else:
-            relative_path = path.lstrip("/")
-        if parsed.query:
-            return f"{relative_path}?{parsed.query}"
-        return relative_path
 
     def to_record(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:
         project = _link_title(payload.get("_links", {}).get("project"))

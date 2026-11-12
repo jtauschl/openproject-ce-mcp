@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_ce_mcp.app.origin import api_prefix_from_url, root_path_from_url, strict_origin
+from openproject_ce_mcp.app.origin import (
+    api_prefix_from_url,
+    has_control_character,
+    has_dot_segment,
+    root_path_from_url,
+    strict_origin,
+)
 
 
 @pytest.mark.parametrize(
@@ -52,3 +58,33 @@ def test_strict_origin_never_matches_what_it_cannot_read_unambiguously(url: str)
 def test_root_path_and_api_prefix_follow_the_base_url(base_url: str, root: str, api_prefix: str) -> None:
     assert root_path_from_url(base_url) == root
     assert api_prefix_from_url(base_url) == api_prefix
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("/api/v3/projects", False),
+        ("/api/v3/a.b/c..d/.hidden", False),
+        ("/api/v3/../admin", True),
+        ("/api/v3/./projects", True),
+        ("..", True),
+        ("/api/v3/projects/..", True),
+        ("/api/v3/..\\admin", True),
+        ("/api/v3/a\\..\\b", True),
+    ],
+)
+def test_has_dot_segment_reads_a_decoded_path(path: str, expected: bool) -> None:
+    assert has_dot_segment(path) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ('/api/v3/projects?filters=[{"a": "b c"}]', False),
+        ("/api/v3/\tprojects", True),
+        ("/a\nb", True),
+        ("/a\x7fb", True),
+    ],
+)
+def test_has_control_character(text: str, expected: bool) -> None:
+    assert has_control_character(text) is expected

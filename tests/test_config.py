@@ -377,6 +377,12 @@ def test_settings_from_env_rejects_base_url_with_query_string() -> None:
         )
 
 
+@pytest.mark.parametrize("base_url", ["https://apikey:token@op.example.com", "https://user@op.example.com/OP"])
+def test_settings_from_env_rejects_base_url_with_credentials(base_url: str) -> None:
+    with pytest.raises(ConfigError, match="must not contain credentials"):
+        Settings.from_env({"OPENPROJECT_BASE_URL": base_url, "OPENPROJECT_API_TOKEN": "token-value"})
+
+
 def test_settings_from_env_rejects_invalid_bool_value() -> None:
     with pytest.raises(ConfigError, match="boolean"):
         Settings.from_env(

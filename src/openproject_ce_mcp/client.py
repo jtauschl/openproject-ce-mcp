@@ -211,7 +211,7 @@ from .app.services.wiki_page_service import WikiPageService
 # the Service now has its own copy.
 from .app.services.work_package_service import CLEAR, CLEAR_PARENT, CLEAR_VERSION, WorkPackageService  # noqa: F401
 from .app.transport.errors import raise_for_status as _map_status_to_error
-from .app.transport.httpx_transport import HttpxTransport
+from .app.transport.httpx_transport import HttpxTransport, confine_to_instance
 from .app.transport.learning_transport import LearningTransport
 from .config import Settings
 from .hal import normalize_links
@@ -1384,8 +1384,10 @@ class OpenProjectClient:
 
 
 def _build_http_client(settings: Settings, transport: httpx.AsyncBaseTransport | None) -> httpx.AsyncClient:
+    api_base_url = f"{settings.api_base_url.rstrip('/')}/"
     http = httpx.AsyncClient(
-        base_url=f"{settings.api_base_url.rstrip('/')}/",
+        base_url=api_base_url,
+        event_hooks={"request": [confine_to_instance(httpx.URL(api_base_url))]},
         headers={
             "Accept": "application/hal+json, application/json",
             "Authorization": f"Basic {__import__('base64').b64encode(f'apikey:{settings.api_token}'.encode()).decode()}",

@@ -8,7 +8,7 @@ ProjectResolver.resolve_record() forwards from this adapter's own get()/list()
 calls, so no second normalization-without-a-second-HTTP-call concern applies.
 
 `_trim_text`/`_link_title`/`_id_from_href`/`_delimit_user_content`/
-`_origin_from_url`/`SUBJECT_LIMIT`/`_normalize_text`/`_trim_text_with_meta`/
+`link_to_api_path`/`_origin_from_url`/`SUBJECT_LIMIT`/`_normalize_text`/`_trim_text_with_meta`/
 `_extract_formattable_text_with_meta`/`FORMATTABLE_LIMIT`/
 `_normalize_validation_errors` (as `_normalize_form_validation_errors`) are
 shared via `app/adapters/_text.py`. `PROJECT_ANCESTORS_LIMIT` stays local
@@ -20,8 +20,9 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Mapping, Sequence
+from functools import partial
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 from ...models import (
     OptionValue,
@@ -33,7 +34,6 @@ from ...models import (
     ProjectSummary,
     SortCriterion,
 )
-from ..errors import OpenProjectServerError
 from ..pagination import page_is_last
 from ..ports.project_api import (
     ProjectCopyFormResult,
@@ -55,7 +55,7 @@ from ._custom_fields import (
 )
 from ._filters import escape_like
 from ._linked_options import read_linked_options
-from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
+from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT, link_to_api_path
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -285,29 +285,8 @@ class HttpxProjectApi:
         self._transport = transport
         self._base_url = base_url
         self._origin = _origin_from_url(base_url)
-        self._api_prefix = api_prefix
+        self._link_to_api_path = partial(link_to_api_path, base_url=base_url, api_prefix=api_prefix)
         self._resource_links = ResourceLinks(base_url)
-
-    def _link_to_api_path(self, href: str) -> str:
-        """Same-origin-checked href -> API-relative path (with the API prefix
-        stripped, since the Transport's own base URL already includes it).
-
-        An absolute href whose origin differs from this instance's configured
-        origin is rejected BEFORE any authenticated request is made -- a
-        manipulated/foreign `allowedValues.href` in a schema response must
-        never be contacted.
-        """
-        parsed = urlparse(href)
-        if not parsed.scheme:
-            path = parsed.path or href
-        else:
-            if _origin_from_url(href) != self._origin:
-                raise OpenProjectServerError("OpenProject returned an unexpected link host.")
-            path = parsed.path
-        relative_path = path[len(self._api_prefix) :] if path.startswith(self._api_prefix) else path.lstrip("/")
-        if parsed.query:
-            return f"{relative_path}?{parsed.query}"
-        return relative_path
 
     def _link_to_web_url(self, href: str | None) -> str | None:
         """Same-origin-checked href -> absolute web URL, or None for a foreign origin.

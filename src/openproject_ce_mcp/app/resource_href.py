@@ -13,7 +13,7 @@ import re
 from typing import Any, NamedTuple
 from urllib.parse import urlsplit
 
-from .origin import api_prefix_from_url, strict_origin
+from .origin import api_prefix_from_url, has_dot_segment, strict_origin
 
 _RESOURCE = re.compile(r"(?P<namespace>[a-z][a-z_]*)/(?P<id>[1-9][0-9]{0,18})")
 BIGINT_MAX = 2**63 - 1
@@ -34,7 +34,7 @@ def instance_path(href: Any, *, origin: tuple[str, str, int] | None) -> str | No
         return None
     if (parts.scheme or parts.netloc) and (origin is None or strict_origin(href) != origin):
         return None
-    if any(segment in (".", "..") for segment in parts.path.split("/")):
+    if has_dot_segment(parts.path):
         return None
     return parts.path
 
