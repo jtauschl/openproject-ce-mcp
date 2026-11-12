@@ -45,8 +45,11 @@ environment with a build backend resolved from PyPI at that moment, without a pi
 ## Run tests
 
 Before pushing, run the full gate: `./dev ci` (lint, types, tests with the
-coverage gate, build). Besides `uv`, it needs `shellcheck`, `shfmt` 3.14.1
-and `actionlint` on your `PATH`. `./dev test` runs the unit tests alone. The lint
+coverage gate, the tests again on the lowest supported Python, build). Besides `uv`, it needs `shellcheck`, `shfmt` 3.14.1
+and `actionlint` on your `PATH`. `./dev test` runs the unit tests alone. `./dev test-lowest`
+runs them on the Python named by `requires-python` in `pyproject.toml`, in a separate environment (`.venv-lowest`,
+created on the first run, about two minutes): a test that passes on the newest interpreter can still break on the
+floor, for example through annotation introspection. The lint
 tools (`bandit`, `semgrep`, `twine`, `pip-licenses`) come from the locked project
 `tools/lint`, and `./dev semgrep` fetches its rules at a pinned commit of
 `semgrep/semgrep-rules`, so the first run needs the network and `git`. The

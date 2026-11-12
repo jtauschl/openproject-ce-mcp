@@ -8,7 +8,7 @@ shift || true
 export UV_LOCKED=1
 
 usage() {
-    echo "Usage: ./dev {bootstrap|lint|licenses|semgrep|shell-lint|test|build|dist|dist-check|editable-check|sbom|ci}" >&2
+    echo "Usage: ./dev {bootstrap|lint|licenses|semgrep|shell-lint|test|test-lowest|build|dist|dist-check|editable-check|sbom|ci}" >&2
     exit 1
 }
 
@@ -107,6 +107,22 @@ test_() {
         tests/unit/test_client_http_stack.py tests/unit/test_app_httpx_transport.py tests/test_retry_transport.py
 }
 
+# A test that passes on the newest interpreter can still break on the lowest one (annotation introspection differs), and
+# only the CI matrix would see it. The floor is read from requires-python, the single place that states it, and the tests
+# run in a separate environment that only this step creates, so `./dev bootstrap` and the CI jobs never build it.
+test_lowest() {
+    local floor
+    floor=$(sed -n 's/^requires-python = ">=\([0-9][0-9]*\.[0-9][0-9]*\)"$/\1/p' pyproject.toml)
+    if [ -z "$floor" ]; then
+        echo "requires-python in pyproject.toml is not a plain lower bound; teach ./dev test-lowest to read it" >&2
+        return 1
+    fi
+    # Set per command, never exported: the steps that follow in `./dev ci` use the normal environment.
+    UV_PROJECT_ENVIRONMENT=.venv-lowest uv sync --locked --dev --group build \
+        --no-build-isolation-package openproject-ce-mcp --python "$floor" --quiet
+    UV_PROJECT_ENVIRONMENT=.venv-lowest uv run --no-sync --python "$floor" pytest -q -p no:cacheprovider "$@"
+}
+
 # The SBOM is exported from the lock file, so the project is its root component and the graph is complete.
 # uv marks the format experimental; tools/check_sbom.py fails the build if a uv release changes what it needs.
 sbom() {
@@ -193,6 +209,7 @@ licenses) licenses ;;
 semgrep) semgrep ;;
 shell-lint) shell_lint ;;
 test) test_ "$@" ;;
+test-lowest) test_lowest "$@" ;;
 build) build ;;
 dist) dist "$@" ;;
 dist-check) dist_check ;;
@@ -201,6 +218,7 @@ sbom) sbom ;;
 ci)
     lint
     test_
+    test_lowest
     build
     ;;
 *) usage ;;

@@ -15,6 +15,7 @@ htmlcov/
 
 # Virtual environments
 .venv/
+.venv-lowest/
 
 # Type checking
 .mypy_cache/
