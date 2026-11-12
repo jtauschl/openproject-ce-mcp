@@ -11,6 +11,7 @@ and 0.2.0 the first one published to PyPI.
 ### Fixed
 
 - The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
+- `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
 
 ## [0.4.5] - 2026-11-08
 

@@ -459,9 +459,7 @@ class HttpxProjectApi:
         href = parent_field.get("_links", {}).get("allowedValues", {}).get("href")
         if not href:
             href = f"/api/v3/projects/available_parent_projects?of={project_id}"
-        path = self._link_to_api_path(href)
-        payload = await self._transport.get_json(path)
-        elements = payload.get("_embedded", {}).get("elements", [])
+        elements = await read_linked_options(self._transport, self._link_to_api_path(href))
         # Note: caller-side allowlist filtering (Fail closed: a parent-project
         # candidate outside READ_PROJECTS must not leak here) happens in the
         # Service, not this adapter -- the adapter is a dumb HTTP translator.
@@ -479,8 +477,7 @@ class HttpxProjectApi:
         return await self._transport.get_json(f"projects/{project_id}/configuration")
 
     async def list_phase_definitions(self) -> Sequence[ProjectPhaseDefinition]:
-        payload = await self._transport.get_json("project_phase_definitions")
-        elements = payload.get("_embedded", {}).get("elements", [])
+        elements = await read_linked_options(self._transport, "project_phase_definitions")
         return [
             normalize_project_phase_definition(item)
             for item in elements

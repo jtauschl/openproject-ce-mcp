@@ -254,7 +254,11 @@ async def test_set_favorite_removal_issues_delete() -> None:
 async def test_list_available_parent_projects_accepts_relative_link() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/projects/available_parent_projects"
-        return httpx.Response(200, json={"_embedded": {"elements": [_project_payload(project_id=1)]}}, request=request)
+        return httpx.Response(
+            200,
+            json={"total": 1, "_embedded": {"elements": [_project_payload(project_id=1)]}},
+            request=request,
+        )
 
     schema = {"parent": {"_links": {}}}
     async with _client(handler) as http_client:
@@ -268,7 +272,7 @@ async def test_list_available_parent_projects_accepts_relative_link() -> None:
 async def test_list_available_parent_projects_accepts_absolute_same_origin_link() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/projects/available_parent_projects"
-        return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
+        return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
 
     schema = {
         "parent": {"_links": {"allowedValues": {"href": f"{BASE_URL}/api/v3/projects/available_parent_projects"}}}
@@ -355,12 +359,13 @@ async def test_list_phase_definitions_filters_by_type() -> None:
         return httpx.Response(
             200,
             json={
+                "total": 2,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "_type": "ProjectPhaseDefinition", "name": "Initiation"},
-                        {"id": 2, "_type": "Other", "name": "Ignored"},
+                        _phase_definition_payload(1, "Initiation"),
+                        {**_phase_definition_payload(2, "Ignored"), "_type": "Other"},
                     ]
-                }
+                },
             },
             request=request,
         )
@@ -371,6 +376,71 @@ async def test_list_phase_definitions_filters_by_type() -> None:
 
     assert len(results) == 1
     assert results[0].id == 1
+
+
+def _phase_definition_payload(definition_id: int, name: str) -> dict:
+    return {
+        "id": definition_id,
+        "_type": "ProjectPhaseDefinition",
+        "name": name,
+        "_links": {"self": {"href": f"/api/v3/project_phase_definitions/{definition_id}"}},
+    }
+
+
+def _server_page(request: httpx.Request, rows: list[dict], *, server_max_page_size: int) -> httpx.Response:
+    """One page the way OpenProject serves an offset-paginated collection: `offset` is the page number,
+    a requested `pageSize` is cut to the server's maximum, and an unset one falls back to that size."""
+    params = dict(request.url.params)
+    page_size = min(int(params.get("pageSize", server_max_page_size)), server_max_page_size)
+    start = (int(params.get("offset", "1")) - 1) * page_size
+    return httpx.Response(
+        200,
+        json={"total": len(rows), "pageSize": page_size, "_embedded": {"elements": rows[start : start + page_size]}},
+        request=request,
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_phase_definitions_reads_every_page() -> None:
+    rows = [_phase_definition_payload(number, f"Phase {number}") for number in range(1, 46)]
+    seen_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/project_phase_definitions"
+        seen_offsets.append(dict(request.url.params).get("offset", "1"))
+        return _server_page(request, rows, server_max_page_size=30)
+
+    async with _client(handler) as http_client:
+        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        results = await api.list_phase_definitions()
+
+    assert [definition.id for definition in results] == list(range(1, 46))
+    assert seen_offsets == ["1", "2"]
+
+
+@pytest.mark.asyncio
+async def test_list_available_parent_projects_reads_every_page_and_keeps_the_of_filter() -> None:
+    rows = [
+        _project_payload(project_id=number, name=f"Project {number}", identifier=f"p{number}")
+        for number in range(1, 46)
+    ]
+    for row in rows:
+        row["_links"]["self"] = {"href": f"/api/v3/projects/{row['id']}"}
+    seen_queries: list[dict[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/projects/available_parent_projects"
+        seen_queries.append(dict(request.url.params))
+        return _server_page(request, rows, server_max_page_size=30)
+
+    async with _client(handler) as http_client:
+        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        refs = await api.list_available_parent_projects(6, schema={"parent": {"_links": {}}})
+
+    assert [ref.id for ref in refs] == list(range(1, 46))
+    assert [ref.identifier for ref in refs][:2] == ["p1", "p2"]
+    assert [query["of"] for query in seen_queries] == ["6", "6"]
+    assert [query["offset"] for query in seen_queries] == ["1", "2"]
 
 
 @pytest.mark.asyncio
