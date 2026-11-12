@@ -1196,20 +1196,23 @@ class OpenProjectClient:
                 for field in fields
             ]
 
-        return ProjectWorkPackageContext(
-            project_id=project_id,
-            project_name=_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {project_id}",
-            project_identifier=project_payload.get("identifier"),
-            selected_type_id=selected_type_id,
-            selected_type_name=selected_type_name,
-            available_types=available_types,
-            available_statuses=available_statuses,
-            available_priorities=available_priorities,
-            available_categories=available_categories,
-            available_project_phases=available_project_phases,
-            available_versions=versions.results,
-            fields=fields,
-            custom_fields=custom_fields,
+        return self._apply_hidden_fields(
+            "project_work_package_context",
+            ProjectWorkPackageContext(
+                project_id=project_id,
+                project_name=_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {project_id}",
+                project_identifier=project_payload.get("identifier"),
+                selected_type_id=selected_type_id,
+                selected_type_name=selected_type_name,
+                available_types=available_types,
+                available_statuses=available_statuses,
+                available_priorities=available_priorities,
+                available_categories=available_categories,
+                available_project_phases=available_project_phases,
+                available_versions=versions.results,
+                fields=fields,
+                custom_fields=custom_fields,
+            ),
         )
 
     async def _set_project_favorite(self, project: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:

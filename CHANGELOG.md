@@ -11,6 +11,7 @@ and 0.2.0 the first one published to PyPI.
 ### Fixed
 
 - The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
+- `get_project_work_package_context` honours the hidden-field settings through `OPENPROJECT_HIDE_PROJECT_WORK_PACKAGE_CONTEXT_FIELDS`; it returned names and option titles unmasked.
 - `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
 - `select` of `list_relations` no longer offers `queried_perspective`, and `select` of `bulk_create_work_packages` no longer offers `parent_target`; both were never filled.
 
