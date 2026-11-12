@@ -16,6 +16,7 @@ from mcp.server.mcpserver import Context
 from pydantic import Field
 
 from .models import (
+    PROJECT_ATTRIBUTE_FIELDS,
     ProjectListResult,
     ProjectSummary,
     VersionDetail,
@@ -108,7 +109,7 @@ async def list_version_projects(
     version_id: int,
     offset: Offset = 1,
     limit: Limit = None,
-    select: Annotated[list[str] | None, select_field(ProjectSummary)] = None,
+    select: Annotated[list[str] | None, select_field(ProjectSummary, unfilled=PROJECT_ATTRIBUTE_FIELDS)] = None,
 ) -> ProjectListResult:
     """List the projects a version is shared with, limited to projects the read scope covers.
 
@@ -117,7 +118,7 @@ async def list_version_projects(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(version_id, field_name="version_id")
     _, safe_offset, safe_limit = _validate_list_query_params(None, offset, limit)
-    _validate_select(select, row_type=ProjectSummary)
+    _validate_select(select, row_type=ProjectSummary, unfilled=PROJECT_ATTRIBUTE_FIELDS)
     return await _run_tool(client.version.list_projects(safe_id, offset=safe_offset, limit=safe_limit))
 
 

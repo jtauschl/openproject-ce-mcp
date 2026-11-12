@@ -1060,7 +1060,7 @@ _BULK_TOOLS = pytest.mark.parametrize(
 async def test_bulk_select_error_for_an_unknown_nested_field_is_exact(tool, item) -> None:
     from openproject_ce_mcp.models import WorkPackageDetail
 
-    allowed = ", ".join(f"result.{name}" for name in _field_names(WorkPackageDetail))
+    allowed = ", ".join(f"result.{name}" for name in _field_names(WorkPackageDetail) if name != "allowed_statuses")
 
     with pytest.raises(ValueError) as error:
         await tool(FakeContext(None), items=[item], select=["result.bogus"])  # type: ignore[arg-type]

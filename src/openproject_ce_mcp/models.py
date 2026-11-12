@@ -114,6 +114,12 @@ class ProjectSummary:
     custom_comments_truncated: bool = False
 
 
+# Only `list_projects` and `get_project` read these; the project pickers return the plain summary.
+PROJECT_ATTRIBUTE_FIELDS = frozenset(
+    {"custom_fields", "custom_fields_truncated", "custom_comments", "custom_comments_truncated"}
+)
+
+
 @dataclass
 class ProjectDetail(ProjectSummary):
     """Single-project read (get_project) only -- list_projects/ProjectListResult

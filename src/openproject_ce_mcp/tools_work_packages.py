@@ -111,6 +111,10 @@ from .tools_validation import (
 )
 from .work_package_columns import group_by_description, sort_by_description
 
+# Only get_work_package reads the allowed statuses (one form request per work package), and only on request.
+_BATCH_READ_UNFILLED = frozenset({"allowed_statuses"})
+_BULK_RESULT_UNFILLED = frozenset({"result.allowed_statuses"})
+
 
 @register_tool
 async def search_work_packages(
@@ -515,7 +519,8 @@ async def get_work_packages(
     work_package_ids: WorkPackageRefs,
     text_limit: int | None = None,
     select: Annotated[
-        list[str] | None, select_field(WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS)
+        list[str] | None,
+        select_field(WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS, unfilled=_BATCH_READ_UNFILLED),
     ] = None,
 ) -> BatchWorkPackageReadResult:
     """Get several work packages by id in one batch call.
@@ -562,7 +567,9 @@ async def get_work_packages(
         raise ValueError(f"Maximum {BATCH_READ_MAX_IDS} unique work packages per batch (got {len(unique_ids)})")
 
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    _validate_select(select, row_type=WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS)
+    _validate_select(
+        select, row_type=WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS, unfilled=_BATCH_READ_UNFILLED
+    )
 
     return await _run_tool(client.work_package.get_batch(ids=unique_ids, text_limit=safe_text_limit))
 
@@ -947,7 +954,7 @@ def _resolve_bulk_parent_field(item: Mapping[str, Any], index: int) -> tuple[Any
 _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(BulkCreateWorkPackageItem.__annotations__)
 
 # A create names its parent in `target`; `parent_target` belongs to the update.
-_BULK_CREATE_UNFILLED = frozenset({"parent_target"})
+_BULK_CREATE_UNFILLED = _BULK_RESULT_UNFILLED | {"parent_target"}
 
 
 @register_tool
@@ -1107,7 +1114,10 @@ async def bulk_update_work_packages(
     select: Annotated[
         list[str] | None,
         select_field(
-            WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS, nested={"result": WorkPackageDetail}
+            WorkPackageWriteResult,
+            wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
+            nested={"result": WorkPackageDetail},
+            unfilled=_BULK_RESULT_UNFILLED,
         ),
     ] = None,
     confirm: BulkConfirm = False,
@@ -1159,6 +1169,7 @@ async def bulk_update_work_packages(
         row_type=WorkPackageWriteResult,
         wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
         nested={"result": WorkPackageDetail},
+        unfilled=_BULK_RESULT_UNFILLED,
     )
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):

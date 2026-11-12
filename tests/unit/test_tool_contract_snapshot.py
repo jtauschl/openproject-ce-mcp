@@ -424,7 +424,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "payload, project, "
                     "ready, result, state, success, target, "
                     "validation_errors, work_package_id; "
-                    "result.<field> for allowed_statuses, "
+                    "result.<field> for "
                     "ancestors, ancestors_truncated, "
                     "assignee, author, category, children, "
                     "children_truncated, created_at, "
@@ -702,7 +702,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "parent_target, payload, project, "
                     "ready, result, state, success, target, "
                     "validation_errors, work_package_id; "
-                    "result.<field> for allowed_statuses, "
+                    "result.<field> for "
                     "ancestors, ancestors_truncated, "
                     "assignee, author, category, children, "
                     "children_truncated, created_at, "
@@ -4007,7 +4007,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
             },
@@ -5500,10 +5500,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Fields to return; a requested unset "
                     "field comes back as null. Allowed: "
                     "active, can_delete, can_update, "
-                    "created_at, custom_comments, "
-                    "custom_comments_truncated, "
-                    "custom_fields, "
-                    "custom_fields_truncated, description, "
+                    "created_at, description, "
                     "description_length, "
                     "description_truncated, favorited, id, "
                     "identifier, name, parent_id, "
@@ -5722,10 +5719,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "description": "Fields to return; a requested unset "
                     "field comes back as null. Allowed: "
                     "active, can_delete, can_update, "
-                    "created_at, custom_comments, "
-                    "custom_comments_truncated, "
-                    "custom_fields, "
-                    "custom_fields_truncated, description, "
+                    "created_at, description, "
                     "description_length, "
                     "description_truncated, favorited, id, "
                     "identifier, name, parent_id, "
