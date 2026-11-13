@@ -305,6 +305,7 @@ async def test_delete_uses_real_single_get_not_a_list_scan() -> None:
     result = await service.delete("me", 5, confirm=False)
 
     assert result.state == "preview"
+    assert result.result is not None and result.result.id == 5
     assert api.get_calls == [("me", 5)]
     assert api.list_calls == []
     assert api.delete_calls == []
@@ -318,4 +319,5 @@ async def test_delete_confirmed_deletes() -> None:
     result = await service.delete("me", 5, confirm=True)
 
     assert result.state == "confirmed"
+    assert result.result is not None and result.result.id == 5
     assert api.delete_calls == [("me", 5)]

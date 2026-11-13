@@ -51,6 +51,7 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..version_gate import call_version_gated
+from ._work_package_presentation import present_target
 from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -190,7 +191,7 @@ class ReminderService:
         )
         return self._to_write_result("create", outcome, target=target)
 
-    async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> None:
+    async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> dict[str, Any]:
         """Fetch only the reminder's `remindable` link (not the full record --
         see `ReminderApi.get_remindable_link`'s docstring for why), derive its
         work package, and check the write allowlist against that work
@@ -218,6 +219,7 @@ class ReminderService:
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
+        return work_package
 
     async def update(
         self,
@@ -259,7 +261,7 @@ class ReminderService:
         return self._to_write_result("update", outcome)
 
     async def delete(self, *, reminder_id: int, confirm: bool = False) -> ReminderWriteResult:
-        await self._ensure_reminder_project_write_allowed(reminder_id)
+        target = present_target(await self._ensure_reminder_project_write_allowed(reminder_id), settings=self._settings)
 
         async def _commit(p: dict[str, Any]) -> None:
             await self._api.delete(reminder_id)
@@ -278,7 +280,7 @@ class ReminderService:
             preview_message="OpenProject is ready to delete this reminder. Ask for confirmation, then call again with confirm=true.",
             success_message="Reminder deleted successfully.",
         )
-        return self._to_write_result("delete", outcome)
+        return self._to_write_result("delete", outcome, target=target)
 
     def _to_write_result(
         self,

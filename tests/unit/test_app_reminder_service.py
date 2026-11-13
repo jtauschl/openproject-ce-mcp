@@ -131,7 +131,7 @@ class _FakeWorkPackageLookupApi:
 
     async def get_by_href(self, href: str) -> dict:
         self.get_by_href_calls.append(href)
-        return {"_links": {"project": self._project_link}}
+        return {"id": 42, "subject": "Plan the release", "_links": {"project": self._project_link}}
 
 
 def _resolve_work_package_record_ok(resolved_id: int = 42):
@@ -480,6 +480,8 @@ async def test_delete_preview_without_confirm_does_not_call_api_delete() -> None
 
     assert result.state == "preview"
     assert api.delete_calls == []
+    assert result.target is not None
+    assert (result.target.id, result.target.subject) == (42, "Plan the release")
 
 
 @pytest.mark.asyncio
@@ -491,6 +493,7 @@ async def test_delete_commit_with_confirm_calls_api_delete() -> None:
 
     assert result.state == "confirmed"
     assert result.result is None
+    assert result.target is not None and result.target.id == 42
     assert api.delete_calls == [7]
 
 

@@ -604,7 +604,8 @@ async def test_lock_preview_does_not_call_commit() -> None:
 
     assert result.action == "lock"
     assert result.state == "preview"
-    assert result.result is None
+    assert result.result is not None and result.result.id == 5
+    assert api.get_user_calls == ["5"]
     assert api.commit_lock_calls == []
 
 
@@ -653,6 +654,46 @@ async def test_unlock_denies_without_admin_write_and_never_calls_commit() -> Non
         await service.unlock(5, confirm=True)
 
     assert api.commit_unlock_calls == []
+
+
+@pytest.mark.asyncio
+async def test_unlock_preview_names_the_user_and_commits_nothing() -> None:
+    api = _FakeUserApi()
+    service = _service(api, settings=_admin_write_settings())
+
+    result = await service.unlock(5, confirm=False)
+
+    assert result.state == "preview"
+    assert result.result is not None and result.result.id == 5
+    assert api.get_user_calls == ["5"]
+    assert api.commit_unlock_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["lock", "unlock"])
+async def test_a_preview_for_a_user_that_does_not_exist_is_an_error_before_confirm(action: str) -> None:
+    class _Missing(_FakeUserApi):
+        async def get_user(self, user_ref: str) -> UserRecord:
+            raise NotFoundError("OpenProject user was not found.")
+
+    api = _Missing()
+    service = _service(api, settings=_admin_write_settings())
+
+    with pytest.raises(NotFoundError):
+        await getattr(service, action)(99, confirm=False)
+
+    assert api.commit_lock_calls == [] and api.commit_unlock_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_admin_write_never_reads_the_user_for_the_preview() -> None:
+    api = _FakeUserApi()
+    service = _service(api)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.lock(5, confirm=False)
+
+    assert api.get_user_calls == []
 
 
 @pytest.mark.asyncio

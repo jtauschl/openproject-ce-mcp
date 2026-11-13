@@ -258,10 +258,11 @@ class UserWorkingHoursService:
         )
         payload = {"id": working_hours_id}
 
-        async def _commit(p: dict[str, Any]) -> None:
+        async def _commit(p: dict[str, Any]) -> UserWorkingHoursSummary:
             await call_version_gated(
                 lambda: self._api.delete(user_ref, working_hours_id), feature="User working hours", floor="17.3"
             )
+            return current.summary
 
         outcome = await _finalize_write(
             entity="user_working_hours",
@@ -276,6 +277,7 @@ class UserWorkingHoursService:
             rejected_message="",
             preview_message="Ask for confirmation, then call again with confirm=true to delete it.",
             success_message="Working-hours schedule deleted successfully.",
+            preview_detail=current.summary,
         )
         return self._to_write_result("delete", outcome)
 

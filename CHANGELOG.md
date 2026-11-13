@@ -118,6 +118,7 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 ### Fixed
 
+- The previews of `delete_reminder`, `delete_user_working_hours` and `set_user_locked` name their target; lock and unlock report a missing user before `confirm`.
 - `get_job_status` returns the job message between the `<user-content>` tags like every other long-form text.
 - A redirect, absolute URL or link that leaves the instance's origin or `/api/v3` is refused; a redirect no longer replays a write body elsewhere.
 - `OPENPROJECT_BASE_URL` with credentials in the URL is refused at startup.

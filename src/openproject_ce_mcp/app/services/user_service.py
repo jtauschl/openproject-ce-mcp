@@ -287,8 +287,8 @@ class UserService:
         success_message: str,
         commit: Any,
     ) -> UserWriteResult:
-        # Shared shape for lock/unlock only: no form, no validation-errors
-        # branch, no prior GET to gate on, so the check is unconditional. Not `_write_outcome.py`'s `_finalize_write`
+        # Shared shape for lock/unlock only: no form and no validation-errors
+        # branch, so the check is unconditional; the preview looks the user up. Not `_write_outcome.py`'s `_finalize_write`
         # (that shape assumes a form/validation-errors branch neither action
         # has); modeled instead on `ProjectService.set_favorite`'s no-form
         # toggle shape.
@@ -296,6 +296,7 @@ class UserService:
         hidden_fields.ensure_field_writable("user", "locked", settings=self._settings)
         payload = {"id": user_id}
         if not confirm:
+            user = (await self._api.get_user(str(user_id))).to_detail()
             return self._write_result(
                 action=action,
                 state="preview",
@@ -304,7 +305,7 @@ class UserService:
                 user_id=user_id,
                 payload=payload,
                 validation_errors={},
-                result=None,
+                result=user,
             )
         detail = await commit(user_id)
         return self._write_result(
