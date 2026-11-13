@@ -340,6 +340,10 @@ def _delete_user_handler(request: httpx.Request) -> httpx.Response:
 
 
 def _lock_user_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/users/9" and request.method == "GET":
+        return httpx.Response(
+            200, json={"_type": "User", "id": 9, "login": "ada", "name": "Ada", "_links": {}}, request=request
+        )
     if request.url.path == "/api/v3/users/9/lock" and request.method == "POST":
         return httpx.Response(200, json={"id": 9, "login": "ada", "locked": True, "_links": {}}, request=request)
     return _unexpected(request)

@@ -276,7 +276,7 @@ class UserWorkingHoursService:
                 user_id=current.summary.user_id,
                 payload=payload,
                 validation_errors={},
-                result=None,
+                result=current.summary,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
         await call_version_gated(
@@ -291,5 +291,5 @@ class UserWorkingHoursService:
             user_id=current.summary.user_id,
             payload=payload,
             validation_errors={},
-            result=None,
+            result=current.summary,
         )

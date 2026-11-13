@@ -191,7 +191,7 @@ class ReminderService:
             target=target,
         )
 
-    async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> None:
+    async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> dict[str, Any]:
         """Fetch only the reminder's `remindable` link (not the full record --
         see `ReminderApi.get_remindable_link`'s docstring for why), derive its
         work package, and check the write allowlist against that work
@@ -214,6 +214,7 @@ class ReminderService:
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
+        return work_package
 
     async def update(
         self,
@@ -260,7 +261,7 @@ class ReminderService:
         )
 
     async def delete(self, *, reminder_id: int, confirm: bool = False) -> ReminderWriteResult:
-        await self._ensure_reminder_project_write_allowed(reminder_id)
+        target = present_target(await self._ensure_reminder_project_write_allowed(reminder_id), settings=self._settings)
 
         if not confirm:
             return ReminderWriteResult(
@@ -272,6 +273,7 @@ class ReminderService:
                 payload={},
                 validation_errors={},
                 result=None,
+                target=target,
             )
         access.ensure_write_enabled("work_package", settings=self._settings)
         await self._api.delete(reminder_id)
@@ -284,4 +286,5 @@ class ReminderService:
             payload={},
             validation_errors={},
             result=None,
+            target=target,
         )
