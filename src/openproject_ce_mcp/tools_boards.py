@@ -66,9 +66,7 @@ async def list_boards(
 ) -> BoardListResult:
     """List saved OpenProject boards/queries, optionally scoped to a project.
 
-    With project, search, or a restrictive OPENPROJECT_READ_PROJECTS, total is only the count of allowed boards
-    returned on THIS page, not a full count of all matches; the search stops as soon as it has enough, so an exact
-    total would need an extra full walk. Page until next_offset is null."""
+    total is the number of boards you may read after the filters; page until next_offset is null."""
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)

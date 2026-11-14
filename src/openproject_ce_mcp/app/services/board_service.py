@@ -15,11 +15,11 @@ project_scoped_list.py), not Grids' scope shape: `project: str | None` on
 payload, while a grid's `scope` is a web path (`/my/page`,
 `/projects/<identifier>[/boards]`) that grid_policy parses itself.
 
-Client-side vs. server-side list branching: the server-paginated path is
-reachable only when `project is None`, no `search`, and `read_projects` is
-fully open ("*") -- NOT simply "no allowed_projects filter needed"; an empty
-`read_projects` tuple must still filter client-side down to zero results
-(regression pinned by `test_list_boards_returns_empty_under_empty_read_projects`).
+List filtering: the `queries` collection is unpaginated, so `list` reads all of it with one call and slices the
+filtered result itself. The cheap malformed-link filter alone applies only when `project is None`, no `search`, and
+`read_projects` is fully open ("*") -- NOT simply "no allowed_projects filter needed"; an empty `read_projects`
+tuple must still filter down to zero results (regression pinned by
+`test_list_boards_returns_empty_under_empty_read_projects`).
 
 Write-allowlist ordering: `update()` calls `ensure_board_write_allowed`
 before `board_policy.ensure_board_read_allowed`; `delete()` calls them in
@@ -58,7 +58,7 @@ from ..api_href import api_href as _api_href
 from ..api_href import sort_by_path
 from ..errors import InvalidInputError, PermissionDeniedError
 from ..origin import origin_from_url as _origin_from_url
-from ..pagination import clamp_limit, paginate_server, scan_records_and_paginate
+from ..pagination import clamp_limit, paginate_client
 from ..policies import access, board_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.board_api import BoardApi
@@ -142,8 +142,8 @@ class BoardService:
         use_client_side_filtering = (
             project is not None or bool(search) or not scope_policy.scope_allows_all(self._settings.read_projects)
         )
-
         if use_client_side_filtering:
+            # Resolved first: an unknown or out-of-scope project is refused before the collection is read.
             filter_project_id = await resolve_project_filter_id(project, resolve_project_ref=self._resolve_project_ref)
             search_key = search.casefold() if search else None
 
@@ -160,51 +160,29 @@ class BoardService:
                     return False
                 return search_key is None or search_key in (record.summary.name or "").casefold()
 
-            # Scan server pages rather than a single fetch capped at
-            # settings.max_results, which would silently hide any board
-            # beyond that cap once the endpoint's real result count exceeds it.
-            raw_items, truncated = await scan_records_and_paginate(
-                lambda o, lim: self._api.list_page(offset=o, limit=lim),
-                item_allowed=_record_allowed,
-                server_page_size=self._settings.max_page_size,
-                offset=offset,
-                limit=effective_limit,
-                key=lambda r: r.summary.id,
-            )
-            results = [self._stamp(record.summary) for record in raw_items]
-            total = len(results)
-            return BoardListResult(
-                offset=offset,
-                limit=effective_limit,
-                total=total,
-                count=total,
-                next_offset=offset + 1 if truncated else None,
-                truncated=truncated,
-                results=results,
-            )
+        else:
 
-        records, total = await self._api.list_page(offset=offset, limit=effective_limit)
-        # A missing/explicitly-empty project link is fine here (a legitimate
-        # global board, and read_projects is fully open on this path anyway),
-        # but a structurally malformed one is never legitimate -- filter it
-        # out without paying for the more expensive per-record allowlist
-        # candidate-matching, which a wide-open scope doesn't need.
-        filtered = [
-            record
-            for record in records
-            if scope_policy.classify_project_link(record.project_link, settings=self._settings)
-            is not scope_policy.LinkState.MALFORMED
-        ]
-        results = [self._stamp(record.summary) for record in filtered]
-        next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=total)
+            def _record_allowed(record: Any) -> bool:
+                # A missing or explicitly empty project link is a legitimate global board and the scope is
+                # fully open here, but a structurally malformed one never is; this skips the more expensive
+                # per-record allowlist matching a wide-open scope does not need.
+                return (
+                    scope_policy.classify_project_link(record.project_link, settings=self._settings)
+                    is not scope_policy.LinkState.MALFORMED
+                )
+
+        # OpenProject's `queries` collection is unpaginated in every supported version: one call returns
+        # every board whatever `offset` and `pageSize` say, so the filtered result is sliced here.
+        allowed = [record for record in await self._api.list_all() if _record_allowed(record)]
+        page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=allowed)
         return BoardListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(results),
+            count=len(page),
             next_offset=next_offset,
             truncated=truncated,
-            results=results,
+            results=[self._stamp(record.summary) for record in page],
         )
 
     async def get(self, board_id: int) -> BoardDetail:

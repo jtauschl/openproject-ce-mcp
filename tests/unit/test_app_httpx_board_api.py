@@ -45,23 +45,17 @@ def _board_payload(board_id: int = 1, *, long_name: bool = False) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_page_at_offset_one_requests_a_bounded_page_and_builds_records() -> None:
-    # Regression: the original client.py's _fetch_bounded_and_paginate always
-    # sent offset=1&pageSize=settings.max_results for its bounded fetch --
-    # an earlier version of this adapter omitted both params entirely,
-    # silently falling back to the server's (much smaller) default page
-    # size and truncating client-side-filtered results, exactly the
-    # "pageSize-omission bug" client.py's own docstring warns about.
+async def test_list_all_reads_the_unpaginated_collection_without_paging_parameters_and_builds_records() -> None:
+    # `GET /queries` is unpaginated: one call returns every board, `offset` and `pageSize` are dropped upstream.
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/queries"
-        assert dict(request.url.params) == {"offset": "1", "pageSize": "100"}
+        assert dict(request.url.params) == {}
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_board_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxBoardApi(HttpxTransport(http_client))
-        records, total = await api.list_page(offset=1, limit=100)
+        records = await api.list_all()
 
-    assert total == 1
     assert len(records) == 1
     summary = records[0].summary
     assert summary.id == 1
@@ -69,21 +63,6 @@ async def test_list_page_at_offset_one_requests_a_bounded_page_and_builds_record
     assert summary.project == "Demo"
     assert summary.project_id == 6
     assert records[0].project_link == {"href": "/api/v3/projects/6", "title": "Demo"}
-
-
-@pytest.mark.asyncio
-async def test_list_page_sends_offset_and_page_size_and_reports_total() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/queries"
-        assert dict(request.url.params) == {"offset": "2", "pageSize": "10"}
-        return httpx.Response(200, json={"_embedded": {"elements": [_board_payload()]}, "total": 42}, request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
-        records, total = await api.list_page(offset=2, limit=10)
-
-    assert len(records) == 1
-    assert total == 42
 
 
 @pytest.mark.asyncio

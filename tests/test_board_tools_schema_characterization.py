@@ -40,9 +40,7 @@ def test_list_boards_schema() -> None:
     assert tool.description == (
         "List saved OpenProject boards/queries, optionally scoped to a project.\n"
         "\n"
-        "With project, search, or a restrictive OPENPROJECT_READ_PROJECTS, total is only the count of allowed boards\n"
-        "returned on THIS page, not a full count of all matches; the search stops as soon as it has enough, so an exact\n"
-        "total would need an extra full walk. Page until next_offset is null."
+        "total is the number of boards you may read after the filters; page until next_offset is null."
     )
     assert tool.output_schema is None
     assert tool.parameters == {

@@ -76,7 +76,7 @@ def _record(*, project_link: dict | None = None, **kwargs: object) -> BoardRecor
 class _FakeBoardApi:
     def __init__(self, records: list[BoardRecord] | None = None) -> None:
         self._records = {r.summary.id: r for r in (records or [_record()])}
-        self.list_page_calls: list[tuple[int, int]] = []
+        self.list_all_calls = 0
         self.get_calls: list[int] = []
         self.create_form_calls: list[dict] = []
         self.update_form_calls: list[tuple[int, dict]] = []
@@ -87,15 +87,10 @@ class _FakeBoardApi:
         self.commit_result_project_id: int | None = 6
         self.commit_result_project: str | None = "Demo"
 
-    async def list_page(self, *, offset: int, limit: int) -> tuple[list[BoardRecord], int]:
-        self.list_page_calls.append((offset, limit))
-        # A single-page fake is sufficient for these Service-level tests --
-        # scan_records_and_paginate's own multi-page scanning behavior is
-        # covered by test_app_pagination.py and _PagedFakeBoardApi below.
-        if offset > 1:
-            return [], len(self._records)
-        records = list(self._records.values())
-        return records, len(records)
+    async def list_all(self) -> list[BoardRecord]:
+        """What `GET /queries` does: every board on every call."""
+        self.list_all_calls += 1
+        return list(self._records.values())
 
     async def get(self, board_id: int) -> BoardRecord:
         self.get_calls.append(board_id)
@@ -153,14 +148,14 @@ def _service(
 
 
 @pytest.mark.asyncio
-async def test_list_uses_server_side_path_when_scope_allows_all_and_no_filter() -> None:
+async def test_list_reads_the_collection_once_when_scope_allows_all_and_no_filter() -> None:
     api = _FakeBoardApi()
     service = _service(api)
 
     result = await service.list()
 
     assert result.count == 1
-    assert api.list_page_calls == [(1, 20)]
+    assert api.list_all_calls == 1
 
 
 @pytest.mark.asyncio
@@ -176,7 +171,7 @@ async def test_list_uses_client_side_path_when_project_filter_given() -> None:
     result = await service.list(project="demo")
 
     assert [item.id for item in result.results] == [1]
-    assert api.list_page_calls == [(1, 50)]
+    assert api.list_all_calls == 1
 
 
 @pytest.mark.asyncio
@@ -201,56 +196,107 @@ async def test_list_returns_empty_under_empty_read_projects() -> None:
     result = await service.list()
 
     assert result.count == 0
-    assert api.list_page_calls == [(1, 50)]
+    assert api.list_all_calls == 1
 
 
-class _PagedFakeBoardApi:
-    """Unlike _FakeBoardApi (single-page, offset-blind), this simulates a
-    real multi-page server for exact-limit/truncation regression tests."""
+def _boards(count: int, *, project_id: int = 6, project: str = "Demo") -> list[BoardRecord]:
+    return [
+        _record(board_id=number, name=f"Board {number}", project_id=project_id, project=project)
+        for number in range(1, count + 1)
+    ]
 
-    def __init__(self, pages: dict[int, list[BoardRecord]]) -> None:
-        self._pages = pages
-        self.offsets_requested: list[int] = []
 
-    async def list_page(self, *, offset: int, limit: int) -> tuple[list[BoardRecord], int]:
-        self.offsets_requested.append(offset)
-        records = self._pages.get(offset, [])
-        return records, len(records)
-
-    async def get(self, board_id: int) -> BoardRecord:
-        raise NotImplementedError
-
-    async def create_form(self, payload: dict) -> BoardFormResult:
-        raise NotImplementedError
-
-    async def update_form(self, board_id: int, payload: dict) -> BoardFormResult:
-        raise NotImplementedError
-
-    async def commit_create(self, payload: dict) -> BoardDetail:
-        raise NotImplementedError
-
-    async def commit_update(self, board_id: int, payload: dict) -> BoardDetail:
-        raise NotImplementedError
-
-    async def delete(self, board_id: int) -> None:
-        raise NotImplementedError
+async def _walk(service: BoardService, **kwargs: object) -> list[list[int]]:
+    pages: list[list[int]] = []
+    offset: int | None = 1
+    while offset is not None and len(pages) < 20:
+        result = await service.list(offset=offset, **kwargs)  # type: ignore[arg-type]
+        pages.append([board.id for board in result.results])
+        offset = result.next_offset
+    return pages
 
 
 @pytest.mark.asyncio
-async def test_list_not_truncated_when_exactly_limit_allowed_matches_exist_on_client_side_path() -> None:
-    """Regression: a naive scan implementation can set
-    truncated=True as soon as `limit` allowed items are collected, without
-    checking whether a matching board actually exists beyond that window.
-    Uses project= to force the client-side filtering path."""
-    api = _PagedFakeBoardApi({1: [_record(board_id=1, project_id=6, project="Demo")]})
+async def test_list_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression: truncated must not be set as soon as `limit` allowed boards are collected, without checking
+    whether a matching board exists beyond that window."""
+    api = _FakeBoardApi(
+        [_record(board_id=1, project_id=6, project="Demo"), _record(board_id=2, project_id=7, project="Other")]
+    )
     service = _service(api)
 
     result = await service.list(project="demo", limit=1)
 
-    assert api.offsets_requested == [1], f"expected only one (short) page, got {api.offsets_requested}"
+    assert api.list_all_calls == 1
     assert [b.id for b in result.results] == [1]
     assert result.truncated is False
     assert result.next_offset is None
+
+
+@pytest.mark.asyncio
+async def test_one_read_of_the_unpaginated_collection_is_sliced_into_pages() -> None:
+    api = _FakeBoardApi(_boards(5))
+    service = _service(api)
+
+    first = await service.list(limit=2)
+
+    assert [board.id for board in first.results] == [1, 2]
+    assert (first.total, first.count, first.next_offset, first.truncated) == (5, 2, 2, True)
+    assert api.list_all_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_following_next_offset_pages_through_every_board_once_and_ends() -> None:
+    service = _service(_FakeBoardApi(_boards(5)))
+
+    assert await _walk(service, limit=2) == [[1, 2], [3, 4], [5]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filters",
+    [{"project": "demo"}, {"search": "board"}, {}],
+    ids=["project filter", "search filter", "restricted read scope"],
+)
+async def test_every_filtered_path_filters_before_it_slices(filters: dict[str, str]) -> None:
+    # Boards that the filter or the scope refuse come first and in the middle: slicing the raw collection first
+    # would give short pages and count them.
+    outside = [
+        _record(board_id=8, name="Elsewhere", project_id=7, project="Other"),
+        _record(board_id=9, name="Elsewhere 2", project_id=7, project="Other"),
+    ]
+    records = [outside[0], *_boards(3), outside[1], *_boards(5)[3:]]
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",)) if not filters else make_settings()
+    service = _service(_FakeBoardApi(records), settings=settings)
+
+    pages = await _walk(service, limit=2, **filters)
+    first = await service.list(limit=2, **filters)
+
+    assert pages == [[1, 2], [3, 4], [5]]
+    assert first.total == 5
+
+
+@pytest.mark.asyncio
+async def test_a_page_past_the_end_is_empty_and_has_no_next_offset() -> None:
+    service = _service(_FakeBoardApi(_boards(3)))
+
+    result = await service.list(offset=3, limit=2)
+
+    assert (result.results, result.next_offset, result.truncated, result.total) == ([], None, False, 3)
+
+
+@pytest.mark.asyncio
+async def test_a_project_that_is_refused_is_refused_before_the_collection_is_read() -> None:
+    async def refuse(project_ref: str, *, write: bool = False, context=None) -> dict:
+        raise PermissionDeniedError("denied")
+
+    api = _FakeBoardApi()
+    service = _service(api, resolve_project_ref=refuse)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.list(project="secret")
+
+    assert api.list_all_calls == 0
 
 
 @pytest.mark.asyncio
@@ -289,7 +335,7 @@ async def test_list_checks_read_enabled() -> None:
     with pytest.raises(PermissionDeniedError):
         await service.list()
 
-    assert api.list_page_calls == []
+    assert api.list_all_calls == 0
 
 
 # --- get() --------------------------------------------------------------
