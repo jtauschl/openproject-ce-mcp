@@ -226,3 +226,56 @@ async def test_resolve_by_name_works_with_version_reads_disabled() -> None:
     )
 
     assert await resolver.resolve_id("v1.0", project="demo") == "8"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_version_name_in_a_project_names_the_allowed_versions() -> None:
+    resolver = _resolver([_record(2, "v2.0"), _record(1, "V1.0"), _record(3, "Version 3", lookup_name="")])
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("Ghost", project="demo")
+
+    assert str(raised.value).startswith(
+        "OpenProject version 'Ghost' was not found in project 'demo'. Allowed versions: V1.0, v2.0."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_version_id_that_is_not_available_names_the_allowed_versions() -> None:
+    resolver = _resolver([_record(1, "v1.0")])
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("999", project="demo")
+
+    assert str(raised.value).startswith(
+        "OpenProject version '999' is not available in project 'demo'. Allowed versions: v1.0."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("project", ["demo", None])
+async def test_an_ambiguous_version_name_names_its_candidates(project: str | None) -> None:
+    link = {"href": "/api/v3/projects/6", "title": "Demo"}
+    resolver = _resolver(
+        [
+            _record(1, "v1.0", defining_project_link=link),
+            _record(2, "v1.0", defining_project_link=link),
+            _record(3, "v2.0", defining_project_link=link),
+        ]
+    )
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("v1.0", project=project)
+
+    assert str(raised.value).endswith("Pass a numeric version id. Matches: 1 (v1.0), 2 (v1.0).")
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_version_name_without_a_project_names_the_allowed_versions() -> None:
+    link = {"href": "/api/v3/projects/6", "title": "Demo"}
+    resolver = _resolver([_record(8, "v1.0", defining_project_link=link)])
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("nope", project=None)
+
+    assert str(raised.value) == "OpenProject version 'nope' was not found. Allowed versions: v1.0."

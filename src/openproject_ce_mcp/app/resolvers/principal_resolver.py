@@ -27,6 +27,7 @@ from __future__ import annotations
 from ...config import Settings
 from ...work_package_reference import is_numeric_ref
 from ..errors import InvalidInputError
+from ..offered_values import candidates_clause
 from ..pagination import effective_limit as _effective_limit
 from ..ports.current_user import CurrentUserLookup
 from ..ports.principal_api import PrincipalApi
@@ -53,7 +54,7 @@ class PrincipalResolver:
         # directly here would silently request a larger page than the
         # server-side/config page-size cap allows.
         page_size = _effective_limit(self._settings.max_results, settings=self._settings)
-        matches: list[str] = []
+        matches: list[tuple[int, str]] = []
         fetched = 0
         # Every page: the search matches a name as a substring, so the exact name can sit on a later
         # page, and a second exact match there makes the reference ambiguous. Counting the records
@@ -61,7 +62,7 @@ class PrincipalResolver:
         for offset in range(1, _MAX_NAME_SEARCH_PAGES + 1):
             records, total = await self._api.list_principals(search=principal_ref, offset=offset, page_size=page_size)
             matches.extend(
-                str(record.summary.id)
+                (record.summary.id, record.lookup_name)
                 for record in records
                 if record.lookup_name.casefold() == principal_ref.casefold()
             )
@@ -78,5 +79,6 @@ class PrincipalResolver:
         if len(matches) > 1:
             raise InvalidInputError(
                 f"OpenProject principal '{principal_ref}' is ambiguous. Pass a numeric user or group id."
+                + candidates_clause(matches)
             )
-        return matches[0]
+        return str(matches[0][0])

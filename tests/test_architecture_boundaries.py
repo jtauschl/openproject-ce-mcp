@@ -51,7 +51,7 @@ _HTTPX_TRANSPORT_FILE = Path("transport") / "httpx_transport.py"
 
 # Layer dependency rules: which app/<layer> dirs a given layer may import
 # from, besides itself and the shared kernel (app/errors.py, app/pagination.py,
-# app/api_href.py, app/form_result.py, config.py, models.py -- always allowed,
+# app/api_href.py, app/form_result.py, app/offered_values.py, config.py, models.py -- always allowed,
 # excluded from this check entirely).
 _LAYER_DEPENDENCIES: dict[str, set[str]] = {
     "policies": set(),
@@ -67,6 +67,7 @@ _SHARED_KERNEL = {
     "api_href",
     "form_result",
     "link_titles",
+    "offered_values",
 }  # module names directly under app/, not layer dirs
 
 

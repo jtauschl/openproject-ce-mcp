@@ -206,3 +206,17 @@ async def test_resolve_id_gives_up_on_a_name_that_matches_pages_without_end() ->
         await resolver.resolve_id("Jane")
 
     assert len(api.offsets) == 20
+
+
+@pytest.mark.asyncio
+async def test_an_ambiguous_principal_names_its_candidates_and_an_unknown_one_offers_nothing() -> None:
+    api = _FakePrincipalApi([_principal(1, "Alice"), _principal(2, "Alice")])
+    resolver = PrincipalResolver(api=api, current_user=_current_user, settings=make_settings())
+
+    with pytest.raises(InvalidInputError) as ambiguous:
+        await resolver.resolve_id("Alice")
+    with pytest.raises(InvalidInputError) as unknown:
+        await resolver.resolve_id("Bob")
+
+    assert str(ambiguous.value).endswith("Pass a numeric user or group id. Matches: 1 (Alice), 2 (Alice).")
+    assert str(unknown.value) == "OpenProject principal 'Bob' was not found."

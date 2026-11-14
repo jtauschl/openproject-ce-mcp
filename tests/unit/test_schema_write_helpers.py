@@ -14,6 +14,10 @@ from openproject_ce_mcp.app.services._schema_write_helpers import (
 )
 
 
+def _none_hidden(name: str, key: str) -> bool:
+    return False
+
+
 def _option(option_id: int, name: str) -> dict[str, Any]:
     return {"name": name, "_links": {"self": {"href": f"/api/v3/things/{option_id}", "title": name}}}
 
@@ -25,7 +29,7 @@ def _field(*options: dict[str, Any]) -> dict[str, Any]:
 def test_a_title_shared_by_two_allowed_values_is_ambiguous_and_names_both() -> None:
     schema = {"responsible": _field(_option(3, "Jane Doe"), _option(7, "Jane Doe"), _option(9, "John"))}
 
-    with pytest.raises(InvalidInputError, match=r"ambiguous.*3, 7.*numeric id"):
+    with pytest.raises(InvalidInputError, match=r"ambiguous.*numeric id\. Matches: 3 \(Jane Doe\), 7 \(Jane Doe\)\."):
         resolve_schema_option_href(schema, "responsible", "jane doe")
 
 
@@ -45,7 +49,7 @@ def test_the_same_allowed_value_listed_twice_is_not_ambiguous() -> None:
 def test_a_custom_field_title_shared_by_two_options_is_ambiguous() -> None:
     field = _field(_option(11, "Blue"), _option(12, "Blue"))
 
-    with pytest.raises(InvalidInputError, match=r"ambiguous.*11, 12"):
+    with pytest.raises(InvalidInputError, match=r"ambiguous.*Matches: 11 \(Blue\), 12 \(Blue\)\."):
         resolve_custom_field_links(field, "blue", "customField4", subject="work package")
 
 
@@ -79,6 +83,65 @@ def test_two_custom_fields_with_the_same_name_are_ambiguous_by_name_but_not_by_k
     schema = {"customField1": {"name": "Effort"}, "customField2": {"name": "Effort"}, "customField3": {"name": "Risk"}}
 
     with pytest.raises(InvalidInputError, match=r"ambiguous.*customField1, customField2"):
-        resolve_custom_field_key(schema, "effort", subject="work package")
-    assert resolve_custom_field_key(schema, "customField2", subject="work package") == "customField2"
-    assert resolve_custom_field_key(schema, "risk", subject="work package") == "customField3"
+        resolve_custom_field_key(schema, "effort", subject="work package", is_hidden=_none_hidden)
+    assert (
+        resolve_custom_field_key(schema, "customField2", subject="work package", is_hidden=_none_hidden)
+        == "customField2"
+    )
+    assert resolve_custom_field_key(schema, "risk", subject="work package", is_hidden=_none_hidden) == "customField3"
+
+
+def test_a_value_the_schema_does_not_allow_names_the_allowed_values_in_the_order_offered() -> None:
+    schema = {"priority": _field(_option(3, "Urgent"), _option(1, "Low"), _option(2, "High"))}
+
+    with pytest.raises(InvalidInputError) as raised:
+        resolve_schema_option_href(schema, "priority", "Ghost")
+
+    assert str(raised.value) == (
+        "OpenProject value 'Ghost' is not allowed for field 'priority'. Allowed values: Urgent, Low, High."
+    )
+
+
+def test_a_custom_field_option_that_is_not_allowed_names_the_allowed_values() -> None:
+    field = _field(_option(1, "Blue"), _option(2, "Red"))
+
+    with pytest.raises(InvalidInputError) as raised:
+        resolve_custom_field_links(field, "Green", "customField4", subject="work package")
+
+    assert str(raised.value) == (
+        "OpenProject value 'Green' is not allowed for field 'customField4'. Allowed values: Blue, Red."
+    )
+
+
+def test_a_custom_field_that_is_not_available_names_the_available_custom_fields() -> None:
+    schema = {
+        "subject": {"name": "Subject"},
+        "customField2": {"name": "Team"},
+        "customField1": {"name": "Release"},
+        "customField3": "not a field",
+    }
+
+    with pytest.raises(InvalidInputError) as raised:
+        resolve_custom_field_key(schema, "Ghost", subject="work package", is_hidden=_none_hidden)
+
+    assert str(raised.value) == (
+        "OpenProject custom field 'Ghost' is not available for this work package. Allowed custom fields: Release, Team."
+    )
+
+
+def test_a_hidden_custom_field_is_not_among_the_names_a_refusal_offers() -> None:
+    schema = {
+        "customField1": {"name": "Release"},
+        "customField2": {"name": "Salary band"},
+        "customField3": {"name": "Team"},
+    }
+
+    def hidden(name: str, key: str) -> bool:
+        return key == "customField2" or name == "Salary band"
+
+    with pytest.raises(InvalidInputError) as raised:
+        resolve_custom_field_key(schema, "Ghost", subject="work package", is_hidden=hidden)
+
+    assert str(raised.value) == (
+        "OpenProject custom field 'Ghost' is not available for this work package. Allowed custom fields: Release, Team."
+    )

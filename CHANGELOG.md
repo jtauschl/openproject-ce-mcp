@@ -25,7 +25,7 @@ to install and discover.
   a work package when `include_allowed_statuses` is set.
 - A rejected unknown argument names the closest allowed one, e.g. `id (did you mean work_package_id?)`.
 - `OPENPROJECT_TOOL_PROFILE=core` registers only a starter set of 21 tools; `configure` asks for it and `doctor` shows both counts.
-- A rejected time entry activity name lists the allowed activities.
+- A rejected status, priority, type, version, sprint, role, activity or schema value lists the allowed values; an ambiguous name lists its matches.
 - `update_work_package` and `bulk_update_work_packages` edit a stored description in place with `description_append` and
   `description_replace`.
 - `update_work_package_comment` edits a stored comment in place with `comment_append` and `comment_replace`.

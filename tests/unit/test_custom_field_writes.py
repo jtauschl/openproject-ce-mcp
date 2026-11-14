@@ -174,3 +174,14 @@ def test_the_hidden_custom_fields_input_is_refused_before_a_schema_is_fetched() 
 async def test_the_messages_name_the_entity_that_was_written() -> None:
     with pytest.raises(InvalidInputError, match="not available for this project"):
         await _apply({"customField1": _plain_field()}, {"Missing": "x"})
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_custom_field_does_not_offer_a_field_the_settings_hide() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Salary band",))
+    schema = {"customField1": _plain_field("Effort"), "customField2": _plain_field("Salary band")}
+
+    with pytest.raises(InvalidInputError) as raised:
+        await _apply(schema, {"Ghost": "x"}, settings=settings)
+
+    assert str(raised.value).endswith("Allowed custom fields: Effort.")

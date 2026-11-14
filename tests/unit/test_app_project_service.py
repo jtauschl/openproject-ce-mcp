@@ -1765,3 +1765,28 @@ async def test_the_write_path_and_the_admin_context_offer_the_same_versions(read
         if read_projects == ("demo",)
         else {f"/api/v3/versions/{number}" for number in _DEFINING_PROJECT_LINKS}
     )
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_project_status_names_the_allowed_statuses() -> None:
+    api = _FakeProjectApi()
+    api.schema = {
+        "status": {
+            "name": "Status",
+            "writable": True,
+            "_links": {
+                "allowedValues": [
+                    {"href": "/api/v3/project_statuses/on_track", "title": "On track"},
+                    {"href": "/api/v3/project_statuses/off_track", "title": "Off track"},
+                ]
+            },
+        }
+    }
+    service = _service(api, settings=_enabled_settings())
+
+    with pytest.raises(InvalidInputError) as raised:
+        await service.create(name="Demo New", identifier="demo-new", status="ghost", confirm=False)
+
+    assert str(raised.value) == (
+        "OpenProject project status 'ghost' is not allowed. Allowed statuses: On track, Off track."
+    )

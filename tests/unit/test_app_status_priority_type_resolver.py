@@ -203,3 +203,25 @@ async def test_resolve_status_and_priority_read_non_ascii_digits_as_a_name(name:
     resolver = _resolver(_FakeApi(statuses=[_status(4, name)], priorities=[_priority(5, name)]))
     assert await resolver.resolve_status_id(name) == "4"
     assert await resolver.resolve_priority_id(name) == "5"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_status_names_the_allowed_statuses() -> None:
+    api = _FakeApi(statuses=[_status(2, "In progress"), _status(1, "new"), _status(3, "Closed")])
+
+    with pytest.raises(InvalidInputError) as raised:
+        await _resolver(api).resolve_status_id("Ghost")
+
+    assert str(raised.value) == (
+        "OpenProject status 'Ghost' was not found. Allowed statuses: Closed, In progress, new."
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_priority_names_the_allowed_priorities() -> None:
+    api = _FakeApi(priorities=[_priority(1, "Normal"), _priority(2, "High")])
+
+    with pytest.raises(InvalidInputError) as raised:
+        await _resolver(api).resolve_priority_id("Ghost")
+
+    assert str(raised.value) == "OpenProject priority 'Ghost' was not found. Allowed priorities: High, Normal."

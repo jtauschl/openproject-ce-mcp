@@ -35,6 +35,7 @@ from __future__ import annotations
 from ...work_package_reference import is_numeric_ref
 from ..caches import CachedValue
 from ..errors import InvalidInputError
+from ..offered_values import offered_clause
 from ..ports.status_priority_type_api import PriorityRecord, StatusPriorityTypeApi, StatusRecord
 
 
@@ -58,7 +59,10 @@ class StatusPriorityTypeResolver:
             str(record.summary.id) for record in statuses if record.lookup_name.casefold() == status_ref.casefold()
         ]
         if not matches:
-            raise InvalidInputError(f"OpenProject status '{status_ref}' was not found.")
+            raise InvalidInputError(
+                f"OpenProject status '{status_ref}' was not found."
+                + offered_clause((record.lookup_name for record in statuses), plural="statuses")
+            )
         return matches[0]
 
     async def resolve_priority_id(self, priority_ref: str) -> str:
@@ -69,5 +73,8 @@ class StatusPriorityTypeResolver:
             str(record.summary.id) for record in priorities if record.lookup_name.casefold() == priority_ref.casefold()
         ]
         if not matches:
-            raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")
+            raise InvalidInputError(
+                f"OpenProject priority '{priority_ref}' was not found."
+                + offered_clause((record.lookup_name for record in priorities), plural="priorities")
+            )
         return matches[0]

@@ -24,11 +24,23 @@ from collections.abc import Mapping
 from ...config import Settings
 from ...work_package_reference import is_numeric_ref
 from ..errors import InvalidInputError
+from ..offered_values import candidates_clause, offered_clause
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.version_api import VersionApi, VersionRecord
 from .version_query import fetch_visible_version_records
+
+
+def _offered_versions(records: list[VersionRecord]) -> str:
+    return offered_clause((record.lookup_name for record in records), plural="versions")
+
+
+def _ambiguous_version(version_ref: str, matches: list[VersionRecord]) -> InvalidInputError:
+    return InvalidInputError(
+        f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
+        + candidates_clause((record.summary.id, record.lookup_name) for record in matches)
+    )
 
 
 class VersionResolver:
@@ -80,7 +92,9 @@ class VersionResolver:
                 if any(r.summary.id == wanted_id for r in records):
                     return version_ref
                 raise InvalidInputError(
-                    f"OpenProject version '{version_ref}' is not available in project '{project}'.{hint}"
+                    f"OpenProject version '{version_ref}' is not available in project '{project}'."
+                    + _offered_versions(records)
+                    + hint
                 )
 
             name_matches: list[VersionRecord] = [
@@ -88,12 +102,12 @@ class VersionResolver:
             ]
             if not name_matches:
                 raise InvalidInputError(
-                    f"OpenProject version '{version_ref}' was not found in project '{project}'.{hint}"
+                    f"OpenProject version '{version_ref}' was not found in project '{project}'."
+                    + _offered_versions(records)
+                    + hint
                 )
             if len(name_matches) > 1:
-                raise InvalidInputError(
-                    f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
-                )
+                raise _ambiguous_version(version_ref, name_matches)
             return str(name_matches[0].summary.id)
 
         if is_numeric_ref(version_ref):
@@ -131,9 +145,7 @@ class VersionResolver:
         name_matches = [r for r in records if r.lookup_name.casefold() == version_ref.casefold()]
 
         if not name_matches:
-            raise InvalidInputError(f"OpenProject version '{version_ref}' was not found.")
+            raise InvalidInputError(f"OpenProject version '{version_ref}' was not found." + _offered_versions(records))
         if len(name_matches) > 1:
-            raise InvalidInputError(
-                f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
-            )
+            raise _ambiguous_version(version_ref, name_matches)
         return str(name_matches[0].summary.id)

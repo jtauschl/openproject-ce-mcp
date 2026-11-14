@@ -902,6 +902,26 @@ async def test_an_unknown_activity_name_is_refused_with_the_allowed_names() -> N
 
 
 @pytest.mark.asyncio
+async def test_an_ambiguous_activity_name_names_its_candidates() -> None:
+    api = _FakeTimeEntryApi(
+        activities=[
+            _activity_summary(5, name="Support"),
+            _activity_summary(6, name="support"),
+            _activity_summary(2, name="Development"),
+        ]
+    )
+    service = _service(api=api)
+
+    with pytest.raises(InvalidInputError) as raised:
+        await service.create(work_package_id=42, activity="SUPPORT", hours="PT1H", spent_on="2026-03-20", confirm=False)
+
+    assert str(raised.value) == (
+        "OpenProject time entry activity 'SUPPORT' is ambiguous. Pass a numeric activity id. "
+        "Matches: 5 (Support), 6 (support)."
+    )
+
+
+@pytest.mark.asyncio
 async def test_an_unknown_activity_name_without_any_allowed_activity_has_no_list() -> None:
     service = _service(api=_FakeTimeEntryApi(activities=[]))
 

@@ -60,7 +60,12 @@ async def apply_custom_fields(
     check: ScopedReferencesAllowedBulkCheck,
 ) -> None:
     for raw_key, raw_value in custom_fields.items():
-        schema_key = resolve_custom_field_key(schema, raw_key, subject=subject)
+        schema_key = resolve_custom_field_key(
+            schema,
+            raw_key,
+            subject=subject,
+            is_hidden=lambda name, key: hidden_fields.custom_field_hidden(name, key, settings=settings),
+        )
         field = schema[schema_key]
         hidden_fields.ensure_custom_field_writable(
             _trim_text(field.get("name")) or schema_key, schema_key, settings=settings

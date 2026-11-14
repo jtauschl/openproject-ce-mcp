@@ -99,3 +99,28 @@ async def test_resolve_id_reads_non_ascii_digits_as_a_name(name: str) -> None:
     api = _FakeApi(types=[_type(9, name)])
     resolver = TypeResolver(api=api, resolve_project_ref=_resolve_project_ref)
     assert await resolver.resolve_id(name, project="5") == "9"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_type_names_the_allowed_types_of_the_project() -> None:
+    api = _FakeApi(types=[_type(2, "Task"), _type(1, "Bug"), _type(3, "Type 3", lookup_name="")])
+    resolver = TypeResolver(api=api, resolve_project_ref=_resolve_project_ref)
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("Ghost", project="5")
+
+    assert str(raised.value) == "OpenProject type 'Ghost' was not found in project '5'. Allowed types: Bug, Task."
+
+
+@pytest.mark.asyncio
+async def test_an_ambiguous_type_name_names_its_candidates() -> None:
+    api = _FakeApi(types=[_type(1, "Task"), _type(2, "Task"), _type(3, "Bug")])
+    resolver = TypeResolver(api=api, resolve_project_ref=_resolve_project_ref)
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("task", project="5")
+
+    assert (
+        str(raised.value)
+        == "OpenProject type 'task' is ambiguous. Pass a numeric type id. Matches: 1 (Task), 2 (Task)."
+    )

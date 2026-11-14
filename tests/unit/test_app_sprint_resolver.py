@@ -234,3 +234,34 @@ async def test_resolve_id_by_name_works_with_project_reads_disabled() -> None:
     )
 
     assert await resolver.resolve_id("Sprint 9", project="demo") == "9"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_sprint_names_the_allowed_sprints_of_every_page_read() -> None:
+    api = _FakeSprintApi(
+        pages=[([_record(1, "Sprint 2")], 3), ([_record(2, "Sprint 1")], 3), ([_record(3, "Sprint 3")], 3)]
+    )
+    settings = dataclasses.replace(make_settings(), max_page_size=1)
+    resolver = SprintResolver(
+        api=api, resolve_project_ref=_resolve_project_ref, settings=settings, project_id_to_identifier={}
+    )
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("Ghost", project="demo")
+
+    assert str(raised.value) == (
+        "OpenProject sprint 'Ghost' was not found in project 'demo'. Allowed sprints: Sprint 1, Sprint 2, Sprint 3."
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_ambiguous_sprint_name_names_its_candidates() -> None:
+    api = _FakeSprintApi(pages=[([_record(1, "Sprint 1"), _record(2, "Sprint 1"), _record(3, "Sprint 3")], 3)])
+    resolver = SprintResolver(
+        api=api, resolve_project_ref=_resolve_project_ref, settings=make_settings(), project_id_to_identifier={}
+    )
+
+    with pytest.raises(InvalidInputError) as raised:
+        await resolver.resolve_id("Sprint 1", project="demo")
+
+    assert str(raised.value).endswith("Pass a numeric sprint id. Matches: 1 (Sprint 1), 2 (Sprint 1).")

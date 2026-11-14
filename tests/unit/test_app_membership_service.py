@@ -596,3 +596,25 @@ async def test_create_reads_a_non_ascii_digit_role_as_a_name(name: str) -> None:
     await service.create(project="demo", principal="me", roles=[name], confirm=False)
 
     assert api.create_form_calls[-1]["_links"]["roles"] == [{"href": "/api/v3/roles/4"}]
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_role_names_the_allowed_roles_and_an_ambiguous_one_its_candidates() -> None:
+    role_api = _FakeRoleApi(
+        records=[
+            RoleRecord(summary=RoleSummary(id=3, name="Reader")),
+            RoleRecord(summary=RoleSummary(id=1, name="Member")),
+            RoleRecord(summary=RoleSummary(id=2, name="Member")),
+        ]
+    )
+    service = _service(_FakeMembershipApi(), role_api=role_api)
+
+    with pytest.raises(InvalidInputError) as unknown:
+        await service.create(project="demo", principal="me", roles=["Ghost"], confirm=False)
+    with pytest.raises(InvalidInputError) as ambiguous:
+        await service.create(project="demo", principal="me", roles=["member"], confirm=False)
+
+    assert str(unknown.value) == "OpenProject role 'Ghost' was not found. Allowed roles: Member, Reader."
+    assert str(ambiguous.value) == (
+        "OpenProject role 'member' is ambiguous. Pass a numeric role id. Matches: 1 (Member), 2 (Member)."
+    )

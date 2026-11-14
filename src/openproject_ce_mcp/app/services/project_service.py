@@ -45,6 +45,7 @@ from ...models import (
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError
 from ..link_titles import without_foreign_capable_titles
+from ..offered_values import offered_clause
 from ..pagination import clamp_limit
 from ..policies import access, hidden_fields, project_query_policy
 from ..policies import project_policy as project_policy_module
@@ -666,15 +667,20 @@ class ProjectService:
         field = schema.get("status")
         if not isinstance(field, dict):
             raise InvalidInputError("OpenProject schema does not expose the project status field.")
+        offered: list[str | None] = []
         for item in field.get("_links", {}).get("allowedValues", []):
             if not isinstance(item, dict):
                 continue
             href = item.get("href")
             title = _trim_text(item.get("title"), limit=SUBJECT_LIMIT)
+            offered.append(title)
             item_id = _slug_from_href(href)
             if (raw_value.casefold() == (title or "").casefold() or raw_value == item_id) and href:
                 return href
-        raise InvalidInputError(f"OpenProject project status '{raw_value}' is not allowed.")
+        raise InvalidInputError(
+            f"OpenProject project status '{raw_value}' is not allowed."
+            + offered_clause(offered, plural="statuses", sort=False)
+        )
 
     async def _to_write_result(
         self,

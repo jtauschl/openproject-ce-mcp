@@ -28,6 +28,7 @@ from collections.abc import Mapping
 from ...config import Settings
 from ...work_package_reference import is_numeric_ref
 from ..errors import InvalidInputError, NotFoundError
+from ..offered_values import candidates_clause, offered_clause
 from ..pagination import collection_exhausted
 from ..policies import sprint_policy
 from ..ports.project_ref import ProjectRefResolver
@@ -74,7 +75,8 @@ class SprintResolver:
         project_payload = await self._resolve_project_ref(project, context=context)
         project_id = int(project_payload["id"])
         page_size = self._settings.max_page_size
-        matches: list[str] = []
+        visible: list[tuple[int, str]] = []
+        matches: list[tuple[int, str]] = []
         seen_ids: set[int] = set()
         offset = 1
         is_first_page = True
@@ -104,16 +106,21 @@ class SprintResolver:
                     project_id_to_identifier=self._project_id_to_identifier,
                 ):
                     continue
+                visible.append((record.summary.id, record.lookup_name))
                 if record.lookup_name.casefold() == sprint_ref.casefold():
-                    matches.append(str(record.summary.id))
+                    matches.append((record.summary.id, record.lookup_name))
             fetched += len(records)
             if not records or collection_exhausted(total, fetched):
                 break
             offset += 1
         if not matches:
-            raise InvalidInputError(f"OpenProject sprint '{sprint_ref}' was not found in project '{project}'.")
+            raise InvalidInputError(
+                f"OpenProject sprint '{sprint_ref}' was not found in project '{project}'."
+                + offered_clause((name for _id, name in visible), plural="sprints")
+            )
         if len(matches) > 1:
             raise InvalidInputError(
                 f"OpenProject sprint '{sprint_ref}' is ambiguous without a more specific filter. Pass a numeric sprint id."
+                + candidates_clause(matches)
             )
-        return matches[0]
+        return str(matches[0][0])

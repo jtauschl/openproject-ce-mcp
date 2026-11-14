@@ -9,32 +9,21 @@ itself, with its clearing rules, is `_custom_field_writes`.
 from __future__ import annotations
 
 import builtins
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
 from ...work_package_reference import is_numeric_ref
 from ..errors import InvalidInputError
 from ..form_result import ValidationFailure
+from ..offered_values import NAME_LIMIT, candidates_clause, offered_clause, offered_names, trim_text
 from ..policies.scope import id_from_href
 
-_SUBJECT_LIMIT = 255
-
-# OpenProject does not cap how many statuses a workflow offers, and the list
-# lands in an error message the client reads into its context.
-_OFFERED_VALUES_LIMIT = 20
+_SUBJECT_LIMIT = NAME_LIMIT
 
 
 def _trim_text(value: Any, *, limit: int = _SUBJECT_LIMIT) -> str | None:
-    """Local, deliberately duplicated (Services cannot import from Adapters
-    -- matches `app/services/project_service.py`'s own local copy)."""
-    if value is None:
-        return None
-    text = " ".join(str(value).split())
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
+    return trim_text(value, limit=limit)
 
 
 async def resolve_wp_ref_id(
@@ -91,13 +80,7 @@ def _offered_titles(field: Any) -> str | None:
     allowed_values = field.get("_embedded", {}).get("allowedValues") if isinstance(field, dict) else None
     if not isinstance(allowed_values, list):
         return None
-    titles = [title for title in map(_option_title, allowed_values) if title]
-    if not titles:
-        return None
-    offered = ", ".join(titles[:_OFFERED_VALUES_LIMIT])
-    if len(titles) > _OFFERED_VALUES_LIMIT:
-        offered += f", … (+{len(titles) - _OFFERED_VALUES_LIMIT} more)"
-    return offered
+    return offered_names(map(_option_title, allowed_values), sort=False)
 
 
 def with_offered_status_values(
@@ -150,8 +133,13 @@ def with_offered_version_values(
     return enriched
 
 
-def _not_allowed(raw_value: Any, key: str) -> InvalidInputError:
-    return InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
+def _not_allowed(
+    raw_value: Any, key: str, options: builtins.list[tuple[str, int | None, str | None]]
+) -> InvalidInputError:
+    return InvalidInputError(
+        f"OpenProject value '{raw_value}' is not allowed for field '{key}'."
+        + offered_clause((title for _href, _item_id, title in options), plural="values", sort=False)
+    )
 
 
 def _title_matches(options: builtins.list[tuple[str, int | None, str | None]], normalized: str) -> builtins.list[str]:
@@ -160,10 +148,13 @@ def _title_matches(options: builtins.list[tuple[str, int | None, str | None]], n
     )
 
 
-def _ambiguous(raw_value: Any, key: str, hrefs: builtins.list[str]) -> InvalidInputError:
-    ids = ", ".join(str(id_from_href(href) or href) for href in hrefs)
+def _ambiguous(
+    raw_value: Any, key: str, options: builtins.list[tuple[str, int | None, str | None]], hrefs: builtins.list[str]
+) -> InvalidInputError:
+    titles = {href: title for href, _item_id, title in options}
     return InvalidInputError(
-        f"OpenProject value '{raw_value}' is ambiguous for field '{key}' (matches {ids}). Pass a numeric id."
+        f"OpenProject value '{raw_value}' is ambiguous for field '{key}'. Pass a numeric id."
+        + candidates_clause((id_from_href(href) or href, titles.get(href)) for href in hrefs)
     )
 
 
@@ -178,9 +169,9 @@ def resolve_schema_option_href(
     else:
         matches = _title_matches(options, normalized)
     if not matches:
-        raise _not_allowed(raw_value, key)
+        raise _not_allowed(raw_value, key, options)
     if len(matches) > 1:
-        raise _ambiguous(raw_value, key, matches)
+        raise _ambiguous(raw_value, key, options, matches)
     return matches[0]
 
 
@@ -195,17 +186,22 @@ def _resolve_custom_field_option_href(field: dict[str, Any], key: str, raw_value
         # An id names one option, so it settles a clash between titles that look like it.
         by_id = [href for href, item_id, _title in options if numeric and item_id == int(normalized)]
         if not by_id:
-            raise _ambiguous(raw_value, key, title_matches)
+            raise _ambiguous(raw_value, key, options, title_matches)
         return by_id[0]
     for href, item_id, title in options:
         if numeric and item_id == int(normalized):
             return href
         if title and title.casefold() == normalized.casefold():
             return href
-    raise _not_allowed(raw_value, key)
+    raise _not_allowed(raw_value, key, options)
 
 
-def resolve_custom_field_key(schema: dict[str, Any], raw_key: str, *, subject: str) -> str:
+def resolve_custom_field_key(
+    schema: dict[str, Any], raw_key: str, *, subject: str, is_hidden: Callable[[str, str], bool]
+) -> str:
+    """The schema key of a custom field named by key or name. `is_hidden(name, key)` keeps the fields the
+    settings hide out of the names a refusal offers: the hide policy is otherwise only checked after a key
+    resolves, so an offered name would reveal what the caller may not use."""
     normalized = str(raw_key).strip()
     if not normalized:
         raise InvalidInputError("custom field keys must not be empty.")
@@ -230,7 +226,19 @@ def resolve_custom_field_key(schema: dict[str, Any], raw_key: str, *, subject: s
         )
     if named:
         return named[0]
-    raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this {subject}.")
+    raise InvalidInputError(
+        f"OpenProject custom field '{raw_key}' is not available for this {subject}."
+        + offered_clause(
+            (
+                field.get("name")
+                for key, field in schema.items()
+                if key.startswith("customField")
+                and isinstance(field, dict)
+                and not is_hidden(_trim_text(field.get("name")) or key, key)
+            ),
+            plural="custom fields",
+        )
+    )
 
 
 def resolve_custom_field_links(field: dict[str, Any], raw_value: Any, key: str, *, subject: str) -> builtins.list[str]:

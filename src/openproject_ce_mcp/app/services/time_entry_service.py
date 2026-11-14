@@ -59,6 +59,7 @@ from ...models import (
 from ...work_package_reference import is_numeric_ref
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError, NotFoundError, OpenProjectServerError, PermissionDeniedError
+from ..offered_values import candidates_clause, offered_clause
 from ..pagination import collection_exhausted, effective_limit, fetch_bounded_and_paginate
 from ..policies import access, hidden_fields, work_package_target_policy
 from ..policies import scope as scope_policy
@@ -465,16 +466,18 @@ class TimeEntryService:
             activities = self._activities_from_form(form)
         else:
             activities = (await self.list_activities()).results
-        matches = [str(item.id) for item in activities if (item.name or "").casefold() == activity_ref.casefold()]
+        matches = [item for item in activities if (item.name or "").casefold() == activity_ref.casefold()]
         if not matches:
-            allowed = sorted({item.name for item in activities if item.name}, key=str.casefold)
-            hint = f" Allowed activities: {', '.join(allowed)}." if allowed else ""
-            raise InvalidInputError(f"OpenProject time entry activity '{activity_ref}' was not found.{hint}")
+            raise InvalidInputError(
+                f"OpenProject time entry activity '{activity_ref}' was not found."
+                + offered_clause((item.name for item in activities), plural="activities")
+            )
         if len(matches) > 1:
             raise InvalidInputError(
                 f"OpenProject time entry activity '{activity_ref}' is ambiguous. Pass a numeric activity id."
+                + candidates_clause((item.id, item.name) for item in matches)
             )
-        return matches[0]
+        return str(matches[0].id)
 
     async def create(
         self,

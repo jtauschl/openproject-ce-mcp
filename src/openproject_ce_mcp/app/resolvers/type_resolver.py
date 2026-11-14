@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from ...work_package_reference import is_numeric_ref
 from ..errors import InvalidInputError
+from ..offered_values import candidates_clause, offered_clause
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.status_priority_type_api import StatusPriorityTypeApi
@@ -36,9 +37,15 @@ class TypeResolver:
         project_payload = await self._resolve_project_ref(project, context=context)
         project_id = int(project_payload["id"])
         records = await self._api.list_types(project_id=project_id)
-        matches = [str(record.summary.id) for record in records if record.lookup_name.casefold() == type_ref.casefold()]
+        matches = [record for record in records if record.lookup_name.casefold() == type_ref.casefold()]
         if not matches:
-            raise InvalidInputError(f"OpenProject type '{type_ref}' was not found in project '{project}'.")
+            raise InvalidInputError(
+                f"OpenProject type '{type_ref}' was not found in project '{project}'."
+                + offered_clause((record.lookup_name for record in records), plural="types")
+            )
         if len(matches) > 1:
-            raise InvalidInputError(f"OpenProject type '{type_ref}' is ambiguous. Pass a numeric type id.")
-        return matches[0]
+            raise InvalidInputError(
+                f"OpenProject type '{type_ref}' is ambiguous. Pass a numeric type id."
+                + candidates_clause((record.summary.id, record.lookup_name) for record in matches)
+            )
+        return str(matches[0].summary.id)

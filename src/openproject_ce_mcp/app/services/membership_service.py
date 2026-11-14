@@ -42,6 +42,7 @@ from ...models import MembershipListResult, MembershipSummary, MembershipWriteRe
 from ...work_package_reference import is_numeric_ref
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError
+from ..offered_values import candidates_clause, offered_clause
 from ..pagination import clamp_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
@@ -269,9 +270,15 @@ class MembershipService:
                 record for record in available_roles if (record.summary.name or "").casefold() == normalized.casefold()
             ]
             if not matches:
-                raise InvalidInputError(f"OpenProject role '{normalized}' was not found.")
+                raise InvalidInputError(
+                    f"OpenProject role '{normalized}' was not found."
+                    + offered_clause((record.summary.name for record in available_roles), plural="roles")
+                )
             if len(matches) > 1:
-                raise InvalidInputError(f"OpenProject role '{normalized}' is ambiguous. Pass a numeric role id.")
+                raise InvalidInputError(
+                    f"OpenProject role '{normalized}' is ambiguous. Pass a numeric role id."
+                    + candidates_clause((record.summary.id, record.summary.name) for record in matches)
+                )
             hrefs.append(_api_href(f"roles/{matches[0].summary.id}", api_prefix=self._api_prefix))
         if not hrefs:
             raise InvalidInputError("At least one role is required.")
