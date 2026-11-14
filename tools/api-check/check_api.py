@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from floor_catalog import BEHAVIOUR_ROUTES, COLUMNS, FLOORS
 from op_sources import SOURCES, MissingCheckoutError, pinned_versions, require_checkouts, version_key
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -306,6 +307,45 @@ ASSUMPTIONS: list[Assumption] = [
         "project attribute comments", "field", "comments: true", subtree="app/models/project.rb", present_from="17.2"
     ),
 ]
+
+
+# The version floors of the server (floor_catalog.py): every route behind a floor, and every behaviour version a
+# description names (`BEHAVIOUR_ROUTES`), is a symbol that is absent before its release and present from then on, so a
+# floor the source does not bear out fails the matrix.
+ASSUMPTIONS += (
+    [
+        Assumption(
+            f"floor {floor.feature} {floor.floor}: {route.symbol}",
+            "path",
+            route.pattern,
+            subtree=route.subtree,
+            present_from=route.release,
+        )
+        for floor in FLOORS
+        for route in floor.routes
+    ]
+    + [
+        Assumption(
+            f"behaviour {tool} {release}: {route.symbol}",
+            "path",
+            route.pattern,
+            subtree=route.subtree,
+            present_from=route.release,
+        )
+        for (tool, release), route in BEHAVIOUR_ROUTES.items()
+    ]
+    + [
+        Assumption(
+            f"column {column.entity}.{column.column} {column.floor}: {route.symbol}",
+            "path",
+            route.pattern,
+            subtree=route.subtree,
+            present_from=route.release,
+        )
+        for column in COLUMNS
+        for route in column.routes
+    ]
+)
 
 
 def _find_any(root: Path, name_pattern: str) -> bool:

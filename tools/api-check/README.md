@@ -17,6 +17,19 @@ Three tools that keep this MCP honest against the OpenProject API:
   of verifying fields it already depends on still exist. Writes
   `FIELD_COMPLETENESS.md`.
 
+## Version floors
+
+`floor_catalog.py` lists every version floor of the server (a `call_version_gated` call or a hand-built "requires
+OpenProject X.Y" message) with the OpenProject routes behind it and the first release whose source has each. `check_api.py`
+turns every route and every behaviour proof (`BEHAVIOUR_ROUTES`: a symbol that marks a version a description names) into an
+assumption (absent before its release, present from then on), so a floor the pinned sources do
+not bear out fails the matrix (it proves that the symbol exists from the release on, not that it is exactly the verb and
+path an adapter calls); the sort and group column floors (`COLUMN_FLOORS`) are checked the same way where a source
+symbol is known, and two (`sprint`, `backlog_bucket`) carry a `gap` instead. `tests/unit/test_version_floor_catalog.py` runs
+in CI without the sources and ties the services, the tool descriptions and the tool rows of `docs/tools.md` to the
+catalog: a version a description names that is no floor of the tool is a behaviour change and sits in
+`NOT_A_ROUTE_FLOOR` with what it changes. A floor above its newest route needs a `reason`.
+
 ## Usage
 
 ```bash

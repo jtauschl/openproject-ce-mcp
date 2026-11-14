@@ -307,15 +307,15 @@ user exists.
 
 | Tool | Description |
 | --- | --- |
-| `list_user_non_working_times` | List a user's non-working-time (vacation) date ranges, with an optional `year` filter |
-| `create_user_non_working_time` | Validate and then create a non-working-time date range for a user; only writes when called again with `confirm=true` |
-| `update_user_non_working_time` | Validate and then update a user's non-working-time date range; only writes when called again with `confirm=true` |
-| `delete_user_non_working_time` | Validate and then delete a user's non-working-time date range; only deletes when called again with `confirm=true` |
-| `list_user_working_hours` | List a user's recurring weekly working-hours schedules, most recent `valid_from` first |
-| `get_user_working_hours` | Fetch a single working-hours schedule entry for a user |
-| `create_user_working_hours` | Validate and then create a new weekly working-hours schedule version for a user; only writes when called again with `confirm=true` |
-| `update_user_working_hours` | Validate and then update a user's working-hours schedule entry; only writes when called again with `confirm=true` |
-| `delete_user_working_hours` | Validate and then delete a user's working-hours schedule entry; only deletes when called again with `confirm=true` |
+| `list_user_non_working_times` | List a user's non-working-time (vacation) date ranges, with an optional `year` filter (requires OpenProject 17.3+) |
+| `create_user_non_working_time` | Validate and then create a non-working-time date range for a user; only writes when called again with `confirm=true`; requires OpenProject 17.3+ |
+| `update_user_non_working_time` | Validate and then update a user's non-working-time date range; only writes when called again with `confirm=true`; requires OpenProject 17.3+ |
+| `delete_user_non_working_time` | Validate and then delete a user's non-working-time date range; only deletes when called again with `confirm=true`; requires OpenProject 17.3+ |
+| `list_user_working_hours` | List a user's recurring weekly working-hours schedules, most recent `valid_from` first (requires OpenProject 17.3+) |
+| `get_user_working_hours` | Fetch a single working-hours schedule entry for a user (requires OpenProject 17.3+) |
+| `create_user_working_hours` | Validate and then create a new weekly working-hours schedule version for a user; only writes when called again with `confirm=true`; requires OpenProject 17.3+ |
+| `update_user_working_hours` | Validate and then update a user's working-hours schedule entry; only writes when called again with `confirm=true`; requires OpenProject 17.3+ |
+| `delete_user_working_hours` | Validate and then delete a user's working-hours schedule entry; only deletes when called again with `confirm=true`; requires OpenProject 17.3+ |
 
 ## Notifications
 
@@ -459,15 +459,15 @@ has
 | `list_categories` | List work-package categories configured for a project |
 | `get_category` | Fetch a single category from a project's category list |
 | `get_project_work_package_context` | Return project metadata plus the writable work-package schema for an optional type, including custom fields, project phases, and allowed values |
-| `list_work_packages` | List work packages with structured filters such as `project`, `type`, `version`, `version_status` (open/closed/locked, requires OpenProject 16.4+), `assignee`, `status`, `priority`, and `custom_field_filters` (filter by custom field value, keyed by `cf_<N>`/`customField<N>` — see [filters.md](filters.md#custom-field-filters)) |
+| `list_work_packages` | List work packages with structured filters such as `project`, `type`, `version`, `version_status` (open/closed/locked, requires OpenProject 16.4+), `assignee`, `status`, `priority`, and `custom_field_filters` (filter by custom field value, keyed by `cf_<N>`/`customField<N>` — see [filters.md](filters.md#custom-field-filters)); the `observed_in_version` filter requires OpenProject 17.9+ |
 | `search_work_packages` | Search work packages by free-text query matching only subject/ID (not version); optional `project`, `status`, `open_only`, `assignee_me`, and `custom_field_filters` filters — for version-based filtering use `list_work_packages(version=...)` instead. Also resolves the query directly, in parallel, when it is a numeric id or display id (e.g. `PROJ-42`) and not shaped like a date; a match satisfying every other active filter is returned separately as `exact_match`, never merged into `results`/`total`/pagination |
 | `get_work_package` | Fetch a detailed work package summary by id or `displayId` reference |
 | `get_work_packages` | Fetch multiple work packages by ID in parallel (max 100 IDs per batch) |
-| `create_work_package` | Validate and then create a work package; only writes when called again with `confirm=true` |
-| `create_subtask` | Validate and then create a child work package below an existing parent; only writes when called again with `confirm=true` |
-| `update_work_package` | Validate and then update a work package; only writes when called again with `confirm=true` |
-| `bulk_create_work_packages` | Validate and then create multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true` |
-| `bulk_update_work_packages` | Validate and then update multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true` |
+| `create_work_package` | Validate and then create a work package; only writes when called again with `confirm=true`; `observed_in_versions` requires OpenProject 17.9+ |
+| `create_subtask` | Validate and then create a child work package below an existing parent; only writes when called again with `confirm=true`; `observed_in_versions` requires OpenProject 17.9+ |
+| `update_work_package` | Validate and then update a work package; only writes when called again with `confirm=true`; `sprint` requires the Backlogs module and OpenProject 17.3+, `observed_in_versions` requires OpenProject 17.9+ |
+| `bulk_create_work_packages` | Validate and then create multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true`; `observed_in_versions` requires OpenProject 17.9+ |
+| `bulk_update_work_packages` | Validate and then update multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true`; `sprint` requires the Backlogs module and OpenProject 17.3+, `observed_in_versions` requires OpenProject 17.9+ |
 | `delete_work_package` | Validate and then delete a work package; only deletes when called again with `confirm=true` |
 | `add_work_package_comment` | Validate and then add a comment to a work package; `notify=false` by default to avoid change emails; the result never carries change details (`details_omitted` is true); only writes when called again with `confirm=true` |
 | `update_work_package_comment` | Validate and then replace the text of an existing comment (by activity id); reports up front when OpenProject would not let the configured user edit it; the result never carries change details (`details_omitted` is true); only writes when called again with `confirm=true` |
@@ -477,10 +477,10 @@ has
 | `list_work_package_activities` | List the activity log of one work package, most recent first; the change details of an entry are returned only when `OPENPROJECT_READ_PROJECTS` is `*` and no work package or custom field is hidden, otherwise `details_omitted` is true |
 | `list_work_package_reactions` | List emoji reactions across a work package's comment activities |
 | `toggle_activity_emoji_reaction` | Toggle an emoji reaction on a work package comment activity (add if absent, remove if present) |
-| `list_reminders` | List the current user's active reminders across all work packages |
-| `create_work_package_reminder` | Validate and then create a reminder on a work package (one active reminder per work package) |
-| `update_reminder` | Validate and then update a reminder's time or note |
-| `delete_reminder` | Validate and then delete a reminder; only deletes when called again with `confirm=true` |
+| `list_reminders` | List the current user's active reminders across all work packages (requires OpenProject 16.1+) |
+| `create_work_package_reminder` | Validate and then create a reminder on a work package (one active reminder per work package; requires OpenProject 16.1+) |
+| `update_reminder` | Validate and then update a reminder's time or note (requires OpenProject 16.1+) |
+| `delete_reminder` | Validate and then delete a reminder; only deletes when called again with `confirm=true` (requires OpenProject 16.1+) |
 | `list_my_open_work_packages` | List the current user's open assigned work packages |
 | `list_available_assignees` | List the users and groups OpenProject accepts as assignee, for a work package or (before it exists) for a project |
 | `list_work_package_available_relation_candidates` | List work packages that can be the other end of a new relation, optionally by text and relation type |
