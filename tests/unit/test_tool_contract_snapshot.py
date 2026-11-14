@@ -4163,7 +4163,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "list_boards": {
-        "description_hash": "ec6418a636d0f787daf42f71e403cc945e9e4e9bf0a73c6ea7b71a1368f25ba8",
+        "description_hash": "298884ca353b9855bc7d37a75a8c36aa7fb5d9322bcbc4637a760dd34fa93a99",
         "input_schema": {
             "properties": {
                 "project": {
