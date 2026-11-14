@@ -380,9 +380,9 @@ has
 | `get_work_packages` | Fetch multiple work packages by ID in parallel (max 100 IDs per batch) |
 | `create_work_package` | Validate and then create a work package; only writes when called again with `confirm=true` |
 | `create_subtask` | Validate and then create a child work package below an existing parent; only writes when called again with `confirm=true` |
-| `update_work_package` | Validate and then update a work package; only writes when called again with `confirm=true` |
+| `update_work_package` | Validate and then update a work package; only writes when called again with `confirm=true`; `sprint` requires the Backlogs module and OpenProject 17.3+ |
 | `bulk_create_work_packages` | Validate and then create multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true` |
-| `bulk_update_work_packages` | Validate and then update multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true` |
+| `bulk_update_work_packages` | Validate and then update multiple work packages in one call; returns per-item results including errors; only writes when called again with `confirm=true`; `sprint` requires the Backlogs module and OpenProject 17.3+ |
 | `delete_work_package` | Validate and then delete a work package; only deletes when called again with `confirm=true` |
 | `add_work_package_comment` | Validate and then add a comment to a work package; `notify=false` by default to avoid change emails; the result never carries change details (`details_omitted` is true); only writes when called again with `confirm=true` |
 | `create_work_package_relation` | Validate and then create a relation between work packages; only writes when called again with `confirm=true` |
@@ -391,10 +391,10 @@ has
 | `get_work_package_activities` | Fetch the activity log for a work package, most recent first; the change details of an entry are returned only when `OPENPROJECT_READ_PROJECTS` is `*` and no work package or custom field is hidden, otherwise `details_omitted` is true |
 | `list_work_package_reactions` | List emoji reactions across a work package's comment activities |
 | `toggle_activity_emoji_reaction` | Toggle an emoji reaction on a work package comment activity (add if absent, remove if present) |
-| `list_reminders` | List the current user's active reminders across all work packages |
-| `create_work_package_reminder` | Validate and then create a reminder on a work package (one active reminder per work package) |
-| `update_reminder` | Validate and then update a reminder's time or note |
-| `delete_reminder` | Validate and then delete a reminder; only deletes when called again with `confirm=true` |
+| `list_reminders` | List the current user's active reminders across all work packages (requires OpenProject 16.1+) |
+| `create_work_package_reminder` | Validate and then create a reminder on a work package (one active reminder per work package; requires OpenProject 16.1+) |
+| `update_reminder` | Validate and then update a reminder's time or note (requires OpenProject 16.1+) |
+| `delete_reminder` | Validate and then delete a reminder; only deletes when called again with `confirm=true` (requires OpenProject 16.1+) |
 | `list_my_open_work_packages` | List the current user's open assigned work packages |
 | `list_work_package_watchers` | List watchers on a work package |
 | `set_work_package_watcher` | Add or remove a user as a watcher on a work package, based on `watching` |
