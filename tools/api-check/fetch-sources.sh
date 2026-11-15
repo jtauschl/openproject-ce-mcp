@@ -59,9 +59,12 @@ SPARSE_PATHS=(
     "app/contracts"
     "app/validators"   # core field-level validators (e.g. custom-field format rules)
     "app/representers" # core API v3 HAL representers, where present outside lib/api
+    "app/workers"      # background jobs whose payload is a job status response (copy_project_job.rb writes its links)
     "/config/routes.rb"
+    "/config/initializers/inflections.rb"      # the acronyms (API, OAuth, ...) that decide how a snake_case name is camelized on the wire
     "modules/*/lib/api/v3"                     # every module's API subtree (Backlogs, Meetings, etc.)
     "modules/*/lib/open_project/*/patches/api" # module patches to core representers (e.g. Backlogs' sprint link on work packages)
+    "modules/*/lib/**/engine.rb"               # extend_api_response blocks that add fields to core representers (Costs, Meetings, ...)
     "modules/*/app/models"                     # module-specific models (e.g. Meetings' MeetingSection, Storages)
     "modules/*/app/contracts"                  # module-specific validation contracts
     "modules/*/app/validator"                  # module-specific validators (e.g. Storages' NextcloudCompatibleHostValidator --

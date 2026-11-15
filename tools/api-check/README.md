@@ -30,6 +30,40 @@ in CI without the sources and ties the services, the tool descriptions and the t
 catalog: a version a description names that is no floor of the tool is a behaviour change and sits in
 `NOT_A_ROUTE_FLOOR` with what it changes. A floor above its newest route needs a `reason`.
 
+## Representer snapshot
+
+`representer_locations.py` reads a Ruby representer and says where it renders each name: `property`, `link`,
+`embedded`, `link-member:<link>` (a member of a link object, e.g. `displayId` of the work package `parent`) or
+`value-member:<property>` (`raw`, `html`, `format` of a formattable property). It reads these DSL forms of the pinned
+sources: `property` and its date and duration variants, the schema macros (`schema`, `schema_with_allowed_*`,
+`schema_property`), `associated_resource(s)`, `associated_visible_resource(s)`, `associated_project`,
+`polymorphic_resource`, `resource(s)`, `resource_link`, `link`/`links` blocks (a bare link keeps its rel as written,
+`link :auth_source` renders `auth_source`), `link_without_resource`, `associated_user_link`, `self_link`,
+`collection`, `embedded`, `custom_field_injector`, `def _type`, `embedded: true`, custom `link: ->` lambdas, and
+Enterprise conditions (`if:`, `show_if:`, `skip_render:`, `render_if:`, `cache_if:`). A macro line whose name is
+computed (`property setting`, `property :"copy_#{id}"`) declares nothing readable; the snapshot lists it under
+`unparsed` for its path so a guard has to waive it knowingly. `check_field_completeness.py` filters the output to the
+macros it always knew; a golden test compares the two over every representer file of every pinned version.
+
+How to read the snapshot. For a representer path, a link and a version: if `link-member:<link>|*` covers the
+version, the members listed for it are known and any other member read needs a waiver; otherwise the members are
+exactly the ones listed for that version; if none is listed, they are `href` and `title` (`LINK_OBJECT_MEMBERS`). `*`
+is written when a helper, a factory, `resource_link`, a `do` lambda, a raw `sql:` link or anything other than hash
+literals builds the link object (a blacklist of constructions, not a proof: a link built by a helper call in one
+branch of an `if` is not detected). Link members come from the hash literals, the options on the macro line (`method:`)
+and, in a SQL representer, from the DSL's own rule (`href`, a `title` unless `title: -> {}`, every other option). `customField*` is a wildcard name for the
+custom field properties and links that `custom_field_injector` adds at runtime. A patch file that an engine applies
+shows up twice (as its own path and as `<engine.rb>#extend_api_response:<representer>`); a patch applied through
+`included` or `prepend`, and the parse-only `nested` blocks, are not followed. A property whose getter builds a
+`Formattable` itself gets no `value-member` entries. The BCF API (`modules/bim/.../bcf`) is not API v3 and is left out.
+
+`check_adapter_reads.py --write` regenerates `representer_fields.json`: per representer path (a `*representer*.rb` file, a base class under an API subtree that declares fields such as
+`lib/api/decorators/collection.rb`, or `<engine.rb>#extend_api_response:<representer>` for the fields an engine adds
+inline or through a patch module) every (location, wire name) with the pinned versions that render it. `--check` regenerates and diffs, and is a release step:
+CI cannot read the sources, but it asserts that the snapshot header equals the pinned versions and tags of
+`fetch-sources.sh`, so a bumped pin without a regeneration fails. It also prints representers that end before the
+newest pinned version and a basename that continues at another path.
+
 ## Usage
 
 ```bash

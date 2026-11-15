@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import re
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
@@ -53,6 +52,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from op_sources import SOURCES, MissingCheckoutError, pinned_versions, require_checkouts
+from representer_locations import LEGACY_DATA_MACROS, LEGACY_LINK_MACROS, camelize, extract_declarations
 
 ROOT = Path(__file__).resolve().parents[2]
 FIELD_COMPLETENESS_MD = Path(__file__).resolve().parent / "FIELD_COMPLETENESS.md"
@@ -320,103 +320,21 @@ EXCLUSIONS: list[FieldExclusion] = [
 ]
 _EXCLUSION_INDEX: dict[tuple[str, str], FieldExclusion] = {(e.resource, e.wire_name): e for e in EXCLUSIONS}
 
-# Macro names this tool treats as data-bearing. `associated_resources` and
-# `resources` (plural) are listed distinctly from their singular forms --
-# easy to miss, and a real, current field (membership's `associated_resources
-# :roles`) depends on the plural being matched. `link`/`links` are handled
-# separately (see NAVIGATION_LINKS above): every link is extracted too, then
-# filtered, rather than being blanket-excluded from the macro family.
-_DATA_MACROS = (
-    "formattable_property",
-    "date_time_property",
-    "date_property",
-    "associated_visible_resource",
-    "associated_resources",
-    "associated_resource",
-    "associated_project",
-    "resources",
-    "resource",
-    "property",
-)
-_LINK_MACROS = ("links", "link")
-_MACRO_RE = re.compile(r"^[ \t]*(?P<macro>" + "|".join(_DATA_MACROS + _LINK_MACROS) + r")\b(?P<rest>.*)$")
-_POSITIONAL_SYMBOL_RE = re.compile(r"^\s*:(\w+)")
-_AS_RE = re.compile(r"\bas:\s*[:\"']?(\w+)")
-_MAX_CONTINUATION_LINES = 15
-
-
-def _camelize(name: str) -> str:
-    """Ruby snake_case -> lowerCamelCase, matching Representable's default `as:` derivation.
-
-    Leading-underscore names (e.g. `_meta`, from TimestampedRepresenter) are
-    left unchanged -- a generic camelCase converter would otherwise mangle
-    `_meta` into `Meta`/`meta`, fabricating a wrong wire name.
-    """
-    if name.startswith("_"):
-        return name
-    parts = name.split("_")
-    return parts[0] + "".join(p[:1].upper() + p[1:] for p in parts[1:] if p)
-
-
-def _positional_symbol(rest: str) -> str | None:
-    """The macro's own positional `:symbol` argument, if the very first token after the macro name is one.
-
-    Anchored (not searched) deliberately: an `as: :word` clause later on the
-    same line must never be mistaken for a positional symbol -- this is
-    exactly the bug a free `.search()` would have for a bare
-    `associated_project as: :definingProject` line, which has no positional
-    symbol at all.
-    """
-    m = _POSITIONAL_SYMBOL_RE.match(rest)
-    return m.group(1) if m else None
-
-
-def _resolve_as(first_line_rest: str, following_lines: list[str], indent: int) -> str | None:
-    """The `as:` wire-name override, inline on the macro line or on a deeper-indented continuation line."""
-    m = _AS_RE.search(first_line_rest)
-    if m:
-        return m.group(1)
-    for line in following_lines[:_MAX_CONTINUATION_LINES]:
-        if not line.strip():
-            break
-        if (len(line) - len(line.lstrip())) <= indent:
-            break
-        m = _AS_RE.search(line)
-        if m:
-            return m.group(1)
-    return None
+# Data-bearing macros: `associated_resources` and `resources` (plural) are distinct from the singular forms, and a
+# real field, membership's `associated_resources :roles`, depends on the plural. `link`/`links` are extracted too and
+# then filtered (see NAVIGATION_LINKS above) rather than excluded from the macro family.
+_DATA_MACROS = LEGACY_DATA_MACROS
+_LINK_MACROS = LEGACY_LINK_MACROS
+_camelize = camelize
 
 
 def _extract_macro_fields(text: str) -> list[RawField]:
     """Extract every data-bearing field (and link) declaration from one representer source file."""
-    lines = text.splitlines()
-    out: list[RawField] = []
-    for i, line in enumerate(lines):
-        m = _MACRO_RE.match(line)
-        if not m:
-            continue
-        macro = m.group("macro")
-        rest = m.group("rest")
-        indent = len(line) - len(line.lstrip())
-
-        symbol = _positional_symbol(rest)
-        if symbol is None:
-            if macro == "associated_project":
-                # No positional symbol (the common case: a bare
-                # `associated_project` meaning "the resource's own project"),
-                # or an `as:`-only override with no positional symbol at all
-                # (`associated_project as: :definingProject`) -- either way
-                # the Ruby symbol defaults to "project".
-                symbol = "project"
-            else:
-                # No macro other than associated_project has been observed
-                # without a positional symbol across the six checked
-                # resources; skip defensively rather than fabricate one.
-                continue
-
-        wire = _resolve_as(rest, lines[i + 1 :], indent) or _camelize(symbol)
-        out.append(RawField(macro=macro, ruby_symbol=symbol, wire_name=wire))
-
+    out = [
+        RawField(macro=d.macro, ruby_symbol=d.symbol, wire_name=d.wire_name)
+        for d in extract_declarations(text)
+        if d.macro in _DATA_MACROS + _LINK_MACROS
+    ]
     return [f for f in out if not (f.macro in _LINK_MACROS and f.ruby_symbol in NAVIGATION_LINKS)]
 
 
