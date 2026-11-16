@@ -13,7 +13,8 @@ All mutating tools follow the same guarded write pattern by default:
 - A write that takes a work package reference names the work package it
   resolved to in `target` (id, display id, project, subject, status), in the
   preview and in the result. A bare number is the internal id and `PROJ-123`
-  the display id, so check `target` before confirming. For `create_work_package`, `create_subtask` and `bulk_create_work_packages`
+  the display id, so check `target` before confirming. After a confirmed `update_work_package` or
+  `bulk_update_work_packages`, `target` shows the status and subject as written. For `create_work_package`, `create_subtask` and `bulk_create_work_packages`
   `target` is the referenced parent, for relations `related_target` names
   the other end, and `update_work_package` and `bulk_update_work_packages` name
   the work package a given `parent` resolved to in `parent_target`.

@@ -2067,6 +2067,10 @@ class WorkPackageService:
             preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Work package updated successfully.",
         )
+        if outcome.state == "confirmed" and outcome.detail is not None:
+            # `target` named the work package as read before the write, which is what a preview shows; after the commit
+            # status and subject may have changed, so it names the record the write answered with.
+            target = self._present_target(outcome.detail.payload)
         return await self._to_write_result("update", outcome, target, parent_target)
 
     async def bulk_update(
