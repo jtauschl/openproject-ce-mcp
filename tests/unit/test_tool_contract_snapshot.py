@@ -478,7 +478,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "bulk_update_work_packages": {
-        "description_hash": "2e7081bf8f168b2a991f5cc6aaa8f74b9d15d813094165a8401ff9f67952cdd6",
+        "description_hash": "f8b5a55cd28d59b9930e58a85982231e949f2653cc86fdb41a6643fd607215e6",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {

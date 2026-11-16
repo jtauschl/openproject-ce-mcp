@@ -558,7 +558,8 @@ class WorkPackageWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, ValidationFailure]
     result: WorkPackageDetail | None
-    # On a create this is the referenced parent, since `result` is the new work package.
+    # On a create this is the referenced parent, since `result` is the new work package. On an update it is the
+    # work package as read before the write in a preview and as written after a confirmed update.
     target: ResolvedWorkPackage | None = None
     # On an update, the work package its `parent` reference resolved to.
     parent_target: ResolvedWorkPackage | None = None

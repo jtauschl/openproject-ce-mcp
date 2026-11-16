@@ -880,7 +880,8 @@ def test_bulk_update_work_packages_schema() -> None:
         "(`result.result.due_date` here too, selected as `result.due_date`). The lean confirmed item and\n"
         "select work as there: select names write-result fields (work_package_id, ready, state, ...); fields\n"
         'of the written work package are selected as result.<field> (e.g. "result.display_id").\n'
-        "Each item's result names the work package its reference resolved to in `target`.\n"
+        "Each item's result names the work package its reference resolved to in `target`: as read before the write in a\n"
+        "preview, as written once the update is confirmed.\n"
         "When an item gives a `parent`, its result also carries `parent_target`, the work package the parent\n"
         "reference resolved to.\n"
     )

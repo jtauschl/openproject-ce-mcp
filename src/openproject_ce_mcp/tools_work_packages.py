@@ -1157,7 +1157,8 @@ async def bulk_update_work_packages(
     (`result.result.due_date` here too, selected as `result.due_date`). The lean confirmed item and
     select work as there: select names write-result fields (work_package_id, ready, state, ...); fields
     of the written work package are selected as result.<field> (e.g. "result.display_id").
-    Each item's result names the work package its reference resolved to in `target`.
+    Each item's result names the work package its reference resolved to in `target`: as read before the write in a
+    preview, as written once the update is confirmed.
     When an item gives a `parent`, its result also carries `parent_target`, the work package the parent
     reference resolved to.
     """
