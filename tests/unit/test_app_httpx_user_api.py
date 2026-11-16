@@ -6,6 +6,7 @@ import pytest
 from openproject_ce_mcp.app.adapters.httpx_user_api import HttpxUserApi, normalize_user, normalize_user_detail
 from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
+from openproject_ce_mcp.models import UserSummary
 
 BASE_URL = "https://op.example.com"
 
@@ -24,13 +25,34 @@ def _user_payload(user_id: int = 5, login: str = "ada", name: str = "Ada Lovelac
         "email": f"{login}@example.com",
         "status": "active",
         "admin": False,
-        "locked": False,
         "firstName": "Ada",
         "lastName": "Lovelace",
         "createdAt": "2026-01-01T00:00:00Z",
         "updatedAt": "2026-06-01T00:00:00Z",
         "_links": {},
     }
+
+
+def _normalize(payload: dict) -> UserSummary:
+    return normalize_user(payload, base_url=BASE_URL, origin=BASE_URL)
+
+
+def test_locked_is_derived_from_the_status_the_server_renders() -> None:
+    # user_representer.rb renders no `locked` property; the lock state is `status == "locked"`.
+    assert _normalize({**_user_payload(), "status": "locked"}).locked is True
+    assert _normalize({**_user_payload(), "status": "active"}).locked is False
+    assert _normalize({**_user_payload(), "status": "invited"}).locked is False
+
+
+def test_locked_is_unknown_when_the_server_renders_no_status() -> None:
+    payload = _user_payload()
+    del payload["status"]
+
+    assert _normalize(payload).locked is None
+
+
+def test_a_phantom_locked_key_is_not_read() -> None:
+    assert _normalize({**_user_payload(), "status": "active", "locked": True}).locked is False
 
 
 @pytest.mark.asyncio

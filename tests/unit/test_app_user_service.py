@@ -183,6 +183,34 @@ async def test_list_users_applies_hidden_field_masking() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("hidden", ["status", "locked"])
+async def test_hiding_either_lock_state_name_hides_both(hidden: str) -> None:
+    # `locked` is derived from `status`: hiding one name must not leak it back under the other.
+    service = _service(_FakeUserApi(), settings=_admin_settings(hidden_fields={"user": (hidden,)}))
+
+    listed = (await service.list_users()).results[0]
+    detail = await service.get_user("5")
+
+    for user in (listed, detail):
+        assert user._hidden_keys == frozenset({"status", "locked"})
+        serialized = _to_payload(user)
+        assert "status" not in serialized
+        assert "locked" not in serialized
+        assert serialized["id"] == 5
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hidden", ["status", "locked"])
+async def test_a_write_result_hides_both_lock_state_names(hidden: str) -> None:
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": (hidden,)})
+    service = _service(_FakeUserApi(), settings=settings)
+
+    result = await service.delete(5, confirm=False)
+
+    assert result.result._hidden_keys == frozenset({"status", "locked"})
+
+
+@pytest.mark.asyncio
 async def test_list_users_hidden_by_user_scope_not_group_or_user_preferences_scope() -> None:
     """Regression test for the entity="user" vs a same-named neighbor
     hide-field bug class, a pattern that has recurred across
@@ -630,6 +658,33 @@ async def test_lock_rejects_when_locked_field_is_hidden() -> None:
         await service.lock(5, confirm=True)
 
     assert api.commit_lock_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["lock", "unlock"])
+async def test_lock_and_unlock_reject_when_status_is_hidden(action: str) -> None:
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": ("status",)})
+    api = _FakeUserApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await getattr(service, action)(5, confirm=True)
+
+    assert api.commit_lock_calls == []
+    assert api.commit_unlock_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_locked_is_hidden_because_it_writes_the_status() -> None:
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": ("locked",)})
+    api = _FakeUserApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True)
+
+    assert api.create_form_calls == []
+    assert api.commit_create_calls == []
 
 
 @pytest.mark.asyncio

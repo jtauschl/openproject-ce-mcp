@@ -46,6 +46,9 @@ from ..policies import access, hidden_fields
 from ..ports.user_api import UserApi
 from ._custom_field_masking import redacted_validation_errors, without_hidden_custom_fields
 
+# `locked` is derived from `status`, so the two names are one fact: hiding either hides both.
+_LOCK_STATE_ALIASES: dict[str, Any] = {"status": None, "locked": None}
+
 
 class UserService:
     def __init__(self, *, api: UserApi, settings: Settings) -> None:
@@ -53,7 +56,13 @@ class UserService:
         self._settings = settings
 
     def _stamp(self, value: Any) -> Any:
-        return hidden_fields.apply_hidden_fields("user", value, settings=self._settings)
+        return hidden_fields.apply_hidden_fields_with_aliases(
+            "user", value, settings=self._settings, aliases=_LOCK_STATE_ALIASES
+        )
+
+    def _ensure_lock_state_writable(self) -> None:
+        for name in _LOCK_STATE_ALIASES:
+            hidden_fields.ensure_field_writable("user", name, settings=self._settings)
 
     async def list_users(
         self, *, search: str | None = None, offset: int = 1, limit: int | None = None
@@ -132,7 +141,7 @@ class UserService:
         hidden_fields.ensure_field_writable("user", "firstname", settings=self._settings)
         hidden_fields.ensure_field_writable("user", "lastname", settings=self._settings)
         hidden_fields.ensure_field_writable("user", "admin", settings=self._settings)
-        hidden_fields.ensure_field_writable("user", "status", settings=self._settings)
+        self._ensure_lock_state_writable()
         payload: dict[str, Any] = {
             "login": login,
             "email": email,
@@ -323,7 +332,7 @@ class UserService:
         # has); modeled instead on `ProjectService.set_favorite`'s no-form
         # toggle shape.
         access.ensure_write_enabled("admin", settings=self._settings)
-        hidden_fields.ensure_field_writable("user", "locked", settings=self._settings)
+        self._ensure_lock_state_writable()
         payload = {"id": user_id}
         if not confirm:
             user = (await self._api.get_user(str(user_id))).to_detail()

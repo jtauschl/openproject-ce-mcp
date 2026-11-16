@@ -20,6 +20,7 @@ and 0.2.0 the first one published to PyPI.
 - `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
 - `select` of `list_relations` no longer offers `queried_perspective`, and `select` of `bulk_create_work_packages` no longer offers `parent_target`; both were never filled.
 - A confirmed `update_work_package` or `bulk_update_work_packages` names the work package's status and subject after the write in `target`, not before it.
+- `get_user` and `list_users` report `locked` from the account status; it was always null. Hiding `status` or `locked` hides both.
 
 ## [0.4.5] - 2026-11-08
 
