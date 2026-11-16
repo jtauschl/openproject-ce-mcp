@@ -64,6 +64,46 @@ CI cannot read the sources, but it asserts that the snapshot header equals the p
 `fetch-sources.sh`, so a bumped pin without a regeneration fails. It also prints representers that end before the
 newest pinned version and a basename that continues at another path.
 
+## Which keys the client reads
+
+`adapter_reads.py` is a small abstract interpreter over the source tree of the client. It follows a response body from
+where it enters the code to every `.get("k")`, `["k"]` and `"k" in x` on it, and reports each read with its path from
+the body (`("_links", "project")`, key `href`). A body enters at a transport call (`get_json`, `post_json`,
+`patch_json`, `delete_json`, `post_multipart`; `request_raw` returns no body), at a port method or record field that
+holds one, and at a function parameter a row binds to a body. `wire_sources.py` lists the members that can hold a body:
+every Protocol method return and parameter, and every dataclass, Protocol or TypedDict field, whose declared type is
+`Any`, `object` or a container of them (callbacks included) must be classified there as a body or as request-side, or
+its test fails; the parameters are declared member by member (`_WIRE_PARAMETERS`, `_REQUEST_PARAMETERS`), with no
+default. A parameter or return declared only as a class of the package is an object and carries no origin; a scalar, a
+union with a raw mapping and `Any` keep the provenance of what was handed to them, because an `Any` value may have been.
+Types come from annotations, never from variable names; a type variable or an alias is resolved, never taken as a class.
+Reads that start from an external call are invisible except the JSON decode entry points; see the limits in the module
+docstring.
+
+A helper is summarised once and checked per caller, so `link_title(x)` is read against the link each caller passes; a
+function a row binds (a normalizer) keeps its own reads. What the model cannot follow is a finding, not a skip, and a
+value it loses stays tied to the parameters it came from, so a helper only counts against the callers that bind a body to
+them. A finding is reported once, at the place it happens:
+
+- `unresolved`: a call into unknown code with a body as argument, `.items()`, `setdefault`, a dynamic key, `match` on a
+  body, a body held on `self` or stored in a literal container, a recursive call chain (no partial summary of a cycle is
+  used), a body nested deeper than the path cap;
+- `unsupported`: code the model does not analyse (a def under a module-level statement, a nested class, `global`);
+- `unclassified`: a read on a value of unknown origin, such as the parameter of a nested function;
+- `unbound`: a function that reads a parameter no caller binds to a body and no row binds, directly or through callers
+  that are themselves unbound.
+
+`check()` compares a read with the snapshot for the representers of a row (`Row(compose, embedded, waivers,
+conditional)`): `ok`, `partial` (some pinned versions only), `missing` (a key no pinned version renders), `gated`
+(rendered only for an Enterprise token, so never on Community), `open` (the link's members are unreadable), `opaque`
+(below what the snapshot holds), `ambiguous` (a membership test on a property, which may be a substring test) and
+`waived`; `stale_entries` reports waivers and conditional entries no read needs, and `apply_exemptions` matches findings
+to per-finding exemptions (kind, function, reason pattern and the text of the source line, with an occurrence number
+when the same line text occurs more than once in a function). The five-adapter crosswalk test (`tests/test_adapter_reads_crosswalk.py`) is the acceptance table with the
+first version that renders each partial key: it finds the notification `read` fallback, which no version renders, and
+`readonly` of a work package, which Community Edition never renders.
+`python tools/api-check/adapter_reads.py [--src tree] [--findings]` prints the counts of a tree.
+
 ## Usage
 
 ```bash
