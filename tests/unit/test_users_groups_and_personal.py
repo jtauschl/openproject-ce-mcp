@@ -181,7 +181,7 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                     "avatar": "https://op.example.com/users/5/avatar",
                     "_links": {
                         "showUser": {"href": "/users/5"},
-                        "authSource": {"title": "LDAP"},
+                        "auth_source": {"href": "/api/v3/auth_sources/3", "title": "LDAP"},
                     },
                 },
                 request=request,

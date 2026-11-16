@@ -75,7 +75,7 @@ def normalize_user_detail(
     if summary is None:
         summary = normalize_user(payload, base_url=base_url, origin=origin)
     links = payload.get("_links", {})
-    auth_source = _link_title(links.get("authSource"))
+    auth_source = _link_title(links.get("auth_source"))
     identity_url = payload.get("identityUrl")
     return UserDetail(
         id=summary.id,

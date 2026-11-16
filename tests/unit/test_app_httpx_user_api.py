@@ -6,7 +6,7 @@ import pytest
 from openproject_ce_mcp.app.adapters.httpx_user_api import HttpxUserApi, normalize_user, normalize_user_detail
 from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
-from openproject_ce_mcp.models import UserSummary
+from openproject_ce_mcp.models import UserDetail, UserSummary
 
 BASE_URL = "https://op.example.com"
 
@@ -53,6 +53,22 @@ def test_locked_is_unknown_when_the_server_renders_no_status() -> None:
 
 def test_a_phantom_locked_key_is_not_read() -> None:
     assert _normalize({**_user_payload(), "status": "active", "locked": True}).locked is False
+
+
+def _detail(links: dict) -> UserDetail:
+    payload = {**_user_payload(), "_links": links}
+    return normalize_user_detail(payload, base_url=BASE_URL, origin=BASE_URL)
+
+
+def test_auth_source_is_read_from_the_link_the_server_renders() -> None:
+    # `link :auth_source` in user_representer.rb: a plain link keeps its rel as written (snake_case).
+    detail = _detail({"auth_source": {"href": "/api/v3/auth_sources/3", "title": "LDAP"}})
+
+    assert detail.auth_source == "LDAP"
+
+
+def test_a_camel_cased_auth_source_link_is_not_read() -> None:
+    assert _detail({"authSource": {"href": "/api/v3/auth_sources/3", "title": "LDAP"}}).auth_source is None
 
 
 @pytest.mark.asyncio
