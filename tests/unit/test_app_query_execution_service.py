@@ -62,7 +62,6 @@ def _summary(wp_id: int) -> WorkPackageSummary:
         derived_due_date=None,
         percentage_done=None,
         derived_percentage_done=None,
-        readonly=None,
     )
 
 

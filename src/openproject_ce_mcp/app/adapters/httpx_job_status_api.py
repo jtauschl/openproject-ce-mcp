@@ -3,13 +3,10 @@
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `id_from_href`/`link_title`/`web_url` are shared via `app/adapters/_text.py`.
 
-`project_link` on the Record deliberately uses the SAME `project-or-
-sourceProject` fallback as `normalize_job_status`'s own `project`/
-`project_id` fields (`links.get("project") or links.get("sourceProject")`).
-A job-status payload scoped only via `sourceProject` (e.g. `copy_project`'s
-response, referencing the source project of a copy operation) must still be
-subject to `OPENPROJECT_READ_PROJECTS`, so the scoping link the Service
-checks uses the identical fallback as the display fields.
+`project_link` on the Record is the raw `payload._links.project` the Service
+checks against `OPENPROJECT_READ_PROJECTS`, the same link `normalize_job_status`
+reads for its `project` and `project_id` fields. For `copy_project` that link
+is the copy TARGET, and the job writes it only when the copy succeeded.
 """
 
 from __future__ import annotations
@@ -25,7 +22,6 @@ from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
-from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
 
 # Used for the `message` field (value 1_200). Kept local rather than
@@ -36,24 +32,20 @@ from ._text import trim_text as _trim_text
 FORMATTABLE_LIMIT = 1_200
 
 
-def _job_status_inner_links(payload: dict[str, Any]) -> dict[str, Any]:
-    """Return a job status response's real resource links.
+def _payload_links(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the links of a job status' free-form `payload`.
 
-    OpenProject's JobStatusRepresenter only puts a self link at the
-    top-level `_links` -- any project/sourceProject/createdProject link a
-    specific job (e.g. copy_project) exposes lives one level down, inside
-    the job-specific `payload` object's own `_links` (verified live against
-    17.4: top-level `_links` is `{"self": ...}` only). Falls back to the
-    top-level links for robustness in case some other job type's payload
-    is shaped differently or absent.
+    `JobStatusRepresenter` renders only a `self` link at the top level; the
+    one writer of payload links is `copy_project_job.rb`, which puts the
+    target project there when the copy succeeded. A job that is still
+    queued or running, or that failed, has no payload links.
     """
     inner = payload.get("payload")
     if isinstance(inner, dict):
         inner_links = inner.get("_links")
-        if isinstance(inner_links, dict) and inner_links:
+        if isinstance(inner_links, dict):
             return inner_links
-    links = payload.get("_links", {})
-    return links if isinstance(links, dict) else {}
+    return {}
 
 
 def normalize_job_status(payload: dict[str, Any]) -> JobStatusDetail:
@@ -74,31 +66,14 @@ def normalize_job_status(payload: dict[str, Any]) -> JobStatusDetail:
     `updatedAt`, none of which the API ever sends -- all three were always
     None.
     """
-    top_level_links = payload.get("_links", {})
-    links = _job_status_inner_links(payload)
-    project_link = links.get("project") or links.get("sourceProject")
-    resource_link = links.get("createdProject") or links.get("createdResource") or links.get("result")
-    # Job status ids are UUID strings (payload["jobId"]) on every supported
-    # version -- there is no top-level "id" field.
-    job_id = _trim_text(payload.get("jobId") or payload.get("id"), limit=SUBJECT_LIMIT) or _slug_from_href(
-        top_level_links.get("self", {}).get("href")
-    )
+    project_link = _payload_links(payload).get("project")
     return JobStatusDetail(
-        id=job_id,
+        id=_trim_text(payload.get("jobId"), limit=SUBJECT_LIMIT),
         type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-        status=_trim_text(
-            payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
-        ),
-        message=_delimit_user_content(
-            _trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT)
-        ),
+        status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
+        message=_delimit_user_content(_trim_text(payload.get("message"), limit=FORMATTABLE_LIMIT)),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
         project=_link_title(project_link),
-        created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT)
-        if isinstance(resource_link, dict)
-        else None,
-        created_resource_id=_id_from_href(resource_link.get("href")) if isinstance(resource_link, dict) else None,
-        created_resource_name=_link_title(resource_link),
     )
 
 
@@ -109,18 +84,10 @@ class HttpxJobStatusApi:
     async def get(self, job_status_id: str) -> JobStatusRecord:
         safe_id = _reject_path_traversal_segments(job_status_id, field_name="job_status_id")
         payload = await self._transport.get_json(f"job_statuses/{quote(safe_id, safe='')}")
-        links = _job_status_inner_links(payload)
-        # Select by absence, not truthiness: a falsy-but-present "project"
-        # value (e.g. {}, "", []) is a malformed link, distinct from a
-        # genuinely absent one, and must reach the scope policy as such
-        # rather than being replaced by "sourceProject".
-        project_link = links.get("project")
-        if project_link is None:
-            project_link = links.get("sourceProject")
         return JobStatusRecord(
             summary=normalize_job_status(payload),
             # Passed through raw, unfiltered: classifying a link as missing,
             # malformed, or legitimately empty is the scope policy's job,
             # not the adapter's.
-            project_link=project_link,
+            project_link=_payload_links(payload).get("project"),
         )

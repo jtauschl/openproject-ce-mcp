@@ -31,15 +31,20 @@ def normalize_user(payload: dict[str, Any], *, base_url: str, origin: str) -> Us
     e.g. "https://host/users/5/avatar"), not a `_links.avatar` link --
     verified against `user_representer.rb` (`property :avatar, getter:
     ->(*) { avatar_url(represented) }`) and live against a real instance.
+
+    `user_representer.rb` renders no `locked` property: the lock state is the
+    `status` value "locked", and `status` itself is only rendered for a
+    manage-user or self request, so `locked` is None when `status` is absent.
     """
+    status = payload.get("status")
     return UserSummary(
         id=int(payload["id"]),
         name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
         login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
         email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-        status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
+        status=_trim_text(status, limit=SUBJECT_LIMIT),
         admin=payload.get("admin"),
-        locked=payload.get("locked"),
+        locked=None if status is None else status == "locked",
         avatar_url=_trim_text(payload.get("avatar"), limit=SUBJECT_LIMIT),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
@@ -70,7 +75,7 @@ def normalize_user_detail(
     if summary is None:
         summary = normalize_user(payload, base_url=base_url, origin=origin)
     links = payload.get("_links", {})
-    auth_source = _link_title(links.get("authSource"))
+    auth_source = _link_title(links.get("auth_source"))
     identity_url = payload.get("identityUrl")
     return UserDetail(
         id=summary.id,
@@ -101,7 +106,7 @@ class HttpxUserApi:
         # to_detail is a lazy thunk: list_users()/list_users_search() build a
         # UserRecord per row, but UserService.list_users() never reads
         # .to_detail on that path (only get_user() does) -- deferring the
-        # detail-only parsing (groups/authSource/identityUrl/language) avoids
+        # detail-only parsing (groups/auth_source/identityUrl/language) avoids
         # paying for it on every list row. The thunk still passes the
         # already-computed summary through, so calling it never re-derives a
         # second UserSummary either.

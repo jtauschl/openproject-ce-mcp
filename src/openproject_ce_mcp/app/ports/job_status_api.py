@@ -12,11 +12,9 @@ Metadata bundle's five Records, each wrapping one Summary with no
 `project_link` carries the RAW, unfiltered `_links` dict entry the Service's
 allowlist check needs -- not just an extracted href/id, mirroring
 `ViewRecord.project_link` and `SprintRecord.project_link`. This is the raw
-*scoping* link (which of `_links["project"]`/`_links["sourceProject"]` was
-actually used to resolve scope), which is a separate concern from
-`summary.project`/`summary.project_id` (the *display* fields
-`normalize_job_status` populates from the same `project-or-sourceProject`
-fallback for the response body). Typed `Any`, not `dict | None`: link
+*scoping* link (`payload._links.project`, the copy target of a finished
+`copy_project` job), which is the link `summary.project`/`summary.project_id`
+(the *display* fields of the response body) are read from. Typed `Any`, not `dict | None`: link
 classification (missing vs. malformed vs. legitimately empty) is
 `scope.classify_project_link`'s responsibility, so the adapter must pass the
 raw value through unmodified.

@@ -266,7 +266,7 @@ def _wrapped_field_names_and_unnamed_sites() -> tuple[set[str], Counter[str]]:
 
 
 # Wrapped on read and never accepted by a write tool.
-READ_ONLY_WRAPPED_NAMES = {"help_text", "body", "author_name", "message"}
+READ_ONLY_WRAPPED_NAMES = {"help_text", "caption", "body", "author_name", "message"}
 # Wrapped sites without a keyword name: the activity comment and details, the notification value (a
 # conditional expression), and the three work package custom field text sites.
 UNNAMED_WRAPPED_SITES = Counter(

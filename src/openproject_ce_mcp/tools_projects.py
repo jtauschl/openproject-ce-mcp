@@ -306,7 +306,11 @@ async def get_job_status(
     ctx: Context,
     job_status_id: str,
 ) -> JobStatusDetail:
-    """Get the current status of a background job such as project copy."""
+    """Get the current status of a background job such as project copy.
+
+    For a project copy `project` is the new project (the copy target), set only once the copy succeeded; a queued,
+    running or failed copy has none. The `message` of a failed copy carries the reason.
+    """
     client = _client_from_context(ctx)
     # Job status ids are UUIDs (e.g. "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"),
     # never a plain integer, on every supported OpenProject version.
@@ -468,7 +472,7 @@ async def get_project_phase(
     ctx: Context,
     phase_id: int,
 ) -> ProjectPhase:
-    """Get a single project lifecycle phase by id. `start_date` and `finish_date` stay null: the API does not provide them."""
+    """Get a single project lifecycle phase by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(phase_id, field_name="phase_id")
     return await _run_tool(client.project.get_phase(safe_id))

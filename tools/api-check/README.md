@@ -100,8 +100,7 @@ conditional)`): `ok`, `partial` (some pinned versions only), `missing` (a key no
 `waived`; `stale_entries` reports waivers and conditional entries no read needs, and `apply_exemptions` matches findings
 to per-finding exemptions (kind, function, reason pattern and the text of the source line, with an occurrence number
 when the same line text occurs more than once in a function). The five-adapter crosswalk test (`tests/test_adapter_reads_crosswalk.py`) is the acceptance table with the
-first version that renders each partial key: it finds the notification `read` fallback, which no version renders, and
-`readonly` of a work package, which Community Edition never renders.
+first version that renders each partial key; none of its reads is `missing` or `gated`.
 `python tools/api-check/adapter_reads.py [--src tree] [--findings]` prints the counts of a tree.
 
 ## Usage

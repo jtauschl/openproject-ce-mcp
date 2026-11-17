@@ -205,9 +205,6 @@ class JobStatusDetail:
     message: str | None
     project_id: int | None
     project: str | None
-    created_resource_type: str | None
-    created_resource_id: int | None
-    created_resource_name: str | None
 
 
 @dataclass
@@ -475,7 +472,6 @@ class WorkPackageSummary:
     derived_due_date: str | None = None
     percentage_done: int | None = None
     derived_percentage_done: int | None = None
-    readonly: bool | None = None
     has_project_attributes: bool | None = None
     custom_fields: dict[str, Any] | None = None
     custom_fields_truncated: bool = False
@@ -527,7 +523,6 @@ class WorkPackageDetail:
     derived_due_date: str | None = None
     percentage_done: int | None = None
     derived_percentage_done: int | None = None
-    readonly: bool | None = None
     has_project_attributes: bool | None = None
     custom_fields: dict[str, Any] | None = None
     custom_fields_truncated: bool = False
@@ -880,8 +875,6 @@ class QuerySortBySummary:
 @dataclass
 class QueryFilterInstanceSchemaSummary:
     id: str
-    name: str | None
-    filter: str | None
     operator_count: int
     url: str | None
 
@@ -946,7 +939,6 @@ class DocumentSummary:
     project: str | None
     description: str | None
     created_at: str | None
-    attachment_count: int
     can_update: bool
     description_truncated: bool = False
     description_length: int | None = None
@@ -1132,8 +1124,6 @@ class ProjectPhase:
     phase_definition_id: int | None
     phase_definition: str | None
     active: bool
-    start_date: str | None
-    finish_date: str | None
     created_at: str | None
     updated_at: str | None
 
@@ -1688,6 +1678,7 @@ class HelpTextSummary:
     id: int
     attribute_name: str | None
     attribute_caption: str | None
+    caption: str | None
     help_text: str | None
 
 

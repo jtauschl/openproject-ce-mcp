@@ -4,8 +4,9 @@ No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `link_title`/`link_to_web_url`/`slug_from_href` are shared via
 `app/adapters/_text.py`.
 
-`_query_ref_identity` is local: the shared self-link/href/id triple repeated
-across all 5 normalize_query_* functions in this module.
+`_query_ref_identity` is local: the shared self-link/href/id triple of four
+of the five normalize_query_* functions in this module. The filter instance
+schema renders no `id`, so it takes the slug of its own self link.
 
 `filters`/`columns`/`operators`/`filter_instance_schemas` take a raw id and
 `quote(<id>, safe="")`-encode it as the path segment: these ids can contain
@@ -58,7 +59,7 @@ def normalize_query_filter(payload: dict[str, Any], *, base_url: str, origin: st
     self_link, href, filter_id = _query_ref_identity(links, payload)
     return QueryFilterSummary(
         id=filter_id,
-        name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
+        name=_trim_text(self_link.get("title"), limit=SUBJECT_LIMIT),
         url=_link_to_web_url(href, base_url=base_url, origin=origin),
     )
 
@@ -110,8 +111,10 @@ def normalize_query_sort_by(
 def normalize_query_filter_instance_schema(
     payload: dict[str, Any], *, base_url: str, origin: str
 ) -> QueryFilterInstanceSchemaSummary:
-    links = payload.get("_links", {})
-    self_link, href, schema_id = _query_ref_identity(links, payload)
+    # A QueryFilterInstanceSchema renders `self` as its only top-level link, no `id` and, outside a form, no filter
+    # link: its `name` attribute is the constant "Name", not the filter's name. The id is the slug of `self`.
+    self_link = payload.get("_links", {}).get("self", {})
+    href = self_link.get("href") if isinstance(self_link, dict) else None
     dependencies = payload.get("_dependencies", [])
     operator_count = 0
     if isinstance(dependencies, list):
@@ -120,14 +123,8 @@ def normalize_query_filter_instance_schema(
                 values = dependency.get("dependencies")
                 if isinstance(values, dict):
                     operator_count += len(values)
-    name_field = payload.get("name")
     return QueryFilterInstanceSchemaSummary(
-        id=schema_id,
-        name=_trim_text(
-            name_field.get("name") if isinstance(name_field, dict) else name_field,
-            limit=SUBJECT_LIMIT,
-        ),
-        filter=_link_title(links.get("filter")),
+        id=_slug_from_href(href) or "",
         operator_count=operator_count,
         url=_link_to_web_url(href, base_url=base_url, origin=origin),
     )

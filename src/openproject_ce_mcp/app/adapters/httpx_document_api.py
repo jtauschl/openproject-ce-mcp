@@ -1,8 +1,8 @@
 """HTTP-backed DocumentApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
-`_id_from_href`/`_link_title`/`_delimit_user_content`/`_can_update_from_links`/
-`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`.
+`_id_from_href`/`_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are
+shared via `app/adapters/_text.py`.
 `_extract_formattable_text`/`FORMATTABLE_LIMIT` stay local -- not shared
 across every adapter.
 
@@ -24,7 +24,6 @@ from ...models import DocumentDetail, DocumentSummary
 from ..ports.document_api import DocumentRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
-from ._text import can_update_from_links as _can_update_from_links
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -50,10 +49,6 @@ def normalize_document(payload: dict[str, Any], *, text_limit: int | None = SUBJ
     `normalize_work_package_summary`'s equivalent parameter.
     """
     links = payload.get("_links", {})
-    attachments = payload.get("_embedded", {}).get("attachments", {})
-    attachment_count = 0
-    if isinstance(attachments, dict):
-        attachment_count = int(attachments.get("count") or attachments.get("total") or 0)
     description, truncated, length = _extract_formattable_text_with_meta(payload.get("description"), limit=text_limit)
     return DocumentSummary(
         id=int(payload["id"]),
@@ -62,8 +57,7 @@ def normalize_document(payload: dict[str, Any], *, text_limit: int | None = SUBJ
         project=_link_title(links.get("project")),
         description=_delimit_user_content(description),
         created_at=payload.get("createdAt"),
-        attachment_count=attachment_count,
-        can_update=_can_update_from_links(links),
+        can_update="update" in links,
         description_truncated=truncated,
         description_length=length,
     )
@@ -72,8 +66,11 @@ def normalize_document(payload: dict[str, Any], *, text_limit: int | None = SUBJ
 def normalize_document_detail(
     payload: dict[str, Any], *, summary: DocumentSummary | None = None, text_limit: int | None = FORMATTABLE_LIMIT
 ) -> DocumentDetail:
-    """Reuses every field from normalize_document() EXCEPT description,
-    which is independently re-extracted from the same raw payload at the larger
+    """Reuses every field from normalize_document() EXCEPT description and
+    the attachment count. The count is read from this payload's own
+    `_embedded.attachments`: only GET and PATCH of one document embed it, a
+    collection row never does, so the summary has no such field. The description
+    is independently re-extracted from the same raw payload at the larger
     FORMATTABLE_LIMIT cap (not SUBJECT_LIMIT) -- the two normalizers apply
     different truncation limits to the same raw text, so this cannot be a
     simple copy of summary.
@@ -90,6 +87,7 @@ def normalize_document_detail(
     if summary is None:
         summary = normalize_document(payload)
     description, truncated, length = _extract_formattable_text_with_meta(payload.get("description"), limit=text_limit)
+    attachments = payload.get("_embedded", {}).get("attachments", {})
     return DocumentDetail(
         id=summary.id,
         title=summary.title,
@@ -97,7 +95,7 @@ def normalize_document_detail(
         project=summary.project,
         description=_delimit_user_content(description),
         created_at=summary.created_at,
-        attachment_count=summary.attachment_count,
+        attachment_count=int(attachments.get("count") or 0) if isinstance(attachments, dict) else 0,
         can_update=summary.can_update,
         description_truncated=truncated,
         description_length=length,

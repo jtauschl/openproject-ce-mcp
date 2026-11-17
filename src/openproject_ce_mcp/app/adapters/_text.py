@@ -99,10 +99,6 @@ def link_title(link: Any) -> str | None:
     return trim_text(title, limit=SUBJECT_LIMIT)
 
 
-def can_update_from_links(links: dict[str, Any]) -> bool:
-    return "update" in links or "updateImmediately" in links
-
-
 def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
     if isinstance(value, dict):
         return trim_text(value.get("raw") or value.get("html"), limit=limit)

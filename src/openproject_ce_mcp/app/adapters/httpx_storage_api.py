@@ -94,8 +94,8 @@ def normalize_storage(payload: dict[str, Any]) -> StorageSummary:
         updated_at=payload.get("updatedAt"),
         has_application_password=payload.get("hasApplicationPassword") if is_nextcloud else None,
         forbidden_file_name_characters=payload.get("forbiddenFileNameCharacters") if is_nextcloud else None,
-        tenant_id=payload.get("tenant_id") if is_one_drive else None,
-        drive_id=payload.get("drive_id") if is_one_drive else None,
+        tenant_id=payload.get("tenantId") if is_one_drive else None,
+        drive_id=payload.get("driveId") if is_one_drive else None,
     )
 
 

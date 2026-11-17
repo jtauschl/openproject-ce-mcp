@@ -106,6 +106,18 @@ cannot show or compare the display id, so the guard is off and
 the expectation is refused with an error naming the hiding setting. The
 refusal messages leave out any other hidden field (`project`, `subject`) as well.
 
+## User `status`/`locked`: a coupled field pair
+
+`locked` is derived from `status` (`status` is the value `locked` for a locked account), so the two names are one
+fact. Hiding either one via `OPENPROJECT_HIDE_USER_FIELDS` hides both in every user result, and `create_user` (which
+writes `status`) and `set_user_locked` refuse while either is hidden.
+
+## Help text `attribute_caption` and `caption`
+
+`attribute_caption` is the label of the attribute and `caption` the text an administrator stored for it (17.0 and
+later): two different facts, so each hides on its own through `OPENPROJECT_HIDE_HELP_TEXT_FIELDS`. A pattern that
+named only `attribute_caption` hid the stored caption before 0.4.6 and now needs `caption` added.
+
 ## Context entities: options are hidden as a whole
 
 The context entities (`project_access`, `project_admin_context`, `project_configuration`, `project_work_package_context`) hide

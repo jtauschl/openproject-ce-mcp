@@ -156,7 +156,6 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                                 "email": "alice@example.com",
                                 "status": "active",
                                 "admin": True,
-                                "locked": False,
                                 "createdAt": "2026-01-01T00:00:00Z",
                                 "updatedAt": "2026-01-02T00:00:00Z",
                                 "avatar": "https://op.example.com/users/5/avatar",
@@ -176,14 +175,13 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                     "email": "alice@example.com",
                     "status": "active",
                     "admin": True,
-                    "locked": False,
                     "language": "en",
                     "createdAt": "2026-01-01T00:00:00Z",
                     "updatedAt": "2026-01-02T00:00:00Z",
                     "avatar": "https://op.example.com/users/5/avatar",
                     "_links": {
                         "showUser": {"href": "/users/5"},
-                        "authSource": {"title": "LDAP"},
+                        "auth_source": {"href": "/api/v3/auth_sources/3", "title": "LDAP"},
                     },
                 },
                 request=request,
@@ -204,7 +202,7 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                                 # not a {count, ...} collection object.
                                 "_embedded": {"members": [{"name": "Alice"}, {"name": "Bob"}]},
                                 "_links": {
-                                    "update": {"href": "/api/v3/groups/7"},
+                                    "updateImmediately": {"href": "/api/v3/groups/7", "method": "patch"},
                                     "delete": {"href": "/api/v3/groups/7"},
                                 },
                             }
@@ -226,7 +224,7 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                     "_embedded": {"members": [{"name": "Alice"}, {"name": "Bob"}]},
                     "_links": {
                         "memberships": {"href": "/api/v3/groups/7/memberships"},
-                        "update": {"href": "/api/v3/groups/7"},
+                        "updateImmediately": {"href": "/api/v3/groups/7", "method": "patch"},
                         "delete": {"href": "/api/v3/groups/7"},
                     },
                 },
@@ -428,7 +426,6 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                             {
                                 "_links": {
                                     "self": {"href": "/api/v3/queries/filter_instance_schemas/assignee"},
-                                    "filter": {"title": "Assignee"},
                                 },
                                 "_dependencies": [{"dependencies": {"=": {}, "!": {}}}],
                             }

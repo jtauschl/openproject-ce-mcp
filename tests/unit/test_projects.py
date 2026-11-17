@@ -505,8 +505,6 @@ async def test_instance_configuration_and_project_phase_definitions() -> None:
     assert project_phase.phase_definition_id == 2
     assert project_phase.phase_definition == "Executing"
     assert project_phase.active is True
-    assert project_phase.start_date is None
-    assert project_phase.finish_date is None
     assert project_phase.project == "Demo"
 
     await client.aclose()
@@ -643,7 +641,6 @@ async def test_job_status_documents_news_and_wiki() -> None:
                     "payload": {
                         "_links": {
                             "project": {"href": "/api/v3/projects/6", "title": "Demo"},
-                            "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
                         },
                     },
                     "_links": {
@@ -667,10 +664,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                                 "_links": {
                                     "self": {"href": "/api/v3/documents/5"},
                                     "project": {"href": "/api/v3/projects/6", "title": "Demo"},
-                                    "updateImmediately": {"href": "/api/v3/documents/5", "method": "patch"},
-                                },
-                                "_embedded": {
-                                    "attachments": {"count": 2, "total": 2},
+                                    "update": {"href": "/api/v3/documents/5", "method": "patch"},
                                 },
                             }
                         ]
@@ -691,7 +685,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                         "self": {"href": "/api/v3/documents/5"},
                         "project": {"href": "/api/v3/projects/6", "title": "Demo"},
                         "attachments": {"href": "/api/v3/documents/5/attachments"},
-                        "updateImmediately": {"href": "/api/v3/documents/5", "method": "patch"},
+                        "update": {"href": "/api/v3/documents/5", "method": "patch"},
                     },
                     "_embedded": {
                         "attachments": {"count": 2, "total": 2},
@@ -714,7 +708,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                         "self": {"href": "/api/v3/documents/5"},
                         "project": {"href": "/api/v3/projects/6", "title": "Demo"},
                         "attachments": {"href": "/api/v3/documents/5/attachments"},
-                        "updateImmediately": {"href": "/api/v3/documents/5", "method": "patch"},
+                        "update": {"href": "/api/v3/documents/5", "method": "patch"},
                     },
                     "_embedded": {
                         "attachments": {"count": 2, "total": 2},
@@ -865,7 +859,6 @@ async def test_job_status_documents_news_and_wiki() -> None:
     wiki_page = await client.wiki_page.get(9)
     assert job.id == "77"
     assert job.project == "Demo"
-    assert job.created_resource_id == 88
     assert documents.count == 1
     assert document.attachment_count == 2
     assert document_preview.state == "preview"
@@ -1414,7 +1407,8 @@ async def test_help_texts_and_working_days() -> None:
                             {
                                 "id": 5,
                                 "attribute": "description",
-                                "caption": "Description",
+                                "attributeFieldName": "Description",
+                                "caption": "Our own caption",
                                 "helpText": {"format": "markdown", "raw": "Describe the work."},
                             }
                         ]
@@ -1427,8 +1421,9 @@ async def test_help_texts_and_working_days() -> None:
                 200,
                 json={
                     "id": 5,
-                    "attributeName": "description",
-                    "caption": "Description",
+                    "attribute": "description",
+                    "attributeFieldName": "Description",
+                    "caption": "Our own caption",
                     "helpText": {"format": "markdown", "raw": "Describe the work."},
                 },
                 request=request,

@@ -445,7 +445,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "observed_in_versions, "
                     "parent_display_id, parent_id, "
                     "percentage_done, priority, project, "
-                    "project_phase, readonly, "
+                    "project_phase, "
                     "remaining_time, responsible, "
                     "schedule_manually, spent_time, sprint, "
                     "start_date, status, subject, "
@@ -723,7 +723,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "observed_in_versions, "
                     "parent_display_id, parent_id, "
                     "percentage_done, priority, project, "
-                    "project_phase, readonly, "
+                    "project_phase, "
                     "remaining_time, responsible, "
                     "schedule_manually, spent_time, sprint, "
                     "start_date, status, subject, "
@@ -3303,7 +3303,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "get_job_status": {
-        "description_hash": "6da17390a50a8b17134ed6600ef4167e2283f23af6e53d8fc10d4806520749b9",
+        "description_hash": "f13794258209f0465cfbb5b1969783822ce338233d35ca9a36216dd5c6fb640e",
         "input_schema": {
             "properties": {"job_status_id": {"title": "Job Status Id", "type": "string"}},
             "required": ["job_status_id"],
@@ -3588,7 +3588,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "get_project_phase": {
-        "description_hash": "6b2924c2e2825254e3cb898055d244de526411bd49a5455540cc13d6a187c201",
+        "description_hash": "68f4ba688a585f4b6213ec36a1ff826ffb93a6f17bed64113b48549963a1624a",
         "input_schema": {
             "properties": {"phase_id": {"title": "Phase Id", "type": "integer"}},
             "required": ["phase_id"],
@@ -3951,7 +3951,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: allowed_statuses, ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
             },
@@ -4007,7 +4007,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
             },
@@ -4347,7 +4347,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: attachment_count, can_update, created_at, description, description_length, description_truncated, id, project, project_id, title.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: can_update, created_at, description, description_length, description_truncated, id, project, project_id, title.",
                     "title": "Select",
                 },
                 "text_limit": {
@@ -4623,7 +4623,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: assignee, author, category, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_description, has_project_attributes, id, ignore_non_working_days, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: assignee, author, category, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_description, has_project_attributes, id, ignore_non_working_days, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
             },
@@ -6167,7 +6167,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "list_work_packages": {
-        "description_hash": "02ee423352c1899e3f07ef8cc2313f35150aa86521ef6a028cced39d47c68f13",
+        "description_hash": "dc3c89c05af04a409ac0fffe2823299318e25d7bc8ded8281f43a1d41b329698",
         "input_schema": {
             "properties": {
                 "project": {
@@ -6304,7 +6304,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                     "has_project_attributes, id, ignore_non_working_days, "
                     "observed_in_versions, parent_display_id, parent_id, "
                     "percentage_done, priority, project, project_phase, "
-                    "readonly, remaining_time, responsible, "
+                    "remaining_time, responsible, "
                     "schedule_manually, spent_time, sprint, start_date, "
                     "status, subject, target_versions, type, updated_at, "
                     "version.",
@@ -6498,7 +6498,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: assignee, author, category, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_description, has_project_attributes, id, ignore_non_working_days, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, readonly, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
+                    "description": "Fields to return; a requested unset field comes back as null. Allowed: assignee, author, category, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_description, has_project_attributes, id, ignore_non_working_days, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
                 "include_sums": {"default": False, "title": "Include Sums", "type": "boolean"},

@@ -20,9 +20,6 @@ def _detail(*, job_status_id: int = 77, project: str | None = "Demo", project_id
         message="Copy running",
         project_id=project_id,
         project=project,
-        created_resource_type=None,
-        created_resource_id=None,
-        created_resource_name=None,
     )
 
 
@@ -104,42 +101,39 @@ async def test_get_denies_when_project_link_is_none_and_scope_is_restrictive() -
 
 
 @pytest.mark.asyncio
-async def test_get_denies_when_only_source_project_link_present_and_not_allowlisted() -> None:
-    """A job-status payload scoped exclusively via sourceProject (as in
-    copy_project's response) must still be subject to
-    OPENPROJECT_READ_PROJECTS. The Adapter populates JobStatusRecord.project_link
-    via the same project-or-sourceProject fallback normalize_job_status uses
-    for display fields, so this must be denied when "source-project" isn't
-    allowlisted."""
+async def test_get_denies_when_the_payload_project_is_not_allowlisted() -> None:
+    """The payload's `project` link of a finished copy_project job is the copy
+    target. It must be subject to OPENPROJECT_READ_PROJECTS, so a job whose
+    target is not allowlisted is denied."""
     api = _FakeJobStatusApi(
         JobStatusRecord(
-            summary=_detail(project="Source Project", project_id=9),
-            project_link={"href": "/api/v3/projects/9", "title": "Source Project"},
+            summary=_detail(project="Copy Target", project_id=9),
+            project_link={"href": "/api/v3/projects/9", "title": "Copy Target"},
         )
     )
     settings = dataclasses.replace(make_settings(), read_projects=("other-project",))
-    service = _service(api, settings=settings, project_id_to_identifier={9: "source-project"})
+    service = _service(api, settings=settings, project_id_to_identifier={9: "copy-target"})
 
     with pytest.raises(PermissionDeniedError):
         await service.get(77)
 
 
 @pytest.mark.asyncio
-async def test_get_allows_when_source_project_link_is_allowlisted() -> None:
-    """Positive counterpart: once sourceProject's project IS allowlisted, the
-    fallback-scoped job status is correctly allowed through."""
+async def test_get_allows_when_the_payload_project_is_allowlisted() -> None:
+    """Positive counterpart: once the target project IS allowlisted, the job
+    status is allowed through."""
     api = _FakeJobStatusApi(
         JobStatusRecord(
-            summary=_detail(project="Source Project", project_id=9),
-            project_link={"href": "/api/v3/projects/9", "title": "Source Project"},
+            summary=_detail(project="Copy Target", project_id=9),
+            project_link={"href": "/api/v3/projects/9", "title": "Copy Target"},
         )
     )
-    settings = dataclasses.replace(make_settings(), read_projects=("source-project",))
-    service = _service(api, settings=settings, project_id_to_identifier={9: "source-project"})
+    settings = dataclasses.replace(make_settings(), read_projects=("copy-target",))
+    service = _service(api, settings=settings, project_id_to_identifier={9: "copy-target"})
 
     job = await service.get(77)
 
-    assert job.project == "Source Project"
+    assert job.project == "Copy Target"
 
 
 @pytest.mark.asyncio

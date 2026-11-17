@@ -49,7 +49,7 @@ async def test_list_query_filter_instance_schemas(client: OpenProjectClient) -> 
     result = await client.query_metadata.list_filter_instance_schemas()
     assert result.count > 0
     assert result.results[0].id
-    assert result.results[0].name
+    assert any(schema.operator_count > 0 for schema in result.results)
 
 
 async def test_get_query_filter_instance_schema(client: OpenProjectClient) -> None:

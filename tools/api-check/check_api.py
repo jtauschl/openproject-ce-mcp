@@ -111,7 +111,7 @@ ASSUMPTIONS: list[Assumption] = [
     # to the client. Patterns include the declaring macro
     # (property/date_property/date_time_property/link), not just the bare field
     # name, and subtree is the specific representer file, not its whole
-    # resource directory -- a bare name like "readonly" or "created_at" would
+    # resource directory -- a bare name like "created_at" would
     # still match comments/other methods/unrelated files in the wider
     # directory even if the actual response-field declaration were removed,
     # which would prove nothing. Macro names confirmed identical from 16.0
@@ -123,7 +123,6 @@ ASSUMPTIONS: list[Assumption] = [
     # Rendered "percentageDone" in JSON; the Ruby property is done_ratio.
     Assumption("percentageDone field", "field", "property :done_ratio", subtree=_WP_REPRESENTER),
     Assumption("derivedPercentageDone field", "field", "property :derived_done_ratio", subtree=_WP_REPRESENTER),
-    Assumption("readonly field", "field", "property :readonly", subtree=_WP_REPRESENTER),
     Assumption(
         "hasProjectAttributes field",
         "field",

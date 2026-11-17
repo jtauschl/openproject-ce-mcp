@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import httpx
 import pytest
 
@@ -13,7 +15,7 @@ from openproject_ce_mcp.app.adapters.httpx_query_metadata_api import (
 )
 from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
-from openproject_ce_mcp.models import SortCriterion
+from openproject_ce_mcp.models import QueryFilterInstanceSchemaSummary, SortCriterion
 
 BASE_URL = "https://op.example.com"
 
@@ -85,23 +87,42 @@ def test_normalize_query_sort_by_reads_direction_from_link_title() -> None:
     assert sort_by.direction == "ascending"
 
 
+def _instance_schema_payload() -> dict:
+    # The shape 17.9 answers (checked live): the top-level `_links` holds `self` only, `name` is the schema
+    # attribute "Name" (a constant, not the filter's name) and `filter` is a schema attribute with empty `_links`.
+    return {
+        "_type": "QueryFilterInstanceSchema",
+        "name": {"type": "String", "name": "Name", "required": True, "writable": False},
+        "filter": {"type": "QueryFilter", "name": "Filter", "location": "_links", "_links": {}},
+        "_links": {"self": {"href": "/api/v3/queries/filter_instance_schemas/assignee"}},
+        "_dependencies": [{"dependencies": {"=": {}, "!": {}}}],
+    }
+
+
 def test_normalize_query_filter_instance_schema_counts_dependencies() -> None:
-    schema = normalize_query_filter_instance_schema(
-        {
-            "name": {"name": "Assignee schema"},
-            "_links": {
-                "self": {"href": "/api/v3/queries/filter_instance_schemas/assignee"},
-                "filter": {"title": "Assignee"},
-            },
-            "_dependencies": [{"dependencies": {"=": {}, "!": {}}}],
-        },
-        base_url=BASE_URL,
-        origin=BASE_URL,
-    )
+    schema = normalize_query_filter_instance_schema(_instance_schema_payload(), base_url=BASE_URL, origin=BASE_URL)
+
     assert schema.id == "assignee"
-    assert schema.name == "Assignee schema"
-    assert schema.filter == "Assignee"
     assert schema.operator_count == 2
+    assert schema.url == f"{BASE_URL}/api/v3/queries/filter_instance_schemas/assignee"
+
+
+def test_the_instance_schema_summary_carries_only_what_the_server_renders() -> None:
+    assert {field.name for field in dataclasses.fields(QueryFilterInstanceSchemaSummary)} == {
+        "id",
+        "operator_count",
+        "url",
+    }
+
+
+def test_the_instance_schema_id_is_the_slug_of_its_self_link_alone() -> None:
+    payload = _instance_schema_payload()
+    payload["id"] = "not-rendered"
+
+    assert normalize_query_filter_instance_schema(payload, base_url=BASE_URL, origin=BASE_URL).id == "assignee"
+
+    del payload["_links"]["self"]
+    assert normalize_query_filter_instance_schema(payload, base_url=BASE_URL, origin=BASE_URL).id == ""
 
 
 @pytest.mark.asyncio

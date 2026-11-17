@@ -186,13 +186,14 @@ async def test_create_storage_one_drive_rejected_without_enterprise_token(
     EnterpriseToken.allows_to?(:one_drive_sharepoint_file_storage), which a
     Community Edition instance never satisfies.
 
-    Even a syntactically valid GUID tenant_id (matching OneDriveContract's own
-    /\\A(?:[a-f0-9]{8}-...|consumers)\\z/i regex, confirmed against source)
-    still triggers a SECOND validation error alongside the Enterprise-gate
-    one ("Directory (tenant) ID is invalid.", root cause not identified --
-    not OneDriveContract's own format validator, which this tenant value
-    satisfies) -- OpenProject's own MultipleErrors wrapper DOES fire here.
-    This is exactly the scenario that surfaced a real client-side bug:
+    A syntactically valid GUID tenant_id (matching OneDriveContract's own
+    /\\A(?:[a-f0-9]{8}-...|consumers)\\z/i regex, confirmed against source) must
+    not add a second "Directory (tenant) ID is invalid." error: the request body
+    names it `tenantId`, as the camel-casing StorageRepresenter parses it. A
+    snake_case `tenant_id` key is silently dropped by the parser, which left the
+    tenant empty and produced exactly that second error next to the Enterprise
+    refusal. OpenProject's MultipleErrors wrapper still fires when several
+    constraints are violated, which surfaced a real client-side bug:
     raise_for_status previously only read the top-level `message` ("Multiple
     field constraints have been violated."), silently discarding
     `_embedded.errors[]`'s real per-field detail -- fixed the same session
@@ -203,13 +204,14 @@ async def test_create_storage_one_drive_rejected_without_enterprise_token(
     """
     name = f"[integration-test] OneDrive {uuid.uuid4().hex[:8]}"
 
-    with pytest.raises(InvalidInputError, match="[Ee]nterprise"):
+    with pytest.raises(InvalidInputError, match="[Ee]nterprise") as refused:
         await client.storage.create(
             name=name,
             provider_type="OneDrive",
             tenant_id="11111111-1111-1111-1111-111111111111",
             confirm=True,
         )
+    assert "Directory (tenant) ID is invalid" not in str(refused.value)
 
     # No storage should have been created -- nothing to register for cleanup,
     # but assert list_storages doesn't show it either, as defense in depth.

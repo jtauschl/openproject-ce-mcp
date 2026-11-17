@@ -165,7 +165,7 @@ rejected item and a preview keep their full write result, and
 
 Beyond the obvious fields, work packages also carry scheduling/derived state
 (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`,
-`derived_due_date`, `percentage_done`, `derived_percentage_done`, `readonly`,
+`derived_due_date`, `percentage_done`, `derived_percentage_done`,
 `has_project_attributes` — the last requires OpenProject 17.7+, absent/`None` on
 older instances); versions and memberships carry `created_at`/`updated_at`;
 users carry `firstname`/`lastname`; categories carry
@@ -201,7 +201,7 @@ default tool set and save context.
 | `get_backlog_bucket` | Fetch a Backlogs backlog bucket by id (requires OpenProject 17.6+) |
 | `create_project` | Validate and then create a project, with `custom_fields` for project attributes; only writes when called again with `confirm=true` |
 | `copy_project` | Validate and then copy an existing project into a new project, with `custom_fields` for project attributes (not their comments: OpenProject fails a copy that names one); only starts the copy job when called again with `confirm=true` |
-| `get_job_status` | Fetch the current status of a background job such as project copy |
+| `get_job_status` | Fetch the current status of a background job such as project copy; `project` is the new project of a finished copy |
 | `update_project` | Validate and then update a project, with `custom_fields` for project attributes; only writes when called again with `confirm=true` |
 | `delete_project` | Validate and then delete a project; only deletes when called again with `confirm=true` |
 | `set_project_favorite` | Validate and then mark or unmark a project as a favorite (OpenProject 17.0+), based on `favorite`; only writes when called again with `confirm=true` |
@@ -351,7 +351,7 @@ user exists.
 | --- | --- |
 | `list_project_phase_definitions` | List available project lifecycle phase definitions |
 | `get_project_phase_definition` | Fetch a single project lifecycle phase definition by id |
-| `get_project_phase` | Fetch a single project lifecycle phase by id, with its definition and `active` flag (`start_date` and `finish_date` are always null: the API does not provide them) |
+| `get_project_phase` | Fetch a single project lifecycle phase by id, with its definition and `active` flag |
 
 ## Views
 

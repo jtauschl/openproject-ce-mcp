@@ -296,7 +296,31 @@ async def test_create_commits_one_drive_without_host() -> None:
     assert result.state == "confirmed"
     sent = api.commit_create_calls[0]
     assert "origin" not in sent["_links"]
-    assert sent["tenant_id"] == "11111111-1111-1111-1111-111111111111"
+    # The representer parses camel-cased names; a snake_case key is dropped without an error.
+    assert sent["tenantId"] == "11111111-1111-1111-1111-111111111111"
+    assert "tenant_id" not in sent
+
+
+@pytest.mark.asyncio
+async def test_create_sends_drive_id_camel_cased_and_the_preview_keeps_the_argument_names() -> None:
+    api = _FakeStorageApi()
+    service = _service(api, settings=_admin_write_settings())
+    arguments = {
+        "name": "New SharePoint",
+        "provider_type": "Sharepoint",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "drive_id": "b!driveid1234567890",
+    }
+
+    preview = await service.create(**arguments, confirm=False)
+    confirmed = await service.create(**arguments, confirm=True)
+
+    sent = api.commit_create_calls[0]
+    assert sent["driveId"] == "b!driveid1234567890"
+    assert "drive_id" not in sent
+    assert preview.payload["tenant_id"] == "11111111-1111-1111-1111-111111111111"
+    assert preview.payload["drive_id"] == "b!driveid1234567890"
+    assert confirmed.payload == preview.payload
 
 
 @pytest.mark.asyncio

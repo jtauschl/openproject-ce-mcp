@@ -32,7 +32,7 @@ work_package   percentageDone             property                 COVERED    �
 work_package   derivedPercentageDone      property                 COVERED    —
 work_package   createdAt                  date_time_property       COVERED    —
 work_package   updatedAt                  date_time_property       COVERED    —
-work_package   readonly                   property                 COVERED    —
+work_package   readonly                   property                 EXCLUDED   enterprise
 work_package   hasProjectAttributes       property                 COVERED    —
 work_package   category                   associated_resource      COVERED    —
 work_package   type                       associated_resource      COVERED    —
@@ -103,7 +103,7 @@ membership     roles                      associated_resources     COVERED    �
 membership     createdAt                  date_time_property       COVERED    —
 membership     updatedAt                  date_time_property       COVERED    —
 
-Summary: resources=6, checked_fields=95, covered=85, excluded=10, untriaged=0
+Summary: resources=6, checked_fields=95, covered=84, excluded=11, untriaged=0
 ```
 
 ## Untriaged drift
@@ -114,6 +114,7 @@ _None — every checked field is modeled or has a documented exclusion._
 
 ### enterprise
 
+- `work_package.readonly` — Rendered only if Status.can_readonly? (EnterpriseToken.allows_to?(:readonly_work_packages), work_package_representer.rb:486-492); always absent on Community Edition, so not modeled.
 - `work_package.customActions` — Custom Actions is Enterprise-only per the CE-only policy (resources :customActions, work_package_representer.rb:625).
 - `work_package._meta` — Backs the Enterprise-only Baseline Comparisons feature (TimestampedRepresenter, gated by timestamps_active?); never appears in any response this server produces, since nothing here requests historic timestamps.
 - `work_package.attributesByTimestamp` — Same Enterprise-only Baseline Comparisons feature as _meta above (TimestampedRepresenter, property :attributes_by_timestamp, timestamps_active? gated).

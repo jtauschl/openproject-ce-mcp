@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import httpx
@@ -10,6 +11,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, OpenProjectServerEr
 from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.app.ports.scoped_reference import VisibleReferences
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
+from openproject_ce_mcp.models import ProjectPhase
 
 BASE_URL = "https://op.example.com"
 
@@ -453,7 +455,7 @@ async def test_get_phase_fetches_by_id() -> None:
             json={
                 "id": 3,
                 "name": "Build",
-                "startDate": "2026-01-01",
+                "active": True,
                 "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}},
             },
             request=request,
@@ -466,6 +468,22 @@ async def test_get_phase_fetches_by_id() -> None:
     assert record.phase.id == 3
     assert record.phase.name == "Build"
     assert record.project_link == {"href": "/api/v3/projects/6", "title": "Demo"}
+
+
+def test_project_phase_carries_exactly_the_fields_the_representer_renders() -> None:
+    # project_phase_representer.rb renders id, name, active, createdAt, updatedAt and the
+    # definition and project links: it renders no start or finish date in any version.
+    assert {field.name for field in dataclasses.fields(ProjectPhase)} == {
+        "id",
+        "name",
+        "project_id",
+        "project",
+        "phase_definition_id",
+        "phase_definition",
+        "active",
+        "created_at",
+        "updated_at",
+    }
 
 
 @pytest.mark.asyncio

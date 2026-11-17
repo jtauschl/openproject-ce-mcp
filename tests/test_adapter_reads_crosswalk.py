@@ -2,7 +2,7 @@
 
 The acceptance check of the read model. Each row names the representers that compose a body root and those of its
 embedded resources; the expected sets are what the snapshot says about each read the adapters make today. A read that
-is `missing` is a phantom (`read` of a notification); `partial` exists in some pinned versions only; `open` is a link
+is `missing` is a phantom (none is left in these five adapters); `partial` exists in some pinned versions only; `open` is a link
 whose members the source builds by a helper; `opaque` reaches below what the snapshot holds (the members of a
 property value). A change of an adapter, of the snapshot or of the model changes this table on purpose.
 """
@@ -67,7 +67,7 @@ TERMINALS = {fid: ("payload",) for fid in ROWS if ":normalize_" in fid}
 
 # (path, key, status, first pinned version that renders it): the version is the answer, not only "partial".
 EXPECTED_NOT_OK: dict[str, set[tuple[tuple[str, ...], str, str, str]]] = {
-    "normalize_notification": {((), "read", "missing", "")},
+    "normalize_notification": set(),
     "normalize_notification_detail": set(),
     "HttpxNotificationApi.list_all": set(),
     "normalize_activity": {(("details", "*"), "raw", "opaque", "")},
@@ -75,7 +75,6 @@ EXPECTED_NOT_OK: dict[str, set[tuple[tuple[str, ...], str, str, str]]] = {
     "normalize_work_package_summary": {
         ((), "displayId", "partial", "17.4"),
         ((), "hasProjectAttributes", "partial", "17.7"),
-        ((), "readonly", "gated", ""),
         (("_links",), "observedInVersions", "partial", "17.9"),
         (("_links",), "projectPhase", "partial", "16.1"),
         (("_links",), "sprint", "partial", "17.3"),
@@ -146,7 +145,6 @@ EXPECTED_READS: dict[str, set[tuple[tuple[str, ...], str]]] = {
         ((), "_links"),
         ((), "createdAt"),
         ((), "id"),
-        ((), "read"),
         ((), "readIAN"),
         ((), "reason"),
         (("_links",), "project"),
@@ -213,7 +211,6 @@ EXPECTED_READS: dict[str, set[tuple[tuple[str, ...], str]]] = {
         ((), "id"),
         ((), "ignoreNonWorkingDays"),
         ((), "percentageDone"),
-        ((), "readonly"),
         ((), "remainingTime"),
         ((), "scheduleManually"),
         ((), "spentTime"),
@@ -290,17 +287,16 @@ def test_every_read_of_the_adapter_is_classified_at_the_right_location(
     assert not_ok == EXPECTED_NOT_OK[fid.split(":", 1)[1]]
 
 
-def test_the_notification_read_fallback_is_the_phantom_and_read_ian_is_not(analysis: adapter_reads.Analysis) -> None:
+def test_the_notification_reads_the_read_ian_key_alone(analysis: adapter_reads.Analysis) -> None:
     fid = f"{ADAPTERS}httpx_notification_api.py:normalize_notification"
-    keys = {read.key for read in analysis.reads[fid] if not read.path}
-
-    assert {"read", "readIAN"} <= keys
-    status = {
+    checks = {
         c.read.key: c.status
         for c in (adapter_reads.check(r, ROWS[fid], SNAPSHOT) for r in analysis.reads[fid])
         if not c.read.path
     }
-    assert status["read"] == "missing" and status["readIAN"] == "ok"
+
+    assert "read" not in checks
+    assert checks["readIAN"] == "ok"
 
 
 def test_what_the_model_cannot_follow_in_these_adapters_is_reported_not_skipped(

@@ -58,8 +58,6 @@ def _sort_by_summary(sort_by_id: str = "subject:asc") -> QuerySortBySummary:
 def _schema_summary(schema_id: str = "assignee") -> QueryFilterInstanceSchemaSummary:
     return QueryFilterInstanceSchemaSummary(
         id=schema_id,
-        name="Assignee schema",
-        filter="Assignee",
         operator_count=2,
         url=f"https://op.example.com/queries/filter_instance_schemas/{schema_id}",
     )
@@ -258,15 +256,15 @@ async def test_list_filter_instance_schemas_denies_when_project_ref_resolution_d
 
 @pytest.mark.asyncio
 async def test_list_filter_instance_schemas_applies_hidden_field_masking() -> None:
-    settings = dataclasses.replace(make_settings(), hidden_fields={"query_filter_instance_schema": ("filter",)})
+    settings = dataclasses.replace(make_settings(), hidden_fields={"query_filter_instance_schema": ("operator_count",)})
     service = _service(settings=settings)
 
     result = await service.list_filter_instance_schemas()
     schema = result.results[0]
 
-    assert schema._hidden_keys == frozenset({"filter"})
+    assert schema._hidden_keys == frozenset({"operator_count"})
     serialized = _to_payload(schema)
-    assert "filter" not in serialized
+    assert "operator_count" not in serialized
 
 
 @pytest.mark.asyncio

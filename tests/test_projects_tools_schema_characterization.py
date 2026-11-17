@@ -352,7 +352,11 @@ def test_copy_project_schema() -> None:
 
 def test_get_job_status_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_job_status"]
-    assert tool.description == "Get the current status of a background job such as project copy."
+    assert tool.description == (
+        "Get the current status of a background job such as project copy.\n\n"
+        "For a project copy `project` is the new project (the copy target), set only once the copy succeeded; "
+        "a queued,\nrunning or failed copy has none. The `message` of a failed copy carries the reason.\n"
+    )
     assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {
@@ -610,10 +614,7 @@ def test_get_project_phase_definition_schema() -> None:
 
 def test_get_project_phase_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_project_phase"]
-    assert tool.description == (
-        "Get a single project lifecycle phase by id. "
-        "`start_date` and `finish_date` stay null: the API does not provide them."
-    )
+    assert tool.description == "Get a single project lifecycle phase by id."
     assert tool.output_schema is None
     assert tool.parameters == {
         "properties": {

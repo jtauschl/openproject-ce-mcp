@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from functools import partial
 
@@ -23,7 +24,7 @@ from openproject_ce_mcp.app.ports.scoped_reference import VisibleReferences
 from openproject_ce_mcp.app.ports.work_package_api import WorkPackageGroupRecord
 from openproject_ce_mcp.app.resource_href import ResourceLinks
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
-from openproject_ce_mcp.models import SortCriterion
+from openproject_ce_mcp.models import SortCriterion, WorkPackageDetail, WorkPackageSummary
 
 normalize_work_package_summary = partial(
     normalize_work_package_summary,
@@ -1196,3 +1197,10 @@ async def test_list_sends_include_subprojects_only_when_asked(include_subproject
         )
 
     assert seen[0].get("includeSubprojects") == sent
+
+
+@pytest.mark.parametrize("model", [WorkPackageSummary, WorkPackageDetail])
+def test_work_package_models_carry_no_readonly_field(model: type) -> None:
+    # The representer renders `readonly` only with an Enterprise token (Status.can_readonly?),
+    # and this server targets Community Edition: the field would be null on every result.
+    assert "readonly" not in {field.name for field in dataclasses.fields(model)}

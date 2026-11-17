@@ -55,9 +55,6 @@ def normalize_notification(payload: dict[str, Any]) -> NotificationSummary:
     if isinstance(resource_href, str) and "work_packages/" in resource_href:
         work_package_id = _id_from_href(resource_href)
         work_package_subject = _link_title(resource_link)
-    read_ian = payload.get("readIAN")
-    if read_ian is None:
-        read_ian = bool(payload.get("read"))
     # reason is a top-level string property (an enum-like identifier, e.g.
     # "mentioned"/"assigned"), not a link -- notification_representer.rb has
     # no `_links.reason` at all.
@@ -66,7 +63,7 @@ def normalize_notification(payload: dict[str, Any]) -> NotificationSummary:
         id=notification_id,
         subject=_link_title(resource_link) or f"Notification {notification_id}",
         reason=reason,
-        read=bool(read_ian),
+        read=bool(payload.get("readIAN")),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
         project_name=_link_title(project_link),
         work_package_id=work_package_id,

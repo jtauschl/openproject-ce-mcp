@@ -6,7 +6,7 @@ same shape as `RoleRecord`/`ActionRecord`. `to_detail` is a LAZY
 builds a `UserRecord` per row but `UserService.list_users()` never reads
 `.to_detail` on that path (only `get_user()` does), and
 `normalize_user_detail` parses several detail-only fields (`groups`,
-`authSource`, `identityUrl`, `language`) beyond a cheap summary field-copy --
+`auth_source`, `identityUrl`, `language`) beyond a cheap summary field-copy --
 same rationale as `DocumentRecord`/`NewsRecord`'s lazy thunk. Note this is
 NOT the same shape as `SprintRecord`'s/`BoardRecord`'s eager
 `summary_to_detail`: eager computation is only correct when detail reduces

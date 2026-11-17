@@ -22,7 +22,7 @@ _REDUCED = "the service or the adapter reduces it for projects the read scope do
 CLASSIFIED: dict[str, str] = {
     "activity": _INSTANCE_WIDE,
     "assignee": _INSTANCE_WIDE,
-    "authSource": _INSTANCE_WIDE,
+    "auth_source": _INSTANCE_WIDE,
     "author": _INSTANCE_WIDE,
     "category": _ANCHOR,
     "costType": _INSTANCE_WIDE,
