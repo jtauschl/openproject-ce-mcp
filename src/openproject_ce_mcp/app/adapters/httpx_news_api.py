@@ -4,7 +4,7 @@ No `httpx` import (depends on the `Transport` Protocol only), no
 `api_prefix` parameter (unlike HttpxMembershipApi/HttpxProjectApi): News
 builds no raw absolute hrefs from server responses, every path is a fixed
 string (`news`, `news/{id}`). `_trim_text`/`_link_title`/`_id_from_href`/
-`_delimit_user_content`/`_can_update_from_links`/`SUBJECT_LIMIT` are shared
+`_delimit_user_content`/`SUBJECT_LIMIT` are shared
 via `app/adapters/_text.py`.
 """
 
@@ -16,7 +16,6 @@ from ...models import NewsDetail, NewsSummary
 from ..ports.news_api import NewsRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
-from ._text import can_update_from_links as _can_update_from_links
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -51,7 +50,7 @@ def normalize_news(payload: dict[str, Any], *, text_limit: int | None = SUBJECT_
         project=_link_title(links.get("project")),
         author=_link_title(links.get("author")),
         created_at=payload.get("createdAt"),
-        can_update=_can_update_from_links(links),
+        can_update="updateImmediately" in links,
         can_delete=bool(links.get("delete")),
         description_truncated=truncated,
         description_length=length,

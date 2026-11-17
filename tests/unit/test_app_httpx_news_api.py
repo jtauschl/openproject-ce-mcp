@@ -24,7 +24,7 @@ def _news_payload(news_id: int = 1) -> dict:
         "_links": {
             "project": {"href": "/api/v3/projects/6", "title": "Demo Project"},
             "author": {"href": "/api/v3/users/9", "title": "Ada Lovelace"},
-            "update": {"href": f"/api/v3/news/{news_id}"},
+            "updateImmediately": {"href": f"/api/v3/news/{news_id}", "method": "patch"},
         },
         "createdAt": "2026-01-01T00:00:00Z",
     }

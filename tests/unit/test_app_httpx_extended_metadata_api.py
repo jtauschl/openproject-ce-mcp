@@ -26,7 +26,7 @@ def test_normalize_help_text_extracts_raw_text_from_nested_dict() -> None:
     summary = normalize_help_text(
         {
             "id": 5,
-            "attributeName": "description",
+            "attribute": "description",
             "attributeFieldName": "Description",
             "helpText": {"format": "markdown", "raw": "Describe the work."},
         }

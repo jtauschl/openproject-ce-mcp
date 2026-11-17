@@ -663,7 +663,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                                 "_links": {
                                     "self": {"href": "/api/v3/documents/5"},
                                     "project": {"href": "/api/v3/projects/6", "title": "Demo"},
-                                    "updateImmediately": {"href": "/api/v3/documents/5", "method": "patch"},
+                                    "update": {"href": "/api/v3/documents/5/form", "method": "post"},
                                 },
                             }
                         ]
@@ -684,7 +684,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                         "self": {"href": "/api/v3/documents/5"},
                         "project": {"href": "/api/v3/projects/6", "title": "Demo"},
                         "attachments": {"href": "/api/v3/documents/5/attachments"},
-                        "updateImmediately": {"href": "/api/v3/documents/5", "method": "patch"},
+                        "update": {"href": "/api/v3/documents/5/form", "method": "post"},
                     },
                     "_embedded": {
                         "attachments": {"count": 2, "total": 2},
@@ -707,7 +707,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                         "self": {"href": "/api/v3/documents/5"},
                         "project": {"href": "/api/v3/projects/6", "title": "Demo"},
                         "attachments": {"href": "/api/v3/documents/5/attachments"},
-                        "updateImmediately": {"href": "/api/v3/documents/5", "method": "patch"},
+                        "update": {"href": "/api/v3/documents/5/form", "method": "post"},
                     },
                     "_embedded": {
                         "attachments": {"count": 2, "total": 2},
@@ -1413,7 +1413,7 @@ async def test_help_texts_and_working_days() -> None:
                 200,
                 json={
                     "id": 5,
-                    "attributeName": "description",
+                    "attribute": "description",
                     "attributeFieldName": "Description",
                     "caption": "Our own caption",
                     "helpText": {"format": "markdown", "raw": "Describe the work."},

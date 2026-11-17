@@ -17,8 +17,8 @@ HAL shapes with no sibling analog, deliberately not unified with anything.
 `board_service.py`, not this adapter, mirroring how other Services own their
 pure write-payload-building helpers directly.
 
-`_can_update_from_links` is shared via `app/adapters/_text.py`, alongside
-Document/News.
+A grid renders both `update` (the form) and `updateImmediately` (the patch) when the user may write, so either
+one means `can_update`.
 """
 
 from __future__ import annotations
@@ -30,7 +30,6 @@ from ..link_titles import KEPT_FILTER_KEYS, without_titles
 from ..ports.board_api import BoardFormResult, BoardRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
-from ._text import can_update_from_links as _can_update_from_links
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_validation_errors
@@ -112,7 +111,7 @@ def normalize_board(payload: dict[str, Any]) -> BoardSummary:
         show_hierarchies=bool(payload.get("showHierarchies")),
         timeline_visible=bool(payload.get("timelineVisible")),
         filter_count=len(filters),
-        can_update=_can_update_from_links(links),
+        can_update="update" in links or "updateImmediately" in links,
         can_delete=bool(links.get("delete")),
     )
 

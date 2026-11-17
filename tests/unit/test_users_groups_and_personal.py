@@ -202,7 +202,7 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                                 # not a {count, ...} collection object.
                                 "_embedded": {"members": [{"name": "Alice"}, {"name": "Bob"}]},
                                 "_links": {
-                                    "update": {"href": "/api/v3/groups/7"},
+                                    "updateImmediately": {"href": "/api/v3/groups/7", "method": "patch"},
                                     "delete": {"href": "/api/v3/groups/7"},
                                 },
                             }
@@ -224,7 +224,7 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                     "_embedded": {"members": [{"name": "Alice"}, {"name": "Bob"}]},
                     "_links": {
                         "memberships": {"href": "/api/v3/groups/7/memberships"},
-                        "update": {"href": "/api/v3/groups/7"},
+                        "updateImmediately": {"href": "/api/v3/groups/7", "method": "patch"},
                         "delete": {"href": "/api/v3/groups/7"},
                     },
                 },

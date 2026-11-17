@@ -1,8 +1,8 @@
 """HTTP-backed DocumentApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
-`_id_from_href`/`_link_title`/`_delimit_user_content`/`_can_update_from_links`/
-`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`.
+`_id_from_href`/`_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are
+shared via `app/adapters/_text.py`.
 `_extract_formattable_text`/`FORMATTABLE_LIMIT` stay local -- not shared
 across every adapter.
 
@@ -24,7 +24,6 @@ from ...models import DocumentDetail, DocumentSummary
 from ..ports.document_api import DocumentRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
-from ._text import can_update_from_links as _can_update_from_links
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -58,7 +57,7 @@ def normalize_document(payload: dict[str, Any], *, text_limit: int | None = SUBJ
         project=_link_title(links.get("project")),
         description=_delimit_user_content(description),
         created_at=payload.get("createdAt"),
-        can_update=_can_update_from_links(links),
+        can_update="update" in links,
         description_truncated=truncated,
         description_length=length,
     )

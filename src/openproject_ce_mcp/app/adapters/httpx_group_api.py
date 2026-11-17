@@ -18,7 +18,6 @@ from ...models import GroupDetail, GroupSummary
 from ..ports.group_api import GroupRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
-from ._text import can_update_from_links as _can_update_from_links
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
@@ -53,7 +52,7 @@ def normalize_group(payload: dict[str, Any]) -> GroupSummary:
         member_count=_member_count(payload),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        can_update=_can_update_from_links(links),
+        can_update="updateImmediately" in links,
         can_delete=bool(links.get("delete")),
     )
 

@@ -58,7 +58,7 @@ def normalize_query_filter(payload: dict[str, Any], *, base_url: str, origin: st
     self_link, href, filter_id = _query_ref_identity(links, payload)
     return QueryFilterSummary(
         id=filter_id,
-        name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
+        name=_trim_text(self_link.get("title"), limit=SUBJECT_LIMIT),
         url=_link_to_web_url(href, base_url=base_url, origin=origin),
     )
 

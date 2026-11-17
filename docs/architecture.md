@@ -188,7 +188,7 @@ tools_<domain>.py (MCP presentation)
     second, Service-supplied argument alongside the payload.
   - Small text/href-parsing helpers (`trim_text`, `id_from_href`, `link_title`,
     `delimit_user_content`, `origin_from_url`, `link_to_web_url`,
-    `can_update_from_links`, plus `SUBJECT_LIMIT`) are shared via
+    plus `SUBJECT_LIMIT`) are shared via
     `app/adapters/_text.py`; every adapter imports what it needs from there
     rather than duplicating them. Helpers that differ meaningfully between
     adapters (`_normalize_validation_errors`, `_extract_formattable_text`) stay

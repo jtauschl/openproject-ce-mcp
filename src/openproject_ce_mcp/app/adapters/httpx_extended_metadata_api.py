@@ -47,7 +47,7 @@ def normalize_help_text(payload: dict[str, Any]) -> HelpTextSummary:
     help_text_value = payload.get("helpText")
     return HelpTextSummary(
         id=int(payload["id"]),
-        attribute_name=payload.get("attribute") or payload.get("attributeName"),
+        attribute_name=payload.get("attribute"),
         attribute_caption=payload.get("attributeCaption", payload.get("attributeFieldName")),
         caption=payload.get("caption"),
         help_text=_delimit_user_content(
