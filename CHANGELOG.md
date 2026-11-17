@@ -22,6 +22,7 @@ and 0.2.0 the first one published to PyPI.
 - A confirmed `update_work_package` or `bulk_update_work_packages` names the work package's status and subject after the write in `target`, not before it.
 - `get_user` and `list_users` report `locked` from the account status; it was always null. Hiding `status` or `locked` hides both.
 - `get_user` returns `auth_source` for a user with an LDAP auth source; it was always null.
+- `get_storage` and `list_storages` return `tenant_id` and `drive_id` of OneDrive storages, and `create_storage` sends them under the names the server reads; they were dropped before.
 
 ## [0.4.5] - 2026-11-08
 

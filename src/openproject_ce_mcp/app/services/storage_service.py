@@ -190,11 +190,11 @@ class StorageService:
         body: dict[str, Any] = {"name": name, "_links": links}
         if tenant_id is not None:
             hidden_fields.ensure_field_writable("storage", "tenant_id", settings=self._settings)
-            body["tenant_id"] = tenant_id
+            body["tenantId"] = tenant_id
             payload_preview["tenant_id"] = tenant_id
         if drive_id is not None:
             hidden_fields.ensure_field_writable("storage", "drive_id", settings=self._settings)
-            body["drive_id"] = drive_id
+            body["driveId"] = drive_id
             payload_preview["drive_id"] = drive_id
 
         if not confirm:

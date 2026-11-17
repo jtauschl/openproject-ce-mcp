@@ -45,8 +45,8 @@ def _one_drive_payload(storage_id: int = 2) -> dict:
         "id": storage_id,
         "name": "OneDrive Storage",
         "configured": True,
-        "tenant_id": "11111111-1111-1111-1111-111111111111",
-        "drive_id": "b!driveid1234567890",
+        "tenantId": "11111111-1111-1111-1111-111111111111",
+        "driveId": "b!driveid1234567890",
         "createdAt": "2026-01-01T00:00:00Z",
         "updatedAt": "2026-06-01T00:00:00Z",
         "_links": {
@@ -117,6 +117,17 @@ def test_normalize_storage_one_drive_discriminator_routing() -> None:
     # Nextcloud-only fields must be None for a non-Nextcloud provider.
     assert summary.has_application_password is None
     assert summary.forbidden_file_name_characters is None
+
+
+def test_normalize_storage_does_not_read_snake_case_tenant_and_drive_keys() -> None:
+    # storage_representer.rb is a camel-casing Single: the wire names are tenantId and driveId.
+    payload = _one_drive_payload()
+    payload["tenant_id"], payload["drive_id"] = payload.pop("tenantId"), payload.pop("driveId")
+
+    summary = normalize_storage(payload)
+
+    assert summary.tenant_id is None
+    assert summary.drive_id is None
 
 
 def test_normalize_storage_detail_one_drive_authorization_state_and_no_auth_method() -> None:
