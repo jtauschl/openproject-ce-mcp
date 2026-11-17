@@ -61,9 +61,9 @@ from ._custom_field_masking import (
     is_custom_comment_key,
     mask_custom_field_values,
     redacted_validation_errors,
-    without_hidden_custom_fields,
 )
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
+from ._payload_masking import shown_payload
 from ._project_presentation import hidden_references_replaced, present_detail, present_summaries
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -471,9 +471,7 @@ class ProjectService:
         # The form echoes a comment key for every commented attribute, and OpenProject answers a copy request
         # that carries one with HTTP 500 (its copy job cannot serialize the comment's numeric key).
         copy_payload = {key: value for key, value in form.payload.items() if not is_custom_comment_key(key)}
-        shown = without_hidden_custom_fields(
-            without_foreign_capable_titles(copy_payload), entity="project", settings=self._settings
-        )
+        shown = shown_payload(without_foreign_capable_titles(copy_payload), entity="project", settings=self._settings)
         ready = not form.validation_errors
         errors = redacted_validation_errors(form.validation_errors, entity="project", settings=self._settings)
         if not confirm:

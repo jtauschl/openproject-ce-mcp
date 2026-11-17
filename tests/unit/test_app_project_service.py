@@ -1729,3 +1729,44 @@ async def test_the_write_path_and_the_admin_context_offer_the_same_versions(read
         if read_projects == ("demo",)
         else {f"/api/v3/versions/{number}" for number in _DEFINING_PROJECT_LINKS}
     )
+
+
+_STATIC_ECHO = {
+    "name": "Demo",
+    "identifier": "demo",
+    "statusExplanation": {"raw": "internal reason"},
+    "customField3": "visible",
+    "_links": {"parent": {"href": "/api/v3/projects/1", "title": "Root"}},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_a_write_preview_and_result_drop_the_static_fields_the_form_echoes(confirm: bool) -> None:
+    api = _FakeProjectApi()
+    api.form_echo = _STATIC_ECHO
+    settings = dataclasses.replace(
+        _enabled_settings(), hidden_fields={"project": ("status_explanation", "parent_id", "parent_name")}
+    )
+    service = _service(api, settings=settings)
+
+    update = await service.update(project_ref="demo", name="Renamed", confirm=confirm)
+    create = await service.create(name="Demo N", identifier="demo-n", confirm=confirm)
+
+    for result in (update, create):
+        assert "statusExplanation" not in result.payload and "parent" not in result.payload.get("_links", {})
+        assert result.payload["name"] and result.payload["customField3"] == "visible"
+
+
+@pytest.mark.asyncio
+async def test_a_copy_preview_drops_the_static_fields_the_form_echoes() -> None:
+    api = _FakeProjectApi()
+    api.form_echo = _STATIC_ECHO
+    settings = dataclasses.replace(_enabled_settings(), hidden_fields={"project": ("status_explanation",)})
+
+    result = await _service(api, settings=settings).copy(
+        source_project="demo", name="Copy", identifier="demo-copy", confirm=False
+    )
+
+    assert "statusExplanation" not in result.payload
+    assert result.payload["name"] == "Copy"

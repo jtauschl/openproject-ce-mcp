@@ -24,6 +24,10 @@ T = TypeVar("T", bound=CustomFieldCarrier)
 _KEY = re.compile(r"(customField|customComment)([1-9]\d*)")
 
 
+def is_custom_field_key(key: str) -> bool:
+    return _KEY.fullmatch(key) is not None
+
+
 def is_custom_comment_key(key: str) -> bool:
     match = _KEY.fullmatch(key)
     return match is not None and match.group(1) == "customComment"

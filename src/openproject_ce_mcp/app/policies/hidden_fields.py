@@ -11,6 +11,7 @@ from typing import Any, cast
 
 from ...config import HIDE_FIELD_ENV_BY_ENTITY, Settings
 from ..errors import InvalidInputError
+from .payload_fields import COUPLED_FIELDS, NO_FIELD, PAYLOAD_KEYS
 
 
 def normalize_hide_token(value: str) -> str:
@@ -44,6 +45,29 @@ def field_hidden(entity: str, field_name: str, *, settings: Settings) -> bool:
     return any(
         fnmatchcase(candidate, normalize_hide_token(pattern)) for pattern in patterns for candidate in candidates
     )
+
+
+def _field_or_coupled_hidden(entity: str, field_name: str, *, settings: Settings) -> bool:
+    for group in COUPLED_FIELDS.get(entity, ()):
+        if field_name in group:
+            return any(field_hidden(entity, member, settings=settings) for member in group)
+    return field_hidden(entity, field_name, settings=settings)
+
+
+def payload_key_hidden(entity: str, key: str, *, settings: Settings) -> bool:
+    """True for a key of a write form's `payload` that carries a field the settings hide.
+
+    A key the entity's table does not know is hidden as soon as the entity has any hide pattern: the
+    server renders keys the sources do not show (module patches, newer versions), and a key nobody
+    classified must not be the way a hidden value leaves. `NO_FIELD` names the keys that carry no
+    field and stay visible. Custom field keys are judged elsewhere (`without_hidden_custom_fields`)."""
+    table = PAYLOAD_KEYS.get(entity)
+    if table is None:
+        return False
+    carried_by = table.get(key)
+    if carried_by is None:
+        return key not in NO_FIELD[entity] and bool(hidden_patterns(entity, settings=settings))
+    return any(_field_or_coupled_hidden(entity, name, settings=settings) for name in carried_by)
 
 
 def ensure_field_writable(entity: str, field_name: str, *, settings: Settings) -> None:

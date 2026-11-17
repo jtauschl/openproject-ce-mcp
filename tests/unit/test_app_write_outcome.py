@@ -165,6 +165,17 @@ async def test_every_entity_shows_a_payload_without_the_hidden_custom_fields_the
 
 
 _ENTITIES = ["version", "time_entry", "project", "work_package", "membership", "meeting", "grid", "board"]
+# A key each entity's payload table classifies: an unknown key is hidden once the entity has any hide pattern.
+_KNOWN_KEY = {
+    "version": "name",
+    "time_entry": "comment",
+    "project": "name",
+    "work_package": "subject",
+    "membership": "_meta",
+    "meeting": "title",
+    "grid": "rowCount",
+    "board": "name",
+}
 
 
 @pytest.mark.asyncio
@@ -172,7 +183,8 @@ _ENTITIES = ["version", "time_entry", "project", "work_package", "membership", "
 async def test_an_entity_level_custom_fields_hide_applies_to_that_entity_only(entity: str) -> None:
     import dataclasses
 
-    payload = {"name": "x", "customField5": "visible", "customComment5": "note", "_links": {"customField5": {}}}
+    known = _KNOWN_KEY[entity]
+    payload = {known: "x", "customField5": "visible", "customComment5": "note", "_links": {"customField5": {}}}
     errors = {"customField5": "Visible can't be blank"}
 
     async def shown(settings_entity: str) -> tuple[dict[str, object], dict[str, str]]:
@@ -196,7 +208,7 @@ async def test_an_entity_level_custom_fields_hide_applies_to_that_entity_only(en
     own_payload, own_errors = await shown(entity)
     other_payload, other_errors = await shown("news" if entity != "news" else "project")
 
-    assert own_payload == {"name": "x", "_links": {}}
+    assert own_payload == {known: "x", "_links": {}}
     assert own_errors["customField5"] != errors["customField5"]
     assert other_payload == payload
     assert other_errors == errors
@@ -235,3 +247,38 @@ def test_each_service_redacts_a_write_under_its_own_entity() -> None:
         "version",
         "work_package",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirm", [False, True])
+@pytest.mark.parametrize("errors", [{}, {"name": "is required"}])
+async def test_a_hidden_static_field_is_not_shown_but_is_still_committed(confirm: bool, errors: dict[str, str]) -> None:
+    import dataclasses
+
+    committed: list[dict] = []
+
+    async def commit(payload: dict) -> str:
+        committed.append(payload)
+        return "detail"
+
+    form_echo = {"name": "x", "endDate": "2026-02-01", "_links": {"definingProject": {"href": "/api/v3/projects/6"}}}
+    settings = dataclasses.replace(make_settings(), hidden_fields={"version": ("end_date",)})
+
+    outcome = await _finalize_write(
+        confirm=confirm,
+        entity="version",
+        settings=settings,
+        payload=form_echo,
+        validation_errors=errors,
+        identity={},
+        ensure_write_enabled=lambda: None,
+        commit=commit,
+        committed_identity=_committed_identity,
+        rejected_message="rejected",
+        preview_message="preview",
+        success_message="success",
+    )
+
+    assert outcome.payload == {"name": "x", "_links": {"definingProject": {"href": "/api/v3/projects/6"}}}
+    if confirm and not errors:
+        assert committed == [form_echo]
