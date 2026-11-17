@@ -864,8 +864,6 @@ class QuerySortBySummary:
 @dataclass
 class QueryFilterInstanceSchemaSummary:
     id: str
-    name: str | None
-    filter: str | None
     operator_count: int
     url: str | None
 

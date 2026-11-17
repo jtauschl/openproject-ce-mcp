@@ -177,12 +177,10 @@ def test_get_query_filter_instance_schema_schema() -> None:
     assert tool.output_schema == {
         "properties": {
             "id": {"title": "Id", "type": "string"},
-            "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
-            "filter": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Filter"},
             "operator_count": {"title": "Operator Count", "type": "integer"},
             "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Url"},
         },
-        "required": ["id", "name", "filter", "operator_count", "url"],
+        "required": ["id", "operator_count", "url"],
         "title": "QueryFilterInstanceSchemaSummary",
         "type": "object",
     }

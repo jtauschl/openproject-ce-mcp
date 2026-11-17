@@ -110,8 +110,10 @@ def normalize_query_sort_by(
 def normalize_query_filter_instance_schema(
     payload: dict[str, Any], *, base_url: str, origin: str
 ) -> QueryFilterInstanceSchemaSummary:
-    links = payload.get("_links", {})
-    self_link, href, schema_id = _query_ref_identity(links, payload)
+    # A QueryFilterInstanceSchema renders `self` as its only top-level link, no `id` and, outside a form, no filter
+    # link: its `name` attribute is the constant "Name", not the filter's name. The id is the slug of `self`.
+    self_link = payload.get("_links", {}).get("self", {})
+    href = self_link.get("href") if isinstance(self_link, dict) else None
     dependencies = payload.get("_dependencies", [])
     operator_count = 0
     if isinstance(dependencies, list):
@@ -120,14 +122,8 @@ def normalize_query_filter_instance_schema(
                 values = dependency.get("dependencies")
                 if isinstance(values, dict):
                     operator_count += len(values)
-    name_field = payload.get("name")
     return QueryFilterInstanceSchemaSummary(
-        id=schema_id,
-        name=_trim_text(
-            name_field.get("name") if isinstance(name_field, dict) else name_field,
-            limit=SUBJECT_LIMIT,
-        ),
-        filter=_link_title(links.get("filter")),
+        id=_slug_from_href(href) or "",
         operator_count=operator_count,
         url=_link_to_web_url(href, base_url=base_url, origin=origin),
     )

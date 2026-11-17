@@ -426,7 +426,6 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                             {
                                 "_links": {
                                     "self": {"href": "/api/v3/queries/filter_instance_schemas/assignee"},
-                                    "filter": {"title": "Assignee"},
                                 },
                                 "_dependencies": [{"dependencies": {"=": {}, "!": {}}}],
                             }

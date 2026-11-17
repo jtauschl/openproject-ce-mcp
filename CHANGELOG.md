@@ -17,6 +17,7 @@ and 0.2.0 the first one published to PyPI.
 - **Breaking:** `get_project_phase` no longer returns `start_date` and `finish_date`, which were always null; stop reading them.
 - **Breaking:** `get_job_status` no longer returns `created_resource_type`, `created_resource_id` and `created_resource_name`, which were always null; read `project` and `project_id`, the copy target, instead.
 - **Breaking:** work package results no longer carry `readonly`, which Community Edition never renders; stop reading it and drop it from `select`.
+- **Breaking:** `list_query_filter_instance_schemas` and `get_query_filter_instance_schema` no longer return `name` and `filter`, a constant or always null; use `id`.
 - **Breaking:** `list_documents` rows no longer carry `attachment_count`, which was always 0 there; `get_document` still returns it. Drop it from `select`.
 
 ### Fixed
