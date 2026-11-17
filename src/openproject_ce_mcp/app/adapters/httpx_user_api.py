@@ -106,7 +106,7 @@ class HttpxUserApi:
         # to_detail is a lazy thunk: list_users()/list_users_search() build a
         # UserRecord per row, but UserService.list_users() never reads
         # .to_detail on that path (only get_user() does) -- deferring the
-        # detail-only parsing (groups/authSource/identityUrl/language) avoids
+        # detail-only parsing (groups/auth_source/identityUrl/language) avoids
         # paying for it on every list row. The thunk still passes the
         # already-computed summary through, so calling it never re-derives a
         # second UserSummary either.

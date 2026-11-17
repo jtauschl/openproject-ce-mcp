@@ -11,7 +11,7 @@ and 0.2.0 the first one published to PyPI.
 ### Removed
 
 - **Breaking:** `get_project_phase` no longer returns `start_date` and `finish_date`, which were always null; stop reading them.
-- **Breaking:** `get_job_status` no longer returns `created_resource_type`, `created_resource_id` and `created_resource_name`, which were always null; `project` is the copy target.
+- **Breaking:** `get_job_status` no longer returns `created_resource_type`, `created_resource_id` and `created_resource_name`, which were always null; read `project` and `project_id`, the copy target, instead.
 - **Breaking:** work package results no longer carry `readonly`, which Community Edition never renders; stop reading it and drop it from `select`.
 - **Breaking:** `list_documents` rows no longer carry `attachment_count`, which was always 0 there; `get_document` still returns it. Drop it from `select`.
 
@@ -27,7 +27,7 @@ and 0.2.0 the first one published to PyPI.
 - `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
 - `select` of `list_relations` no longer offers `queried_perspective`, and `select` of `bulk_create_work_packages` no longer offers `parent_target`; both were never filled.
 - A confirmed `update_work_package` or `bulk_update_work_packages` names the work package's status and subject after the write in `target`, not before it.
-- `get_user` and `list_users` report `locked` from the account status; it was always null. Hiding `status` or `locked` hides both.
+- `get_user` and `list_users` report `locked` from the account status; it was always null. Hiding `status` or `locked` hides both in user results.
 - `get_user` returns `auth_source` for a user with an LDAP auth source; it was always null.
 - `get_storage` and `list_storages` return `tenant_id` and `drive_id` of OneDrive storages, and `create_storage` sends them under the names the server reads; they were dropped before.
 

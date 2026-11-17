@@ -95,6 +95,12 @@ removes both fields from every response and rejects writes to either — the
 other field would otherwise trivially leak the "hidden" one back out under a
 different name.
 
+## User `status`/`locked`: a coupled field pair
+
+`locked` is derived from `status` (`status` is the value `locked` for a locked account), so the two names are one
+fact. Hiding either one via `OPENPROJECT_HIDE_USER_FIELDS` hides both in every user result, and `create_user` (which
+writes `status`) and `set_user_locked` refuse while either is hidden.
+
 The context entities (`project_access`, `project_admin_context`, `project_configuration`, `project_work_package_context`) hide
 each listed field of their own result as a whole, including a list of options such as `available_statuses`; the rules of
 the entity an option belongs to (for example `status`) are not applied to the options inside such a field.

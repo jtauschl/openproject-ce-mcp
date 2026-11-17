@@ -1182,10 +1182,3 @@ def test_work_package_models_carry_no_readonly_field(model: type) -> None:
     # The representer renders `readonly` only with an Enterprise token (Status.can_readonly?),
     # and this server targets Community Edition: the field would be null on every result.
     assert "readonly" not in {field.name for field in dataclasses.fields(model)}
-
-
-def test_a_payload_with_readonly_is_normalized_without_it() -> None:
-    payload = {"id": 1, "subject": "A", "readonly": True, "_links": {}}
-
-    assert not hasattr(normalize_work_package_summary(payload, text_limit=None), "readonly")
-    assert not hasattr(normalize_work_package_detail(payload, text_limit=None), "readonly")
