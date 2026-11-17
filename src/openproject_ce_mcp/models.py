@@ -197,9 +197,6 @@ class JobStatusDetail:
     message: str | None
     project_id: int | None
     project: str | None
-    created_resource_type: str | None
-    created_resource_id: int | None
-    created_resource_name: str | None
 
 
 @dataclass

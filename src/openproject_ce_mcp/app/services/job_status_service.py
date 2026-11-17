@@ -2,27 +2,26 @@
 
 Depends on the JobStatusApi Protocol, never HttpxJobStatusApi concretely
 (enforced by the architecture-boundary test). No dedicated policy file: like
-Views, there is only ever one scoping concern to check (the `project`-or-
-`sourceProject` link), and that link is NULLABLE (a job status need not
+Views, there is only ever one scoping concern to check (the payload's
+`project` link), and that link is NULLABLE (a job status need not
 reference any project -- OpenProject's own JobStatusRepresenter has no
 guaranteed project link at all, only a self link plus an arbitrary payload).
 Uses `scope.ensure_project_link_allowed_if_present` (the OPTIONAL-project-
 link contract): a missing link is a legitimate, common state here (most jobs
-aren't project-copy jobs), allowed under a wide-open scope and denied under
-a restrictive one, same rationale as `ViewService.get` -- while a
-structurally malformed link is always rejected regardless of scope.
+aren't project-copy jobs, and a copy has none until it succeeds), allowed
+under a wide-open scope and denied under a restrictive one, same rationale
+as `ViewService.get` -- while a structurally malformed link is always rejected
+regardless of scope.
 
 Read-only, single get method -- OpenProject exposes no create/update/delete
 for job statuses. `access.ensure_read_enabled("project", ...)` is the gate --
 job statuses share the "project" read scope, there is no dedicated
 `OPENPROJECT_ENABLE_JOB_STATUS_*` flag.
 
-The allowlist check here relies on the Adapter's `JobStatusRecord.project_link`
-using the same `project-or-sourceProject` fallback that `normalize_job_status`
-uses to populate the response's own `project`/`project_id` display fields --
-a payload scoped only via `sourceProject` (e.g. `copy_project`'s response)
-must still be subject to `OPENPROJECT_READ_PROJECTS`, so the allowlist check
-stays consistent with what the response body reports.
+The allowlist check here uses the Adapter's `JobStatusRecord.project_link`,
+the same `payload._links.project` link `normalize_job_status` reads for the
+response's own `project`/`project_id` fields. For `copy_project` that is the
+copy TARGET (written only when the copy succeeded), not the source project.
 
 A project created via `copy_project` becomes known to the allowlist when the
 completed job's response, which links the new project, passes through the

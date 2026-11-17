@@ -640,7 +640,6 @@ async def test_job_status_documents_news_and_wiki() -> None:
                     "payload": {
                         "_links": {
                             "project": {"href": "/api/v3/projects/6", "title": "Demo"},
-                            "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
                         },
                     },
                     "_links": {
@@ -862,7 +861,6 @@ async def test_job_status_documents_news_and_wiki() -> None:
     wiki_page = await client.wiki_page.get(9)
     assert job.id == "77"
     assert job.project == "Demo"
-    assert job.created_resource_id == 88
     assert documents.count == 1
     assert document.attachment_count == 2
     assert document_preview.state == "preview"

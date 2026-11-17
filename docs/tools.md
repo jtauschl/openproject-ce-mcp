@@ -118,7 +118,7 @@ default tool set and save context.
 | `get_backlog_bucket` | Fetch a Backlogs backlog bucket by id (requires OpenProject 17.6+) |
 | `create_project` | Validate and then create a project, with `custom_fields` for project attributes; only writes when called again with `confirm=true` |
 | `copy_project` | Validate and then copy an existing project into a new project, with `custom_fields` for project attributes (not their comments: OpenProject fails a copy that names one); only starts the copy job when called again with `confirm=true` |
-| `get_job_status` | Fetch the current status of a background job such as project copy |
+| `get_job_status` | Fetch the current status of a background job such as project copy; `project` is the new project of a finished copy |
 | `update_project` | Validate and then update a project, with `custom_fields` for project attributes; only writes when called again with `confirm=true` |
 | `delete_project` | Validate and then delete a project; only deletes when called again with `confirm=true` |
 | `set_project_favorite` | Validate and then mark or unmark a project as a favorite (OpenProject 17.0+), based on `favorite`; only writes when called again with `confirm=true` |

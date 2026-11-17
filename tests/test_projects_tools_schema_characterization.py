@@ -697,7 +697,11 @@ def test_copy_project_schema() -> None:
 
 def test_get_job_status_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_job_status"]
-    assert tool.description == "Get the current status of a background job such as project copy."
+    assert tool.description == (
+        "Get the current status of a background job such as project copy.\n\n"
+        "For a project copy `project` is the new project (the copy target), set only once the copy succeeded; "
+        "a queued,\nrunning or failed copy has none. The `message` of a failed copy carries the reason.\n"
+    )
     assert tool.output_schema == {
         "properties": {
             "id": {
@@ -766,39 +770,6 @@ def test_get_job_status_schema() -> None:
                 ],
                 "title": "Project",
             },
-            "created_resource_type": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created Resource Type",
-            },
-            "created_resource_id": {
-                "anyOf": [
-                    {
-                        "type": "integer",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created Resource Id",
-            },
-            "created_resource_name": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Created Resource Name",
-            },
         },
         "required": [
             "id",
@@ -807,9 +778,6 @@ def test_get_job_status_schema() -> None:
             "message",
             "project_id",
             "project",
-            "created_resource_type",
-            "created_resource_id",
-            "created_resource_name",
         ],
         "title": "JobStatusDetail",
         "type": "object",
