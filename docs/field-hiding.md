@@ -48,9 +48,9 @@ Project custom fields (project attributes) follow the same rules as work package
   the result.
 - `get_project_admin_context` leaves out the definitions of hidden attributes.
 - The preview and result `payload` of every write that shows a form payload (projects, work packages,
-  versions, users, time entries and the rest) leave out hidden values the form echoes back. A validation
-  error on a hidden key keeps the key and replaces its message, so a rejected write does not name the hidden
-  field's title or value.
+  versions, users, time entries and the rest) leave out hidden custom field values the form echoes back, and
+  the static fields too (see "Write previews" below). A validation error on a hidden key keeps the key and
+  replaces its message, so a rejected write does not name the hidden field's title or value.
 - Like every read-side hide, this follows the raw key: a pattern written as a friendly name refuses writes by
   that name but does not redact (see below).
 - A version-valued attribute that points to a version outside `OPENPROJECT_READ_PROJECTS` reads as `null`,
@@ -100,6 +100,27 @@ different name.
 `locked` is derived from `status` (`status` is the value `locked` for a locked account), so the two names are one
 fact. Hiding either one via `OPENPROJECT_HIDE_USER_FIELDS` hides both in every user result, and `create_user` (which
 writes `status`) and `set_user_locked` refuse while either is hidden.
+
+## Write previews: the `payload` of a result
+
+The server's form answer echoes every attribute the contract lets the caller write, whether the caller sent it or
+not, so a preview of `update_user(firstname=...)` would show the user's `status`, `login` and `email`. The `payload`
+of a write result (preview, rejected and invalid; a confirmed result carries none) therefore leaves out every key
+that carries a field `OPENPROJECT_HIDE_<ENTITY>_FIELDS` hides, under its wire name (`startDate` for `start_date`,
+`_links.parent` for `parent_id` and `parent_name`, `firstName` and `lastName` for `firstname`, `lastname` and
+`name`). The coupled pairs hide together here as everywhere (`status` and `locked`, `version` and
+`target_versions`, `user` and `user_id`). The body sent to the server when you confirm is not changed.
+
+- **An unknown key is hidden once the entity has any hide setting.** The server renders keys the client does not
+  classify (module patches, newer versions); such a key is shown only while nothing of its entity is hidden. A key
+  you passed in yourself and the client does not classify therefore disappears from the preview of an operator who
+  hides something. Custom field keys follow their own settings (above).
+- **The preview of a delete** reads its values from the record, which the hide setting stamps but does not
+  change; it leaves out the values of the hidden fields too. When you hide `name` (or `title`, `identifier`), the
+  preview of a delete shows only what is left, so it may name its target in `result` alone: hiding wins over
+  "a preview names its target".
+- The identity fields at the top of a result (the project name beside a version, for instance) and the texts of
+  `validation_errors` for a hidden field are not covered yet.
 
 ## Help text `attribute_caption` and `caption`
 

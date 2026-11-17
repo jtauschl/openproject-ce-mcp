@@ -86,6 +86,7 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._payload_masking import record_payload
 from ._work_package_presentation import present_target
 
 # Mirrors OpenProject's own Relation::TYPES hash (app/models/relation.rb):
@@ -406,12 +407,7 @@ class RelationService:
         current = await self._api.get(relation_id)
         await self._ensure_relation_writable(current)
         normalized = self._stamp(current.summary())
-        payload = {
-            "id": normalized.id,
-            "type": normalized.type,
-            "from_id": normalized.from_id,
-            "to_id": normalized.to_id,
-        }
+        payload = record_payload(normalized, id="id", type="type", from_id="from_id", to_id="to_id")
         if not confirm:
             return RelationWriteResult(
                 action="delete",

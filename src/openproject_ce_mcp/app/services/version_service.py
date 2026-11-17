@@ -22,6 +22,7 @@ from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.version_api import VersionApi
 from ..resolvers.version_query import fetch_version_page
+from ._payload_masking import record_payload
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -212,7 +213,7 @@ class VersionService:
             project_id_to_identifier=self._project_id_to_identifier,
         )
         detail = self._stamp(current.to_detail())
-        payload = {"id": detail.id, "name": detail.name}
+        payload = record_payload(detail, id="id", name="name")
 
         if not confirm:
             return VersionWriteResult(

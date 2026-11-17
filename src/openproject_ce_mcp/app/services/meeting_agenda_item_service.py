@@ -45,6 +45,7 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._payload_masking import record_payload
 from ._work_package_presentation import present_target
 
 
@@ -363,7 +364,7 @@ class MeetingAgendaItemService:
             raise NotFoundError(f"OpenProject meeting agenda item {agenda_item_id} has no parent meeting.")
         await self._ensure_meeting_allowed(meeting_id, write=True)
         item = self._stamp(current.summary)
-        payload = {"id": item.id, "title": item.title}
+        payload = record_payload(item, id="id", title="title")
 
         if not confirm:
             return MeetingAgendaItemWriteResult(

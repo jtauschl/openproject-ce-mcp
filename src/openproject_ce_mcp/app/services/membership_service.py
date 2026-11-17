@@ -50,6 +50,7 @@ from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.role_api import RoleApi, RoleRecord
+from ._payload_masking import record_payload
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_scoped_list import SUBJECT_LIMIT
 from .project_scoped_list import trim_text as _trim_text
@@ -207,7 +208,7 @@ class MembershipService:
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         membership = self._stamp(current.summary)
-        payload = {"id": membership.id, "principal": membership.principal_name, "roles": membership.role_names}
+        payload = record_payload(membership, id="id", principal="principal_name", roles="role_names")
 
         if not confirm:
             return MembershipWriteResult(

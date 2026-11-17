@@ -32,3 +32,11 @@ def shown_payload(payload: dict[str, Any], *, entity: str, settings: Settings) -
         elif keep(key):
             shown[key] = value
     return without_hidden_custom_fields(shown, entity=entity, settings=settings)
+
+
+def record_payload(record: Any, **keys: str) -> dict[str, Any]:
+    """The payload of a delete preview: `key=attribute` pairs read from a record the service stamped.
+    The stamp lists the hidden fields in `_hidden_keys` (absent when nothing is hidden) and changes no
+    value, so a value the settings hide is left out here, not copied into the dict."""
+    hidden: frozenset[str] = getattr(record, "_hidden_keys", frozenset())
+    return {key: getattr(record, attribute) for key, attribute in keys.items() if attribute not in hidden}

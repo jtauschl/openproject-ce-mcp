@@ -63,6 +63,7 @@ from ..policies import access, board_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.board_api import BoardApi
 from ..ports.project_ref import ProjectRefResolver
+from ._payload_masking import record_payload
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_scoped_list import record_in_project, resolve_project_filter_id
 
@@ -329,7 +330,7 @@ class BoardService:
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         board = self._stamp(current.detail)
-        payload = {"id": board.id, "name": board.name}
+        payload = record_payload(board, id="id", name="name")
 
         if not confirm:
             return BoardWriteResult(

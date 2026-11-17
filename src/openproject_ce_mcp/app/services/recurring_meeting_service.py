@@ -46,6 +46,7 @@ from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.recurring_meeting_api import RecurringMeetingApi
 from ..version_gate import call_version_gated
+from ._payload_masking import record_payload
 
 
 class RecurringMeetingService:
@@ -347,7 +348,7 @@ class RecurringMeetingService:
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         recurring_meeting = self._stamp(current.summary)
-        payload = {"id": recurring_meeting.id, "title": recurring_meeting.title}
+        payload = record_payload(recurring_meeting, id="id", title="title")
 
         if not confirm:
             return RecurringMeetingWriteResult(

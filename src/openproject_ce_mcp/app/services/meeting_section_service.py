@@ -35,6 +35,7 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.meeting_section_api import MeetingSectionApi
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._payload_masking import record_payload
 
 
 class MeetingSectionService:
@@ -226,7 +227,7 @@ class MeetingSectionService:
             raise NotFoundError(f"OpenProject meeting section {section_id} has no parent meeting.")
         await self._ensure_meeting_allowed(meeting_id, write=True)
         section = self._stamp(current.summary)
-        payload = {"id": section.id, "title": section.title}
+        payload = record_payload(section, id="id", title="title")
 
         if not confirm:
             return MeetingSectionWriteResult(

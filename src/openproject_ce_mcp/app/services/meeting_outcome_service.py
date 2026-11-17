@@ -37,6 +37,7 @@ from ..ports.meeting_outcome_api import MeetingOutcomeApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._payload_masking import record_payload
 from ._work_package_presentation import present_target
 
 
@@ -285,7 +286,7 @@ class MeetingOutcomeService:
         agenda_item_id = current.summary.meeting_agenda_item_id
         await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
         outcome = self._stamp(current.summary)
-        payload = {"id": outcome.id, "kind": outcome.kind}
+        payload = record_payload(outcome, id="id", kind="kind")
 
         if not confirm:
             return MeetingOutcomeWriteResult(

@@ -76,6 +76,7 @@ from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
+from ._payload_masking import record_payload
 from ._work_package_presentation import present_target
 
 # Files that must never be uploaded even from inside the attachment root: the
@@ -579,12 +580,9 @@ class AttachmentService:
         record = await self._api.get(attachment_id)
         attachment = self._stamp(record.summary)
         work_package_id = await self._ensure_container_allowed(record.container_link, write=True)
-        preview_payload = {
-            "id": attachment.id,
-            "title": attachment.title,
-            "fileName": attachment.file_name,
-            "fileSize": attachment.file_size_bytes,
-        }
+        preview_payload = record_payload(
+            attachment, id="id", title="title", fileName="file_name", fileSize="file_size_bytes"
+        )
         if not confirm:
             return AttachmentWriteResult(
                 action="delete",

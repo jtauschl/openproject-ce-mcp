@@ -34,6 +34,7 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..version_gate import call_version_gated
+from ._payload_masking import record_payload
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -341,7 +342,7 @@ class MeetingService:
                 "deleting it would break the series. To delete the whole series with all its occurrences, use "
                 "delete_recurring_meeting."
             )
-        payload = {"id": meeting.id, "title": meeting.title}
+        payload = record_payload(meeting, id="id", title="title")
 
         if not confirm:
             return MeetingWriteResult(

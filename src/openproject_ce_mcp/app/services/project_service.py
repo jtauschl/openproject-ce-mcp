@@ -63,7 +63,7 @@ from ._custom_field_masking import (
     redacted_validation_errors,
 )
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
-from ._payload_masking import shown_payload
+from ._payload_masking import record_payload, shown_payload
 from ._project_presentation import hidden_references_replaced, present_detail, present_summaries
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -394,7 +394,7 @@ class ProjectService:
     async def delete(self, *, project_ref: str, confirm: bool = False) -> ProjectWriteResult:
         record = await self._resolver.resolve_record(project_ref, write=True)
         project = self._stamp(record.summary)
-        payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
+        payload = record_payload(project, id="id", identifier="identifier", name="name")
 
         if not confirm:
             return ProjectWriteResult(

@@ -22,6 +22,7 @@ and 0.2.0 the first one published to PyPI.
 
 ### Fixed
 
+- Write and delete previews and rejected writes no longer show, in their `payload`, values of fields hidden by `OPENPROJECT_HIDE_<ENTITY>_FIELDS`.
 - `list_boards` honours `offset` and `limit`: without a filter it ignored both, because the boards collection is unpaginated.
 - The previews of `delete_reminder`, `delete_user_working_hours` and `set_user_locked` name their target; lock and unlock report a missing user before `confirm`.
 - `get_job_status` returns the job message between the `<user-content>` tags like every other long-form text.

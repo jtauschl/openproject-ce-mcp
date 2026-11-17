@@ -34,6 +34,7 @@ from ..policies import scope as scope_policy
 from ..policies.news_policy import news_payload_allowed
 from ..ports.news_api import NewsApi
 from ..ports.project_ref import ProjectRefResolver
+from ._payload_masking import record_payload
 from .project_scoped_list import SUBJECT_LIMIT, record_in_project, resolve_project_filter_id
 from .project_scoped_list import trim_text as _trim_text
 
@@ -278,7 +279,7 @@ class NewsService:
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         detail = self._stamp(current.to_detail())
-        payload = {"id": detail.id, "title": detail.title}
+        payload = record_payload(detail, id="id", title="title")
 
         if not confirm:
             return _to_write_result(_delete_outcome(state="preview", payload=payload, detail=detail))

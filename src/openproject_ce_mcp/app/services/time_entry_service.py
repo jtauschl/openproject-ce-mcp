@@ -68,6 +68,7 @@ from ..ports.project_ref import ProjectIdResolver, ProjectRefResolver
 from ..ports.time_entry_api import TimeEntryApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..resolvers.project_query import fetch_project_page
+from ._payload_masking import record_payload
 from ._work_package_presentation import present_target
 from ._write_outcome import _finalize_write
 from .project_scoped_list import SUBJECT_LIMIT
@@ -615,7 +616,7 @@ class TimeEntryService:
             project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         detail = self._stamp(self._api.to_record(current, text_limit=self._settings.text_limit).summary())
-        payload = {"id": detail.id, "hours": detail.hours, "spentOn": detail.spent_on}
+        payload = record_payload(detail, id="id", hours="hours", spentOn="spent_on")
         if not confirm:
             return TimeEntryWriteResult(
                 action="delete",

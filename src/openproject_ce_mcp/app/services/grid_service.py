@@ -67,6 +67,7 @@ from ..policies.grid_policy import (
 from ..policies.scope import PrefixMismatch, prefix_mismatch_error
 from ..ports.grid_api import GridApi, GridRecord
 from ..ports.project_lookup_api import ProjectLookupApi
+from ._payload_masking import record_payload
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 # Bounds the project lookups one page of grids can start at once.
@@ -303,7 +304,7 @@ class GridService:
         current = await self._api.get(grid_id)
         await self._check_record(current, write=True)
         grid = self._stamp(current.summary)
-        payload = {"id": grid.id}
+        payload = record_payload(grid, id="id")
 
         if not confirm:
             return GridWriteResult(
