@@ -29,7 +29,11 @@ def _rendered_text_record() -> RenderedTextRecord:
 def _help_text_record(help_text_id: int = 5) -> HelpTextRecord:
     return HelpTextRecord(
         summary=HelpTextSummary(
-            id=help_text_id, attribute_name="description", attribute_caption="Description", help_text="Describe it."
+            id=help_text_id,
+            attribute_name="description",
+            attribute_caption="Description",
+            caption=None,
+            help_text="Describe it.",
         )
     )
 

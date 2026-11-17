@@ -1620,6 +1620,7 @@ class HelpTextSummary:
     id: int
     attribute_name: str | None
     attribute_caption: str | None
+    caption: str | None
     help_text: str | None
 
 

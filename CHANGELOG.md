@@ -8,6 +8,10 @@ and 0.2.0 the first one published to PyPI.
 
 ## [0.4.6] - Unreleased
 
+### Changed
+
+- **Breaking:** `attribute_caption` of help texts is now the attribute label (null on 16.x before); the stored caption moves to the new `caption` field.
+
 ### Removed
 
 - **Breaking:** `get_project_phase` no longer returns `start_date` and `finish_date`, which were always null; stop reading them.

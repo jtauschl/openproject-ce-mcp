@@ -1399,7 +1399,8 @@ async def test_help_texts_and_working_days() -> None:
                             {
                                 "id": 5,
                                 "attribute": "description",
-                                "caption": "Description",
+                                "attributeFieldName": "Description",
+                                "caption": "Our own caption",
                                 "helpText": {"format": "markdown", "raw": "Describe the work."},
                             }
                         ]
@@ -1413,7 +1414,8 @@ async def test_help_texts_and_working_days() -> None:
                 json={
                     "id": 5,
                     "attributeName": "description",
-                    "caption": "Description",
+                    "attributeFieldName": "Description",
+                    "caption": "Our own caption",
                     "helpText": {"format": "markdown", "raw": "Describe the work."},
                 },
                 request=request,

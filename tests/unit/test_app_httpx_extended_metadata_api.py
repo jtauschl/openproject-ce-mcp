@@ -27,7 +27,7 @@ def test_normalize_help_text_extracts_raw_text_from_nested_dict() -> None:
         {
             "id": 5,
             "attributeName": "description",
-            "caption": "Description",
+            "attributeFieldName": "Description",
             "helpText": {"format": "markdown", "raw": "Describe the work."},
         }
     )
@@ -35,6 +35,38 @@ def test_normalize_help_text_extracts_raw_text_from_nested_dict() -> None:
     assert summary.attribute_name == "description"
     assert summary.attribute_caption == "Description"
     assert summary.help_text == "<user-content>Describe the work.</user-content>"
+
+
+def test_attribute_caption_is_the_attribute_label_16_x_renders_as_attribute_caption() -> None:
+    # help_text_representer.rb 16.0 to 16.6: `property :attribute_caption`; no stored caption exists there.
+    summary = normalize_help_text({"id": 5, "attribute": "description", "attributeCaption": "Description"})
+
+    assert summary.attribute_caption == "Description"
+    assert summary.caption is None
+
+
+def test_attribute_caption_is_the_attribute_label_17_x_renders_as_attribute_field_name() -> None:
+    # 17.0 and later: `property :attribute_field_name` (the label) next to `property :caption` (the stored text).
+    summary = normalize_help_text(
+        {"id": 5, "attribute": "description", "attributeFieldName": "Description", "caption": "Our own caption"}
+    )
+
+    assert summary.attribute_caption == "Description"
+    assert summary.caption == "Our own caption"
+
+
+def test_a_17_x_help_text_without_a_stored_caption_has_no_caption() -> None:
+    summary = normalize_help_text({"id": 5, "attribute": "description", "attributeFieldName": "Description"})
+
+    assert summary.attribute_caption == "Description"
+    assert summary.caption is None
+
+
+def test_the_stored_caption_is_not_taken_for_the_attribute_label() -> None:
+    summary = normalize_help_text({"id": 5, "attribute": "description", "caption": "Our own caption"})
+
+    assert summary.attribute_caption is None
+    assert summary.caption == "Our own caption"
 
 
 def test_normalize_help_text_falls_back_to_attribute_key() -> None:

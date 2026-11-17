@@ -39,15 +39,17 @@ def normalize_help_text(payload: dict[str, Any]) -> HelpTextSummary:
     entity has no hidden-field masking at the adapter level (masking, if
     any, is a Service-layer concern).
 
-    attribute_caption reads `caption` -- `HelpTextRepresenter` (verified
-    against the OpenProject 16.1 and 17.7 source) declares `property :caption` with no
-    `as:` rename, not `attributeCaption`.
+    `attribute_caption` is the label of the attribute: `HelpTextRepresenter`
+    renders it as `attributeCaption` on 16.0 to 16.6 and as `attributeFieldName`
+    from 17.0 on. `caption` is the text an administrator stored for the help
+    text, rendered from 17.0 on only; it is not the attribute label.
     """
     help_text_value = payload.get("helpText")
     return HelpTextSummary(
         id=int(payload["id"]),
         attribute_name=payload.get("attribute") or payload.get("attributeName"),
-        attribute_caption=payload.get("caption"),
+        attribute_caption=payload.get("attributeCaption", payload.get("attributeFieldName")),
+        caption=payload.get("caption"),
         help_text=_delimit_user_content(
             _trim_text(
                 help_text_value.get("raw") if isinstance(help_text_value, dict) else help_text_value,

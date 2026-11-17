@@ -98,12 +98,16 @@ def test_get_help_text_schema() -> None:
                 "anyOf": [{"type": "string"}, {"type": "null"}],
                 "title": "Attribute Caption",
             },
+            "caption": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "title": "Caption",
+            },
             "help_text": {
                 "anyOf": [{"type": "string"}, {"type": "null"}],
                 "title": "Help Text",
             },
         },
-        "required": ["id", "attribute_name", "attribute_caption", "help_text"],
+        "required": ["id", "attribute_name", "attribute_caption", "caption", "help_text"],
         "title": "HelpTextSummary",
         "type": "object",
     }
