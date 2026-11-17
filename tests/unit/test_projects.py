@@ -504,8 +504,6 @@ async def test_instance_configuration_and_project_phase_definitions() -> None:
     assert project_phase.phase_definition_id == 2
     assert project_phase.phase_definition == "Executing"
     assert project_phase.active is True
-    assert project_phase.start_date is None
-    assert project_phase.finish_date is None
     assert project_phase.project == "Demo"
 
     await client.aclose()

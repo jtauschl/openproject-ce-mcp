@@ -266,7 +266,7 @@ user exists.
 | --- | --- |
 | `list_project_phase_definitions` | List available project lifecycle phase definitions |
 | `get_project_phase_definition` | Fetch a single project lifecycle phase definition by id |
-| `get_project_phase` | Fetch a single project lifecycle phase by id, with its definition and `active` flag (`start_date` and `finish_date` are always null: the API does not provide them) |
+| `get_project_phase` | Fetch a single project lifecycle phase by id, with its definition and `active` flag |
 
 ## Views
 

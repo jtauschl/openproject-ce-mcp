@@ -435,7 +435,7 @@ async def get_project_phase(
     ctx: Context,
     phase_id: int,
 ) -> ProjectPhase:
-    """Get a single project lifecycle phase by id. `start_date` and `finish_date` stay null: the API does not provide them."""
+    """Get a single project lifecycle phase by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(phase_id, field_name="phase_id")
     return await _run_tool(client.project.get_phase(safe_id))

@@ -1089,8 +1089,6 @@ class ProjectPhase:
     phase_definition_id: int | None
     phase_definition: str | None
     active: bool
-    start_date: str | None
-    finish_date: str | None
     created_at: str | None
     updated_at: str | None
 

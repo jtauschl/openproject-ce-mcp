@@ -8,6 +8,10 @@ and 0.2.0 the first one published to PyPI.
 
 ## [0.4.6] - Unreleased
 
+### Removed
+
+- **Breaking:** `get_project_phase` no longer returns `start_date` and `finish_date`, which were always null; stop reading them.
+
 ### Fixed
 
 - `list_boards` honours `offset` and `limit`: without a filter it ignored both, because the boards collection is unpaginated.

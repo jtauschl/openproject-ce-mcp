@@ -1392,10 +1392,7 @@ def test_get_project_phase_definition_schema() -> None:
 
 def test_get_project_phase_schema() -> None:
     tool = _tools(create_app(_make_settings()))["get_project_phase"]
-    assert tool.description == (
-        "Get a single project lifecycle phase by id. "
-        "`start_date` and `finish_date` stay null: the API does not provide them."
-    )
+    assert tool.description == "Get a single project lifecycle phase by id."
     assert tool.output_schema == {
         "properties": {
             "id": {
@@ -1454,28 +1451,6 @@ def test_get_project_phase_schema() -> None:
                 "title": "Active",
                 "type": "boolean",
             },
-            "start_date": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Start Date",
-            },
-            "finish_date": {
-                "anyOf": [
-                    {
-                        "type": "string",
-                    },
-                    {
-                        "type": "null",
-                    },
-                ],
-                "title": "Finish Date",
-            },
             "created_at": {
                 "anyOf": [
                     {
@@ -1507,8 +1482,6 @@ def test_get_project_phase_schema() -> None:
             "phase_definition_id",
             "phase_definition",
             "active",
-            "start_date",
-            "finish_date",
             "created_at",
             "updated_at",
         ],
