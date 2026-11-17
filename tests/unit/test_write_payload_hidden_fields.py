@@ -95,6 +95,7 @@ ECHO: dict[str, dict[str, Any]] = {
         "active": True,
         "statusExplanation": {"raw": "why"},
         "createdAt": "2026-01-01T00:00:00Z",
+        "_meta": {"sendNotifications": False},
         "_links.parent": {"href": "/api/v3/projects/1", "title": "Root"},
         "_links.status": {"href": "/api/v3/project_statuses/on_track"},
     },
@@ -135,8 +136,6 @@ ECHO: dict[str, dict[str, Any]] = {
         "id": 4,
         "rowCount": 2,
         "columnCount": 3,
-        "createdAt": "2026-01-01T00:00:00Z",
-        "updatedAt": "2026-01-02T00:00:00Z",
         "_links.scope": {"href": "/projects/demo/boards"},
     },
     "meeting": {
@@ -262,8 +261,6 @@ GONE: dict[str, dict[str, set[str]]] = {
         "id": {"id"},
         "row_count": {"rowCount"},
         "column_count": {"columnCount"},
-        "created_at": {"createdAt"},
-        "updated_at": {"updatedAt"},
         "scope": {"_links.scope"},
     },
     "meeting": {

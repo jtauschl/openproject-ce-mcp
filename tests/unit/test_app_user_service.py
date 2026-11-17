@@ -565,6 +565,16 @@ async def test_delete_preview_hides_configured_user_fields() -> None:
     assert result.result._hidden_keys == frozenset({"email"})
 
 
+@pytest.mark.asyncio
+async def test_delete_preview_keeps_the_caller_id_in_its_payload_when_another_field_is_hidden() -> None:
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": ("email",)})
+    service = _service(_FakeUserApi([_record(user_id=5)]), settings=settings)
+
+    result = await service.delete(5, confirm=False)
+
+    assert result.payload == {"id": 5}
+
+
 class _MissingUserApi(_FakeUserApi):
     async def get_user(self, user_ref: str) -> UserRecord:
         self.get_user_calls.append(user_ref)

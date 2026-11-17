@@ -114,11 +114,14 @@ that carries a field `OPENPROJECT_HIDE_<ENTITY>_FIELDS` hides, under its wire na
 - **An unknown key is hidden once the entity has any hide setting.** The server renders keys the client does not
   classify (module patches, newer versions); such a key is shown only while nothing of its entity is hidden. A key
   you passed in yourself and the client does not classify therefore disappears from the preview of an operator who
-  hides something. Custom field keys follow their own settings (above).
+  hides something. Custom field keys follow their own settings (above). The same rule empties most of a preview
+  whose entity has many keys the client does not classify (a grid or a board): the keys of the table stay, the rest
+  goes as soon as any field of the entity is hidden.
 - **The preview of a delete** reads its values from the record, which the hide setting stamps but does not
   change; it leaves out the values of the hidden fields too. When you hide `name` (or `title`, `identifier`), the
-  preview of a delete shows only what is left, so it may name its target in `result` alone: hiding wins over
-  "a preview names its target".
+  preview of a delete names its target by its id only (in `payload`, and in the identity fields of the result,
+  which are not covered yet, see below): hiding wins over "a preview names its target". The record in `result`
+  is stamped like any read, so a hidden field is absent there as well.
 - The identity fields at the top of a result (the project name beside a version, for instance) and the texts of
   `validation_errors` for a hidden field are not covered yet.
 

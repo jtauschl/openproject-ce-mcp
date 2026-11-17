@@ -266,6 +266,7 @@ class UserWorkingHoursService:
             lambda: self._api.get(user_ref, working_hours_id), feature="User working hours", floor="17.3"
         )
         payload = {"id": working_hours_id}
+        result = self._stamp(current)
         if not confirm:
             return UserWorkingHoursWriteResult(
                 action="delete",
@@ -276,7 +277,7 @@ class UserWorkingHoursService:
                 user_id=current.summary.user_id,
                 payload=payload,
                 validation_errors={},
-                result=current.summary,
+                result=result,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
         await call_version_gated(
@@ -291,5 +292,5 @@ class UserWorkingHoursService:
             user_id=current.summary.user_id,
             payload=payload,
             validation_errors={},
-            result=current.summary,
+            result=result,
         )

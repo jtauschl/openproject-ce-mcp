@@ -72,8 +72,6 @@ PAYLOAD_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
         "id": ("id",),
         "rowCount": ("row_count",),
         "columnCount": ("column_count",),
-        "createdAt": ("created_at",),
-        "updatedAt": ("updated_at",),
         "_links.scope": ("scope",),
     },
     "meeting": {
@@ -133,10 +131,12 @@ PAYLOAD_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 
-# Keys the representer can render that carry no model field and are worth nothing to hide.
+# Keys the representer can render that carry no model field and are worth nothing to hide (`_meta` of a
+# project copy holds the copy options and `sendNotifications`; `id` of a user is the caller's own id in the
+# delete and lock previews, the form never renders it).
 NO_FIELD: dict[str, frozenset[str]] = {
-    "user": frozenset(),
-    "project": frozenset(),
+    "user": frozenset({"id"}),
+    "project": frozenset({"_meta"}),
     "version": frozenset(),
     "membership": frozenset({"_meta"}),
     "board": frozenset(),
@@ -198,7 +198,10 @@ NOT_IN_PAYLOAD: dict[str, dict[str, str]] = {
         "can_update": _COMPUTED,
         "can_delete": _COMPUTED,
     },
-    "grid": {},
+    "grid": {
+        "created_at": _READ_ONLY,
+        "updated_at": _READ_ONLY,
+    },
     "meeting": {
         "id": _READ_ONLY,
         "end_time": "derived from start time and duration, not writable",
