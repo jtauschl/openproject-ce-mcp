@@ -101,6 +101,12 @@ different name.
 fact. Hiding either one via `OPENPROJECT_HIDE_USER_FIELDS` hides both in every user result, and `create_user` (which
 writes `status`) and `set_user_locked` refuse while either is hidden.
 
+## Help text `attribute_caption` and `caption`
+
+`attribute_caption` is the label of the attribute and `caption` the text an administrator stored for it (17.0 and
+later): two different facts, so each hides on its own through `OPENPROJECT_HIDE_HELP_TEXT_FIELDS`. A pattern that
+named only `attribute_caption` hid the stored caption before 0.4.6 and now needs `caption` added.
+
 The context entities (`project_access`, `project_admin_context`, `project_configuration`, `project_work_package_context`) hide
 each listed field of their own result as a whole, including a list of options such as `available_statuses`; the rules of
 the entity an option belongs to (for example `status`) are not applied to the options inside such a field.

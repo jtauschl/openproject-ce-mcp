@@ -663,7 +663,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                                 "_links": {
                                     "self": {"href": "/api/v3/documents/5"},
                                     "project": {"href": "/api/v3/projects/6", "title": "Demo"},
-                                    "update": {"href": "/api/v3/documents/5/form", "method": "post"},
+                                    "update": {"href": "/api/v3/documents/5", "method": "patch"},
                                 },
                             }
                         ]
@@ -684,7 +684,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                         "self": {"href": "/api/v3/documents/5"},
                         "project": {"href": "/api/v3/projects/6", "title": "Demo"},
                         "attachments": {"href": "/api/v3/documents/5/attachments"},
-                        "update": {"href": "/api/v3/documents/5/form", "method": "post"},
+                        "update": {"href": "/api/v3/documents/5", "method": "patch"},
                     },
                     "_embedded": {
                         "attachments": {"count": 2, "total": 2},
@@ -707,7 +707,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                         "self": {"href": "/api/v3/documents/5"},
                         "project": {"href": "/api/v3/projects/6", "title": "Demo"},
                         "attachments": {"href": "/api/v3/documents/5/attachments"},
-                        "update": {"href": "/api/v3/documents/5/form", "method": "post"},
+                        "update": {"href": "/api/v3/documents/5", "method": "patch"},
                     },
                     "_embedded": {
                         "attachments": {"count": 2, "total": 2},

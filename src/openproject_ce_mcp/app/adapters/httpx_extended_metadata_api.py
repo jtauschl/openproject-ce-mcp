@@ -28,6 +28,7 @@ from ..ports.extended_metadata_api import (
     WorkingDayRecord,
 )
 from ..transport.protocol import Transport
+from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import trim_text as _trim_text
 
@@ -42,14 +43,15 @@ def normalize_help_text(payload: dict[str, Any]) -> HelpTextSummary:
     `attribute_caption` is the label of the attribute: `HelpTextRepresenter`
     renders it as `attributeCaption` on 16.0 to 16.6 and as `attributeFieldName`
     from 17.0 on. `caption` is the text an administrator stored for the help
-    text, rendered from 17.0 on only; it is not the attribute label.
+    text, rendered from 17.0 on only; it is not the attribute label, and as free
+    text it is delimited like the help text itself.
     """
     help_text_value = payload.get("helpText")
     return HelpTextSummary(
         id=int(payload["id"]),
         attribute_name=payload.get("attribute"),
         attribute_caption=payload.get("attributeCaption", payload.get("attributeFieldName")),
-        caption=payload.get("caption"),
+        caption=_delimit_user_content(_trim_text(payload.get("caption"), limit=SUBJECT_LIMIT)),
         help_text=_delimit_user_content(
             _trim_text(
                 help_text_value.get("raw") if isinstance(help_text_value, dict) else help_text_value,

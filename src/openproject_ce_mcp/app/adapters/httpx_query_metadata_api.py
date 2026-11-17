@@ -4,8 +4,9 @@ No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `link_title`/`link_to_web_url`/`slug_from_href` are shared via
 `app/adapters/_text.py`.
 
-`_query_ref_identity` is local: the shared self-link/href/id triple repeated
-across all 5 normalize_query_* functions in this module.
+`_query_ref_identity` is local: the shared self-link/href/id triple of four
+of the five normalize_query_* functions in this module. The filter instance
+schema renders no `id`, so it takes the slug of its own self link.
 
 `filters`/`columns`/`operators`/`filter_instance_schemas` take a raw id and
 `quote(<id>, safe="")`-encode it as the path segment: these ids can contain
