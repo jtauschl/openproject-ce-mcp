@@ -37,11 +37,11 @@ UNMASKED: dict[tuple[str, str, str], str] = {
         "create",
         "{'fileName': file_info.file_name, 'fileSize': file_info.file_size_bytes, 'description': description}",
     ): CALLER_INPUT,
-    ("document_service.py", "update", "payload"): CALLER_INPUT,
+    ("document_service.py", "update", "{}"): CALLER_INPUT,
     ("group_service.py", "_write_result", "payload"): PARAMETER,
-    ("group_service.py", "create", "payload_preview"): CALLER_INPUT,
+    ("group_service.py", "create", "{'name': name, 'user_ids': user_ids or []}"): CALLER_INPUT,
     ("group_service.py", "delete", "{'id': group_id}"): CALLER_INPUT,
-    ("group_service.py", "update", "payload_preview"): CALLER_INPUT,
+    ("group_service.py", "update", "{}"): CALLER_INPUT,
     (
         "meeting_agenda_item_service.py",
         "create",
@@ -62,13 +62,17 @@ UNMASKED: dict[tuple[str, str, str], str] = {
         "update",
         "await self._build_write_payload(agenda_item_id=None, kind=kind, notes=notes, work_package_id=resolved_work_package_id)",
     ): CALLER_INPUT,
-    ("meeting_section_service.py", "create", "payload"): CALLER_INPUT,
-    ("meeting_section_service.py", "update", "payload"): CALLER_INPUT,
+    ("meeting_section_service.py", "create", "{}"): CALLER_INPUT,
+    ("meeting_section_service.py", "update", "{}"): CALLER_INPUT,
     ("news_service.py", "_committed", "payload"): PARAMETER,
     ("news_service.py", "_delete_outcome", "payload"): PARAMETER,
     ("news_service.py", "_preview", "payload"): PARAMETER,
-    ("news_service.py", "create", "payload"): CALLER_INPUT,
-    ("news_service.py", "update", "payload"): CALLER_INPUT,
+    (
+        "news_service.py",
+        "create",
+        "{'title': title, '_links': {'project': {'href': f'/api/v3/projects/{project_id}'}}}",
+    ): CALLER_INPUT,
+    ("news_service.py", "update", "{}"): CALLER_INPUT,
     (
         "recurring_meeting_service.py",
         "cancel_occurrence",
@@ -90,21 +94,21 @@ UNMASKED: dict[tuple[str, str, str], str] = {
         "await self._build_write_payload(project=None, title=title, frequency=frequency, start_time=start_time, interval=interval, end_after=end_after, end_date=end_date, iterations=iterations, monthly_day=None, monthly_ordinal=None, monthly_weekday=None)",
     ): CALLER_INPUT,
     ("relation_service.py", "create", "payload | {'to_work_package_id': related_numeric_id}"): CALLER_INPUT,
-    ("relation_service.py", "update", "body"): CALLER_INPUT,
-    ("reminder_service.py", "create", "payload"): CALLER_INPUT,
+    ("relation_service.py", "update", "{}"): CALLER_INPUT,
+    ("reminder_service.py", "create", "{'remindAt': remind_at}"): CALLER_INPUT,
     ("reminder_service.py", "delete", "{}"): CALLER_INPUT,
-    ("reminder_service.py", "update", "payload"): CALLER_INPUT,
+    ("reminder_service.py", "update", "{}"): CALLER_INPUT,
     ("storage_service.py", "_write_result", "payload"): PARAMETER,
-    ("storage_service.py", "create", "payload_preview"): CALLER_INPUT,
+    ("storage_service.py", "create", "{'name': name, 'provider_type': provider_type}"): CALLER_INPUT,
     ("storage_service.py", "delete", "{'id': storage_id}"): CALLER_INPUT,
-    ("storage_service.py", "update", "payload_preview"): CALLER_INPUT,
+    ("storage_service.py", "update", "{}"): CALLER_INPUT,
     ("user_non_working_time_service.py", "create", "{'startDate': start_date, 'endDate': end_date}"): CALLER_INPUT,
     ("user_non_working_time_service.py", "delete", "{'id': non_working_time_id}"): CALLER_INPUT,
-    ("user_non_working_time_service.py", "update", "payload"): CALLER_INPUT,
-    ("user_preferences_service.py", "update", "payload"): CALLER_INPUT,
-    ("user_working_hours_service.py", "create", "payload"): CALLER_INPUT,
+    ("user_non_working_time_service.py", "update", "{}"): CALLER_INPUT,
+    ("user_preferences_service.py", "update", "{}"): CALLER_INPUT,
+    ("user_working_hours_service.py", "create", "{'validFrom': valid_from}"): CALLER_INPUT,
     ("user_working_hours_service.py", "delete", "{'id': working_hours_id}"): CALLER_INPUT,
-    ("user_working_hours_service.py", "update", "payload"): CALLER_INPUT,
+    ("user_working_hours_service.py", "update", "{}"): CALLER_INPUT,
     ("wiki_page_link_service.py", "create", "{'identifier': identifier, 'provider': provider}"): CALLER_INPUT,
     ("wiki_page_link_service.py", "delete", "{'id': link_id}"): CALLER_INPUT,
     (
@@ -136,14 +140,23 @@ def _enclosing(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> ast.FunctionDe
     return None
 
 
+def _assignments(name: str, function: ast.AST) -> list[ast.expr]:
+    values: list[ast.expr] = []
+    for node in ast.walk(function):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            values.append(node.value)
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+            and node.value is not None
+        ):
+            values.append(node.value)
+    return values
+
+
 def _assigned_values(name: str, function: ast.AST) -> list[str]:
-    return sorted(
-        {
-            ast.unparse(node.value)
-            for node in ast.walk(function)
-            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets)
-        }
-    )
+    return sorted({ast.unparse(value) for value in _assignments(name, function)})
 
 
 def _unmasked_sites() -> set[tuple[str, str, str]]:
@@ -170,13 +183,8 @@ def _unmasked_sites() -> set[tuple[str, str, str]]:
                 if callee == "_finalize_write" or (callee == "self._write_result" and write_result_masks):
                     continue
                 if isinstance(value, ast.Name) and function is not None:
-                    assigned = [
-                        n
-                        for n in ast.walk(function)
-                        if isinstance(n, ast.Assign)
-                        and any(isinstance(t, ast.Name) and t.id == value.id for t in n.targets)
-                    ]
-                    if assigned and all(_masked_call(n.value) for n in assigned):
+                    assigned = _assignments(value.id, function)
+                    if assigned and all(_masked_call(n) for n in assigned):
                         continue
                 shown = ast.unparse(value)
                 if isinstance(value, ast.Name) and function is not None:
@@ -207,17 +215,37 @@ def test_the_shared_write_state_machine_and_the_user_result_call_the_masker() ->
 def test_no_write_result_carries_a_record_without_the_stamp() -> None:
     """`result=` of a write result takes a stamped record. The stamp lists the hidden fields of the record and the
     presentation leaves them out; a record handed over as read (`current.summary`, `record.to_detail()`) shows
-    every value. The scan reads constructor keywords only, like the guard above."""
+    every value. The scan reads constructor keywords only, like the guard above, and judges a value that is a record
+    accessor (`x.summary`, `x.detail`, `x.to_detail()`), or a local name one assignment of which is one; the argument
+    of `self._write_result` is exempt in a module whose `_write_result` calls `self._stamp` itself. A record built by
+    a model constructor, or a stamp lost on the way through a helper, is outside it."""
+
+    def accessor(value: ast.expr) -> bool:
+        callee = value.func if isinstance(value, ast.Call) else value
+        return isinstance(callee, ast.Attribute) and callee.attr in {"summary", "detail", "to_detail"}
+
     unstamped: list[tuple[str, int, str]] = []
     for path in sorted(SERVICES.glob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text())):
+        tree = ast.parse(path.read_text())
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        write_result_stamps = any(
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_write_result"
+            and any(isinstance(call, ast.Call) and ast.unparse(call.func) == "self._stamp" for call in ast.walk(node))
+            for node in ast.walk(tree)
+        )
+        for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
+                continue
+            if write_result_stamps and ast.unparse(node.func) == "self._write_result":
                 continue
             for keyword in node.keywords:
                 if keyword.arg != "result":
                     continue
-                value = keyword.value
-                callee = value.func if isinstance(value, ast.Call) else value
-                if isinstance(callee, ast.Attribute) and callee.attr in {"summary", "detail", "to_detail"}:
+                value, function = keyword.value, _enclosing(node, parents)
+                judged = [value]
+                if isinstance(value, ast.Name) and function is not None:
+                    judged = _assignments(value.id, function)
+                if any(accessor(item) for item in judged):
                     unstamped.append((path.name, keyword.value.lineno, ast.unparse(value)))
     assert unstamped == []
