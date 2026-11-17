@@ -479,7 +479,7 @@ def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> None:
 @pytest.mark.asyncio
 async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from_payload() -> None:
     # Scheduling/derived fields (scheduleManually, ignoreNonWorkingDays,
-    # derivedStartDate, derivedDueDate, percentageDone, derivedPercentageDone, readonly)
+    # derivedStartDate, derivedDueDate, percentageDone, derivedPercentageDone)
     # respect OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS like every other work_package field.
     settings = _base_settings(hidden_fields={"work_package": ("schedule_manually",)})
     client = OpenProjectClient(
@@ -496,7 +496,6 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
         "derivedDueDate": "2026-07-15",
         "percentageDone": 40,
         "derivedPercentageDone": 55,
-        "readonly": False,
         "_links": {},
     }
 
@@ -512,7 +511,6 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
     assert summary.derived_due_date == "2026-07-15"
     assert summary.percentage_done == 40
     assert summary.derived_percentage_done == 55
-    assert summary.readonly is False
     serialized = _to_payload(summary)
     assert "schedule_manually" not in serialized
     assert serialized["derived_due_date"] == "2026-07-15"
@@ -524,7 +522,6 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
     )
     assert detail._hidden_keys == frozenset({"schedule_manually"})
     assert detail.derived_percentage_done == 55
-    assert detail.readonly is False
 
     await client.aclose()
 

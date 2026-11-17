@@ -463,7 +463,6 @@ class WorkPackageSummary:
     derived_due_date: str | None = None
     percentage_done: int | None = None
     derived_percentage_done: int | None = None
-    readonly: bool | None = None
     has_project_attributes: bool | None = None
     custom_fields: dict[str, Any] | None = None
     custom_fields_truncated: bool = False
@@ -514,7 +513,6 @@ class WorkPackageDetail:
     derived_due_date: str | None = None
     percentage_done: int | None = None
     derived_percentage_done: int | None = None
-    readonly: bool | None = None
     has_project_attributes: bool | None = None
     custom_fields: dict[str, Any] | None = None
     custom_fields_truncated: bool = False

@@ -255,6 +255,13 @@ EXCLUSIONS: list[FieldExclusion] = [
     ),
     FieldExclusion(
         "work_package",
+        "readonly",
+        ExclusionCategory.ENTERPRISE,
+        "Rendered only if Status.can_readonly? (EnterpriseToken.allows_to?(:readonly_work_packages), "
+        "work_package_representer.rb:486-492); always absent on Community Edition, so not modeled.",
+    ),
+    FieldExclusion(
+        "work_package",
         "customActions",
         ExclusionCategory.ENTERPRISE,
         "Custom Actions is Enterprise-only per the CE-only policy "

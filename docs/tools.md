@@ -82,7 +82,7 @@ an invalid name returns the allowed set for that row type.
 
 Beyond the obvious fields, work packages also carry scheduling/derived state
 (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`,
-`derived_due_date`, `percentage_done`, `derived_percentage_done`, `readonly`,
+`derived_due_date`, `percentage_done`, `derived_percentage_done`,
 `has_project_attributes` — the last requires OpenProject 17.7+, absent/`None` on
 older instances); versions and memberships carry `created_at`/`updated_at`;
 users carry `firstname`/`lastname`; categories carry
