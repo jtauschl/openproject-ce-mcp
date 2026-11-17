@@ -13,6 +13,7 @@ and 0.2.0 the first one published to PyPI.
 - **Breaking:** `get_project_phase` no longer returns `start_date` and `finish_date`, which were always null; stop reading them.
 - **Breaking:** `get_job_status` no longer returns `created_resource_type`, `created_resource_id` and `created_resource_name`, which were always null; `project` is the copy target.
 - **Breaking:** work package results no longer carry `readonly`, which Community Edition never renders; stop reading it and drop it from `select`.
+- **Breaking:** `list_documents` rows no longer carry `attachment_count`, which was always 0 there; `get_document` still returns it. Drop it from `select`.
 
 ### Fixed
 

@@ -28,7 +28,6 @@ def _summary(
         project=project,
         description=description,
         created_at="2026-01-01T00:00:00Z",
-        attachment_count=0,
         can_update=True,
     )
 
@@ -42,7 +41,7 @@ def _detail(**kwargs: object) -> DocumentDetail:
         project=summary.project,
         description=summary.description,
         created_at=summary.created_at,
-        attachment_count=summary.attachment_count,
+        attachment_count=0,
         can_update=summary.can_update,
     )
 

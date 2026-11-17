@@ -74,7 +74,7 @@ def test_list_documents_schema() -> None:
             "select": {
                 "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                 "default": None,
-                "description": "Fields to return; a requested unset field comes back as null. Allowed: attachment_count, can_update, created_at, description, description_length, description_truncated, id, project, project_id, title.",
+                "description": "Fields to return; a requested unset field comes back as null. Allowed: can_update, created_at, description, description_length, description_truncated, id, project, project_id, title.",
                 "title": "Select",
             },
             "text_limit": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None, "title": "Text Limit"},

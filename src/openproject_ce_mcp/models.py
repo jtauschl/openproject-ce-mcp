@@ -898,7 +898,6 @@ class DocumentSummary:
     project: str | None
     description: str | None
     created_at: str | None
-    attachment_count: int
     can_update: bool
     description_truncated: bool = False
     description_length: int | None = None

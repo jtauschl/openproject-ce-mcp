@@ -665,9 +665,6 @@ async def test_job_status_documents_news_and_wiki() -> None:
                                     "project": {"href": "/api/v3/projects/6", "title": "Demo"},
                                     "updateImmediately": {"href": "/api/v3/documents/5", "method": "patch"},
                                 },
-                                "_embedded": {
-                                    "attachments": {"count": 2, "total": 2},
-                                },
                             }
                         ]
                     }

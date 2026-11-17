@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import dataclasses
+
 import httpx
 import pytest
 
-from openproject_ce_mcp.app.adapters.httpx_document_api import HttpxDocumentApi
+from openproject_ce_mcp.app.adapters.httpx_document_api import (
+    HttpxDocumentApi,
+    normalize_document,
+    normalize_document_detail,
+)
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
+from openproject_ce_mcp.models import DocumentSummary
 
 BASE_URL = "https://op.example.com"
 
@@ -37,7 +44,10 @@ async def test_list_all_sends_bounded_page_and_builds_records() -> None:
         params = dict(request.url.params)
         assert params["offset"] == "1"
         assert params["pageSize"] == "50"
-        return httpx.Response(200, json={"_embedded": {"elements": [_document_payload()]}}, request=request)
+        # A collection element never embeds its attachments (only GET and PATCH of one document set embed_links).
+        row = _document_payload()
+        del row["_embedded"]
+        return httpx.Response(200, json={"_embedded": {"elements": [row]}}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxDocumentApi(HttpxTransport(http_client))
@@ -47,7 +57,6 @@ async def test_list_all_sends_bounded_page_and_builds_records() -> None:
     assert len(records) == 1
     assert records[0].summary.id == 1
     assert records[0].summary.title == "Architecture"
-    assert records[0].summary.attachment_count == 2
     assert records[0].project_link == {"href": "/api/v3/projects/6", "title": "Demo Project"}
     # to_detail() is lazy -- list_all()'s per-row records must still be able
     # to produce a correct DocumentDetail on demand, it's just never called
@@ -166,3 +175,35 @@ async def test_commit_update_patches_and_returns_detail() -> None:
         detail = await api.commit_update(1, {"title": "Updated"})
 
     assert detail.id == 1
+
+
+def test_the_summary_carries_no_attachment_count() -> None:
+    # Collection rows never embed `_embedded.attachments`, so a count there would always be 0.
+    assert "attachment_count" not in {field.name for field in dataclasses.fields(DocumentSummary)}
+
+
+def test_the_detail_counts_the_attachments_embedded_in_its_own_payload() -> None:
+    payload = _document_payload()
+    payload["_embedded"] = {"attachments": {"count": 3}}
+
+    assert normalize_document_detail(payload).attachment_count == 3
+    assert normalize_document_detail(payload, summary=normalize_document(payload)).attachment_count == 3
+
+
+def test_the_detail_count_is_zero_without_embedded_attachments() -> None:
+    payload = _document_payload()
+    del payload["_embedded"]
+
+    assert normalize_document_detail(payload).attachment_count == 0
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_update_counts_the_attachments_the_patch_response_embeds() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_document_payload(), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxDocumentApi(HttpxTransport(http_client))
+        detail = await api.commit_update(1, {"title": "New"})
+
+    assert detail.attachment_count == 2
