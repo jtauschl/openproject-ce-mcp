@@ -42,10 +42,12 @@ from ..ports.meeting_outcome_api import MeetingOutcomeApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._payload_masking import record_payload, stamped_write_results
 from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
+@stamped_write_results
 class MeetingOutcomeService:
     def __init__(
         self,
@@ -289,7 +291,7 @@ class MeetingOutcomeService:
         agenda_item_id = current.summary.meeting_agenda_item_id
         await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
         outcome_summary = self._stamp(current.summary)
-        payload = {"id": outcome_summary.id, "kind": outcome_summary.kind}
+        payload = record_payload(outcome_summary, id="id", kind="kind")
 
         async def _commit(p: dict[str, Any]) -> MeetingOutcomeSummary:
             await call_version_gated(lambda: self._api.delete(outcome_id), feature="Meeting outcomes", floor="17.6")
@@ -300,6 +302,7 @@ class MeetingOutcomeService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={
                 "outcome_id": outcome_summary.id,

@@ -55,7 +55,8 @@ from ...config import Settings
 from ...models import WriteResultState
 from ..form_result import ValidationFailure
 from ..link_titles import without_foreign_capable_titles
-from ._custom_field_masking import redacted_validation_errors, without_hidden_custom_fields
+from ._custom_field_masking import redacted_validation_errors
+from ._payload_masking import shown_payload
 
 _DetailT = TypeVar("_DetailT")
 
@@ -87,14 +88,21 @@ async def _finalize_write(
     success_message: str,
     gate_before_preview: bool = False,
     preview_detail: Any = None,
+    record_built_payload: bool = False,
 ) -> _WriteOutcome[Any]:
     """Rejected/preview/committed state machine, shared by every Service that
     needs it (Versions, Projects, Memberships, Group, Storage, User).
 
-    See the module docstring for `gate_before_preview`/`preview_detail`."""
+    See the module docstring for `gate_before_preview`/`preview_detail`.
+
+    `record_built_payload`: the payload of a delete preview is built from the stamped record by
+    `record_payload`, which leaves out hidden fields itself; its keys are the client's own, so the form echo
+    table must not judge them a second time (an `id` the table does not know would go)."""
     if gate_before_preview:
         ensure_write_enabled()
-    shown = without_hidden_custom_fields(without_foreign_capable_titles(payload), entity=entity, settings=settings)
+    shown = shown_payload(
+        without_foreign_capable_titles(payload), entity=entity, settings=settings, record_built=record_built_payload
+    )
     if validation_errors:
         return _WriteOutcome(
             ready=False,

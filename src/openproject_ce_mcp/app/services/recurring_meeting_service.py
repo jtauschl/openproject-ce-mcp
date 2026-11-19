@@ -46,9 +46,11 @@ from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.recurring_meeting_api import RecurringMeetingApi
 from ..version_gate import call_version_gated
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
+@stamped_write_results
 class RecurringMeetingService:
     def __init__(
         self,
@@ -332,7 +334,7 @@ class RecurringMeetingService:
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         recurring_meeting = self._stamp(current.summary)
-        payload = {"id": recurring_meeting.id, "title": recurring_meeting.title}
+        payload = record_payload(recurring_meeting, id="id", title="title")
 
         async def _commit(p: dict[str, Any]) -> RecurringMeetingSummary:
             await call_version_gated(
@@ -345,6 +347,7 @@ class RecurringMeetingService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"recurring_meeting_id": recurring_meeting.id, "project": recurring_meeting.project},
             ensure_write_enabled=lambda: access.ensure_write_enabled("meeting", settings=self._settings),

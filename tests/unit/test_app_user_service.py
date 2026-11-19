@@ -566,6 +566,16 @@ async def test_delete_preview_hides_configured_user_fields() -> None:
     assert result.result._hidden_keys == frozenset({"email"})
 
 
+@pytest.mark.asyncio
+async def test_delete_preview_keeps_the_caller_id_in_its_payload_when_another_field_is_hidden() -> None:
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": ("email",)})
+    service = _service(_FakeUserApi([_record(user_id=5)]), settings=settings)
+
+    result = await service.delete(5, confirm=False)
+
+    assert result.payload == {"id": 5}
+
+
 class _MissingUserApi(_FakeUserApi):
     async def get_user(self, user_ref: str) -> UserRecord:
         self.get_user_calls.append(user_ref)
@@ -686,6 +696,43 @@ async def test_create_rejects_when_locked_is_hidden_because_it_writes_the_status
 
     assert api.create_form_calls == []
     assert api.commit_create_calls == []
+
+
+class _EchoingUserApi(_FakeUserApi):
+    """The form answer of OpenProject: every attribute the caller may write, sent or not."""
+
+    async def update_form(self, user_id: int, payload: dict) -> UserFormResult:
+        self.update_form_calls.append((user_id, payload))
+        echoed = {**payload, "login": "ada", "email": "ada@example.com", "status": "locked", "language": "en"}
+        return UserFormResult(payload=echoed, validation_errors=self.validation_errors)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hidden", ["status", "locked"])
+@pytest.mark.parametrize("rejected", [False, True])
+async def test_update_leaves_out_the_status_the_form_echoes_when_status_or_locked_is_hidden(
+    hidden: str, rejected: bool
+) -> None:
+    api = _EchoingUserApi()
+    if rejected:
+        api.validation_errors = {"firstName": "is too long"}
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": (hidden,)})
+
+    result = await _service(api, settings=settings).update(user_id=5, firstname="Ada", confirm=False)
+
+    shown = _to_payload(result)["payload"]
+    assert "status" not in shown
+    assert shown["login"] == "ada" and shown["firstName"] == "Ada"
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_update_still_commits_the_status_the_form_echoed() -> None:
+    api = _EchoingUserApi()
+    settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": ("locked",)})
+
+    await _service(api, settings=settings).update(user_id=5, firstname="Ada", confirm=True)
+
+    assert api.commit_update_calls[0][1]["status"] == "locked"
 
 
 @pytest.mark.asyncio

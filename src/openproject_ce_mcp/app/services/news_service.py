@@ -32,11 +32,13 @@ from ..policies.news_policy import news_payload_allowed
 from ..ports.news_api import NewsApi
 from ..ports.project_ref import ProjectRefResolver
 from . import _stored_text_edit
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_scoped_list import SUBJECT_LIMIT, record_in_project, resolve_project_filter_id
 from .project_scoped_list import trim_text as _trim_text
 
 
+@stamped_write_results
 class NewsService:
     def __init__(
         self,
@@ -229,7 +231,7 @@ class NewsService:
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         detail = self._stamp(current.to_detail())
-        payload = {"id": detail.id, "title": detail.title}
+        payload = record_payload(detail, id="id", title="title")
 
         async def _commit(p: dict[str, Any]) -> NewsDetail:
             await self._api.delete(news_id)
@@ -240,6 +242,7 @@ class NewsService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"news_id": detail.id, "project": detail.project},
             ensure_write_enabled=lambda: access.ensure_write_enabled("project", settings=self._settings),

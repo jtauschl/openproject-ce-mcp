@@ -45,6 +45,7 @@ from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.user_working_hours_api import UserWorkingHoursApi, UserWorkingHoursRecord
 from ..version_gate import call_version_gated
+from ._payload_masking import stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 _WRITABLE_FIELDS: tuple[tuple[str, str], ...] = (
@@ -60,6 +61,7 @@ _WRITABLE_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
+@stamped_write_results
 class UserWorkingHoursService:
     def __init__(self, *, api: UserWorkingHoursApi, settings: Settings) -> None:
         self._api = api
@@ -262,7 +264,7 @@ class UserWorkingHoursService:
             await call_version_gated(
                 lambda: self._api.delete(user_ref, working_hours_id), feature="User working hours", floor="17.3"
             )
-            return current.summary
+            return self._stamp(current)
 
         outcome = await _finalize_write(
             entity="user_working_hours",
@@ -277,7 +279,7 @@ class UserWorkingHoursService:
             rejected_message="",
             preview_message="Ask for confirmation, then call again with confirm=true to delete it.",
             success_message="Working-hours schedule deleted successfully.",
-            preview_detail=current.summary,
+            preview_detail=self._stamp(current),
         )
         return self._to_write_result("delete", outcome)
 

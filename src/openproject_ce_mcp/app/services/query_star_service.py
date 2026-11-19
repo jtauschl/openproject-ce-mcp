@@ -24,8 +24,10 @@ from ..policies import access
 from ..policies import scope as scope_policy
 from ..ports.current_user import CurrentUserLookup
 from ..ports.query_star_api import QueryStarApi
+from ._payload_masking import stamped_write_results
 
 
+@stamped_write_results
 class QueryStarService:
     def __init__(
         self,
@@ -58,7 +60,7 @@ class QueryStarService:
                 action="set_starred",
                 state="confirmed" if confirm else "preview",
                 ready=True,
-                message=f"Query {query_id} is already {word}; nothing changes.",
+                message=f"The query is already {word}; nothing changes.",
                 query_id=query_id,
                 starred=starred,
             )
@@ -71,7 +73,7 @@ class QueryStarService:
                 action="set_starred",
                 state="preview",
                 ready=True,
-                message=f"Ask for confirmation, then call again with confirm=true to mark query {query_id} {word}.",
+                message=f"Ask for confirmation, then call again with confirm=true to mark the query {word}.",
                 query_id=query_id,
                 starred=starred,
             )
@@ -80,7 +82,7 @@ class QueryStarService:
             action="set_starred",
             state="confirmed",
             ready=True,
-            message=f"Query {query_id} marked {word}.",
+            message=f"Query marked {word}.",
             query_id=query_id,
             starred=starred,
         )

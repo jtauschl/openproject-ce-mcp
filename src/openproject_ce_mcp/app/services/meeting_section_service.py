@@ -35,9 +35,11 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.meeting_section_api import MeetingSectionApi
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
+@stamped_write_results
 class MeetingSectionService:
     def __init__(
         self,
@@ -211,7 +213,7 @@ class MeetingSectionService:
             raise NotFoundError(f"OpenProject meeting section {section_id} has no parent meeting.")
         await self._ensure_meeting_allowed(meeting_id, write=True)
         section = self._stamp(current.summary)
-        payload = {"id": section.id, "title": section.title}
+        payload = record_payload(section, id="id", title="title")
 
         async def _commit(p: dict[str, Any]) -> MeetingSectionSummary:
             await call_version_gated(lambda: self._api.delete(section_id), feature="Meeting sections", floor="17.6")
@@ -222,6 +224,7 @@ class MeetingSectionService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"section_id": section.id, "meeting_id": section.meeting_id},
             ensure_write_enabled=lambda: access.ensure_write_enabled("meeting", settings=self._settings),

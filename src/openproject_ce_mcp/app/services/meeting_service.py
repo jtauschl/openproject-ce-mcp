@@ -34,6 +34,7 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..version_gate import call_version_gated
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -46,6 +47,7 @@ def _with_participants(form_payload: dict[str, Any], request_payload: dict[str, 
     return {**form_payload, "_links": {**form_payload.get("_links", {}), "participants": participants}}
 
 
+@stamped_write_results
 class MeetingService:
     def __init__(
         self,
@@ -345,7 +347,7 @@ class MeetingService:
                 "end_recurring_meeting (OpenProject 17.8+); to delete the whole series with all its occurrences, "
                 "use delete_recurring_meeting."
             )
-        payload = {"id": meeting.id, "title": meeting.title}
+        payload = record_payload(meeting, id="id", title="title")
 
         async def _commit(p: dict[str, Any]) -> MeetingSummary:
             await call_version_gated(lambda: self._api.delete(meeting_id), feature="Meetings", floor="17.4")
@@ -356,6 +358,7 @@ class MeetingService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"meeting_id": meeting.id, "project": meeting.project},
             ensure_write_enabled=lambda: access.ensure_write_enabled("meeting", settings=self._settings),

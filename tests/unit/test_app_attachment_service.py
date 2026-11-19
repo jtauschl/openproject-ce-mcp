@@ -416,6 +416,15 @@ async def test_create_rejects_hidden_file_name_field() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_rejects_a_hidden_title_like_a_hidden_file_name() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("title",)})
+    service = _service(settings=settings)
+
+    with pytest.raises(InvalidInputError, match="title"):
+        await service.create(work_package_id=9, file_path="report.pdf", confirm=False)
+
+
+@pytest.mark.asyncio
 async def test_create_rejects_hidden_description_field_only_when_description_given(tmp_path) -> None:
     report = tmp_path / "report.pdf"
     report.write_bytes(b"hello")
@@ -865,6 +874,16 @@ async def test_get_content_metadata_honours_hidden_attachment_fields() -> None:
     # The image itself is still inlined: hiding is exposure control on the
     # metadata, not a second authorization layer on the content.
     assert outcome.image_bytes == b"PNG"
+
+
+@pytest.mark.asyncio
+async def test_get_content_metadata_hides_the_file_name_with_the_title() -> None:
+    """The title of an upload is its file name: hiding `title` leaves the `file_name` key out as well."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("title",)})
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+    outcome = await _service(api=api, settings=settings).get_content(5)
+
+    assert "file_name" not in _to_payload(outcome.metadata, elide_none=False)
 
 
 @pytest.mark.asyncio

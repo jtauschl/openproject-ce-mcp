@@ -158,7 +158,10 @@ def edit_stored_field(
         return None, None
     hidden_fields.ensure_field_writable(entity, field, settings=settings)
     ensure_one_text_input(field, full, append, replace)
-    return edited_text(field, stored or "", full, append, replace)
+    text, sentence = edited_text(field, stored or "", full, append, replace)
+    if hidden_fields.field_hidden(entity, f"{field}_length", settings=settings):
+        return text, None
+    return text, sentence
 
 
 def joined_sentences(*sentences: str | None) -> str | None:

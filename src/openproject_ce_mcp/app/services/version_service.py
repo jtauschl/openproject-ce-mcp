@@ -25,10 +25,12 @@ from ..ports.version_api import VersionApi
 from ..resolvers.project_query import fetch_allowed_project_page
 from ..resolvers.version_query import fetch_version_page
 from . import _stored_text_edit
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_service import _stamp_project
 
 
+@stamped_write_results
 class VersionService:
     def __init__(
         self,
@@ -278,7 +280,7 @@ class VersionService:
             project_id_to_identifier=self._project_id_to_identifier,
         )
         detail = self._stamp(current.to_detail())
-        payload = {"id": detail.id, "name": detail.name}
+        payload = record_payload(detail, id="id", name="name")
 
         async def _commit(p: dict[str, Any]) -> VersionDetail:
             await self._api.delete(version_id)
@@ -289,6 +291,7 @@ class VersionService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"version_id": detail.id, "project": detail.defining_project},
             ensure_write_enabled=lambda: access.ensure_write_enabled("version", settings=self._settings),

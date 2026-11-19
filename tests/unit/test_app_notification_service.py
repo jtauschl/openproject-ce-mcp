@@ -772,7 +772,7 @@ async def test_mark_unread_calls_only_the_unread_route_after_confirmation() -> N
     assert (result.action, result.state, result.message) == (
         "mark_unread",
         "confirmed",
-        "Notification 10 marked unread.",
+        "Notification marked unread.",
     )
     assert api.mark_unread_calls == [10]
     assert api.mark_read_calls == []

@@ -69,6 +69,7 @@ from ..policies.grid_policy import (
 from ..policies.scope import PrefixMismatch
 from ..ports.grid_api import GridApi, GridRecord
 from ..ports.project_lookup_api import ProjectLookupApi
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 # Bounds the project lookups one page of grids can start at once.
@@ -81,6 +82,7 @@ def _href(link: Any) -> Any:
     return link.get("href") if isinstance(link, dict) else None
 
 
+@stamped_write_results
 class GridService:
     def __init__(
         self,
@@ -307,7 +309,7 @@ class GridService:
         current = await self._api.get(grid_id)
         await self._check_record(current, write=True)
         grid = self._stamp(current.summary)
-        payload = {"id": grid.id}
+        payload = record_payload(grid, id="id")
 
         async def _commit(p: dict[str, Any]) -> GridSummary:
             await self._api.delete(grid_id)
@@ -318,6 +320,7 @@ class GridService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"grid_id": grid.id, "scope": grid.scope},
             ensure_write_enabled=lambda: access.ensure_write_enabled("project", settings=self._settings),

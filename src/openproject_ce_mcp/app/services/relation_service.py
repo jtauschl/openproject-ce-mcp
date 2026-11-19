@@ -86,6 +86,7 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._payload_masking import record_payload, shown_payload, stamped_write_results
 from ._work_package_target import check_target, resolved_target
 
 _EXPECT_RELATED = "expect_related_display_id"
@@ -141,6 +142,7 @@ def _queried_relation_perspective(
     )
 
 
+@stamped_write_results
 class RelationService:
     def __init__(
         self,
@@ -345,7 +347,9 @@ class RelationService:
         if lag is not None:
             payload["lag"] = lag
 
-        preview_payload = payload | {"to_work_package_id": related_numeric_id}
+        preview_payload = shown_payload(
+            payload | {"to_work_package_id": related_numeric_id}, entity="relation", settings=self._settings
+        )
         if not confirm:
             return RelationWriteResult(
                 action="create",
@@ -400,9 +404,9 @@ class RelationService:
                 action="update",
                 state="preview",
                 ready=True,
-                message=f"Ready to update relation {relation_id}. Call again with confirm=true.",
+                message="Ready to update the relation. Call again with confirm=true.",
                 relation_id=relation_id,
-                payload=body,
+                payload=shown_payload(body, entity="relation", settings=self._settings),
                 result=existing,
             )
         access.ensure_write_enabled("work_package", settings=self._settings)
@@ -414,7 +418,7 @@ class RelationService:
             ready=True,
             message="Relation updated successfully.",
             relation_id=relation_id,
-            payload=body,
+            payload=shown_payload(body, entity="relation", settings=self._settings),
             result=detail,
         )
 
@@ -422,12 +426,7 @@ class RelationService:
         current = await self._api.get(relation_id)
         await self._ensure_relation_writable(current)
         normalized = self._stamp(current.summary())
-        payload = {
-            "id": normalized.id,
-            "type": normalized.type,
-            "from_id": normalized.from_id,
-            "to_id": normalized.to_id,
-        }
+        payload = record_payload(normalized, id="id", type="type", from_id="from_id", to_id="to_id")
         if not confirm:
             return RelationWriteResult(
                 action="delete",

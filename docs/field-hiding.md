@@ -48,9 +48,9 @@ Project custom fields (project attributes) follow the same rules as work package
   the result.
 - `get_project_admin_context` leaves out the definitions of hidden attributes.
 - The preview and result `payload` of every write that shows a form payload (projects, work packages,
-  versions, users, time entries and the rest) leave out hidden values the form echoes back. A validation
-  error on a hidden key keeps the key and its error classes and replaces its message, so a rejected write does not name the hidden
-  field's title or value.
+  versions, users, time entries and the rest) leave out hidden custom field values the form echoes back, and
+  the static fields too (see "Write previews" below). A validation error on a hidden key keeps the key and its
+  error classes and replaces its message, so a rejected write does not name the hidden field's title or value.
 - Like every read-side hide, this follows the raw key: a pattern written as a friendly name refuses writes by
   that name but does not redact (see below).
 - A version-valued attribute that points to a version outside `OPENPROJECT_READ_PROJECTS` reads as `null`,
@@ -111,6 +111,61 @@ refusal messages leave out any other hidden field (`project`, `subject`) as well
 `locked` is derived from `status` (`status` is the value `locked` for a locked account), so the two names are one
 fact. Hiding either one via `OPENPROJECT_HIDE_USER_FIELDS` hides both in every user result, and `create_user` (which
 writes `status`) and `set_user_locked` refuse while either is hidden.
+
+## Write previews: the `payload` of a result
+
+The server's form answer echoes every attribute the contract lets the caller write, whether the caller sent it or
+not, so a preview of `update_user(firstname=...)` would show the user's `status`, `login` and `email`. The `payload`
+of a write result (preview, rejected and invalid; a confirmed result carries none) therefore leaves out every key
+that carries a field `OPENPROJECT_HIDE_<ENTITY>_FIELDS` hides, under its wire name (`startDate` for `start_date`,
+`_links.parent` for `parent_id` and `parent_name`, `firstName` and `lastName` for `firstname`, `lastname` and
+`name`). The coupled pairs hide together here as everywhere (`status` and `locked`, `version` and
+`target_versions`, `user` and `user_id`). The body sent to the server when you confirm is not changed.
+
+- **An unknown key is hidden once the entity has any hide setting.** The server renders keys the client does not
+  classify (module patches, newer versions); such a key is shown only while nothing of its entity is hidden. A key
+  you passed in yourself and the client does not classify therefore disappears from the preview of an operator who
+  hides something. Custom field keys follow their own settings (above). The same rule empties most of a preview
+  whose entity has many keys the client does not classify (a grid or a board): the keys of the table stay, the rest
+  goes as soon as any field of the entity is hidden.
+- **The preview of a delete** reads its values from the record, which the hide setting stamps but does not
+  change; it leaves out the values of the hidden fields too. When you hide `name` (or `title`, `identifier`), the
+  preview of a delete names its target by its id only (see "Write results" below): hiding wins over "a preview
+  names its target". The record in `result` is stamped like any read, so a hidden field is absent there as well.
+- The texts of `validation_errors`, of a rejected commit and of a batch item error for a hidden field are not
+  covered yet: the server's message can name the field or quote its value.
+
+## Write results: identity fields and copies of a hidden value
+
+A write result repeats the value of a field in members beside `payload` and `result`: the identity fields
+(`project`, `meeting_id`, `grid_id`, `work_package_id` ...) and the work package `target` and `related_target` of a
+write that names a work package through an association (`time_entry.entity_id`, `relation.from_id` and `to_id`,
+`attachment.container_id`). Each member names the field it repeats (its owner; a few members name two fields that
+carry the same value, such as the id and the display id of a work package): when the settings hide that field the
+member leaves the result, key and value. The owner of `project` is the field of the entity that was written
+(`version.defining_project`, `membership.project_name`, `work_package.project`), not the `name` of the project;
+hiding a project's name does not change another entity's result, as on reads.
+
+- **Ids are fields.** `work_package_id`, `meeting_id` and the like leave the result when the `id` (for a work
+  package reference also the `display_id`) or the named association field is hidden, in every copy: the `id`, the
+  meeting, agenda item and occurrence references and the file name and size of an upload in a preview `payload` too.
+  A hidden `id` leaves a delete preview without the id; the record in `result` and the message still describe it.
+- **A relation names its ends by direction.** OpenProject stores `precedes` as `follows` with the ends swapped, so
+  on a create hiding `from_id` or `to_id` hides every member that names an end of the relation: the ids, the work
+  package `target` and `related_target` and the destination link in the `payload`; hiding a caption of an end
+  (`from_subject`, `to_subject`) hides the two targets only. A delete preview names the stored ends, which are fields
+  of their own, and keeps the other one.
+- **The title of an attachment is its file name**; the two hide together, in every attachment result.
+- **The target of a work package create is its parent**, so it hangs on `parent_id` and `parent_display_id`; the
+  target of an update is the work package itself and stays.
+- **The messages of a write name no value.** They say what the tool did; the storage update preview keeps a
+  fixed note about Nextcloud storages, which is advice and not the record's value.
+- The `target` of a time entry is a work package: hiding `entity_id` or `entity_name` removes the `target`; the
+  `parent_target` of a work package or project update goes with `parent_id` (and `parent_display_id` or `parent_name`);
+  hiding the work package's own fields
+  works through the work package settings as on reads.
+- A value that is a part of another visible field (the date inside a visible start time) stays: the fields are
+  hidden one by one.
 
 ## Help text `attribute_caption` and `caption`
 

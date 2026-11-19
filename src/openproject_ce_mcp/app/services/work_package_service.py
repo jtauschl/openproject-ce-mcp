@@ -165,6 +165,7 @@ from ..version_gate import call_query_version_gated
 from . import _stored_text_edit
 from ._custom_field_filters import append_custom_field_filters
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
+from ._payload_masking import record_payload, stamped_write_results
 from ._schema_write_helpers import (
     VERSION_ERROR_KEYS,
     resolve_schema_option_href,
@@ -430,6 +431,7 @@ def _requested(**parameters: Any) -> list[str]:
     return [name for name, value in parameters.items() if value is not None and value is not False and value != []]
 
 
+@stamped_write_results
 class WorkPackageService:
     def __init__(
         self,
@@ -2347,7 +2349,7 @@ class WorkPackageService:
         detail = stamp_detail(
             await self._filter_hierarchy_allowlist(await self._detail_of(record)), settings=self._settings
         )
-        payload = {"id": detail.id, "subject": detail.subject, "lockVersion": detail.lock_version}
+        payload = record_payload(detail, id="id", subject="subject", lockVersion="lock_version")
 
         async def _commit(p: dict[str, Any]) -> None:
             await self._api.delete(ref)
@@ -2357,6 +2359,7 @@ class WorkPackageService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"work_package_id": detail.id, "project": detail.project},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
@@ -2490,9 +2493,10 @@ class WorkPackageService:
         existing_comment = (activity.get("comment") or {}).get("raw") or ""
         if not existing_comment.strip():
             raise InvalidInputError(f"Activity {activity_id} has no existing comment to edit.")
-        comment, sentence = _stored_text_edit.edited_text(
-            "comment", existing_comment, comment, comment_append, comment_replace
+        comment, sentence = _stored_text_edit.edit_stored_field(
+            "activity", "comment", existing_comment, comment, comment_append, comment_replace, settings=self._settings
         )
+        assert comment is not None  # one of the three inputs is given, so the field is edited
         if not comment.strip():
             raise InvalidInputError(
                 "The edit would leave the comment blank. OpenProject has no delete for comments, so a comment "
@@ -2509,8 +2513,7 @@ class WorkPackageService:
                     f"OpenProject is ready to replace the text of comment {activity_id}. "
                     "Editing may notify people; PATCH has no notify=false option. "
                     "The old text is overwritten, with no comment-version history or recovery through OpenProject/API. "
-                    "Ask for confirmation, then call again with confirm=true."
-                    f" {sentence}"
+                    "Ask for confirmation, then call again with confirm=true." + (f" {sentence}" if sentence else "")
                 ),
                 work_package_id=work_package_id,
                 payload=payload,
@@ -2528,7 +2531,7 @@ class WorkPackageService:
             action="update_comment",
             state="confirmed",
             ready=True,
-            message=f"Comment updated successfully. {sentence}",
+            message=_stored_text_edit.with_sentence("Comment updated successfully.", sentence),
             work_package_id=work_package_id,
             payload=payload,
             validation_errors={},

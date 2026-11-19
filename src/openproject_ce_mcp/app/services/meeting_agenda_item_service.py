@@ -50,10 +50,12 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
+from ._payload_masking import record_payload, stamped_write_results
 from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
+@stamped_write_results
 class MeetingAgendaItemService:
     def __init__(
         self,
@@ -365,7 +367,7 @@ class MeetingAgendaItemService:
             raise NotFoundError(f"OpenProject meeting agenda item {agenda_item_id} has no parent meeting.")
         await self._ensure_meeting_allowed(meeting_id, write=True)
         item = self._stamp(current.summary)
-        payload = {"id": item.id, "title": item.title}
+        payload = record_payload(item, id="id", title="title")
 
         async def _commit(p: dict[str, Any]) -> MeetingAgendaItemSummary:
             await call_version_gated(
@@ -378,6 +380,7 @@ class MeetingAgendaItemService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"agenda_item_id": item.id, "meeting_id": item.meeting_id},
             ensure_write_enabled=lambda: access.ensure_write_enabled("meeting", settings=self._settings),

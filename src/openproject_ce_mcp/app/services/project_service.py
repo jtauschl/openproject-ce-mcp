@@ -63,9 +63,9 @@ from ._custom_field_masking import (
     is_custom_comment_key,
     mask_custom_field_values,
     redacted_validation_errors,
-    without_hidden_custom_fields,
 )
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
+from ._payload_masking import record_payload, shown_payload, stamped_write_results
 from ._project_presentation import hidden_references_replaced, present_detail, present_summaries
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -163,6 +163,7 @@ def _stamp_project(value: Any, *, settings: Settings, project_id_to_identifier: 
     return hidden_fields.apply_hidden_fields("project", value, settings=settings)
 
 
+@stamped_write_results
 class ProjectService:
     def __init__(
         self,
@@ -414,7 +415,7 @@ class ProjectService:
     async def delete(self, *, project_ref: str, confirm: bool = False) -> ProjectWriteResult:
         record = await self._resolver.resolve_record(project_ref, write=True)
         project = self._stamp(record.summary)
-        payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
+        payload = record_payload(project, id="id", identifier="identifier", name="name")
 
         async def _commit(p: dict[str, Any]) -> None:
             await self._api.delete(project.id)
@@ -424,6 +425,7 @@ class ProjectService:
             settings=self._settings,
             confirm=confirm,
             payload=payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"project_id": project.id, "project": project.name},
             ensure_write_enabled=lambda: access.ensure_write_enabled("project", settings=self._settings),
@@ -488,9 +490,7 @@ class ProjectService:
         # The form echoes a comment key for every commented attribute, and OpenProject answers a copy request
         # that carries one with HTTP 500 (its copy job cannot serialize the comment's numeric key).
         copy_payload = {key: value for key, value in form.payload.items() if not is_custom_comment_key(key)}
-        shown = without_hidden_custom_fields(
-            without_foreign_capable_titles(copy_payload), entity="project", settings=self._settings
-        )
+        shown = shown_payload(without_foreign_capable_titles(copy_payload), entity="project", settings=self._settings)
         ready = not form.validation_errors
         errors = redacted_validation_errors(form.validation_errors, entity="project", settings=self._settings)
         if not confirm:

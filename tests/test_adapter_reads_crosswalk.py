@@ -305,7 +305,7 @@ def test_what_the_model_cannot_follow_in_these_adapters_is_reported_not_skipped(
     reported = {(f.kind, f.context.split(":", 1)[1], f.reason) for f in analysis.findings}
 
     assert ("unresolved", "custom_field_raw_entries", ".items() iteration over a body") in reported
-    assert ("unresolved", "without_hidden_custom_fields", ".items() iteration over a body") in reported
+    assert ("unresolved", "shown_payload", ".items() iteration over a body") in reported
 
 
 def test_the_findings_inside_the_five_adapters_are_exactly_these(analysis: adapter_reads.Analysis) -> None:

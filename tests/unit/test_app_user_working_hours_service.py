@@ -321,3 +321,18 @@ async def test_delete_confirmed_deletes() -> None:
     assert result.state == "confirmed"
     assert result.result is not None and result.result.id == 5
     assert api.delete_calls == [("me", 5)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirm", [False, True])
+async def test_delete_result_leaves_out_hidden_fields(confirm: bool) -> None:
+    settings = dataclasses.replace(_schedule_settings(), hidden_fields={"user_working_hours": ("monday_hours",)})
+    service = _service(settings=settings)
+
+    result = await service.delete("me", 5, confirm=confirm)
+
+    assert result.result is not None
+    assert result.result._hidden_keys == frozenset({"monday_hours"})
+    serialized = _to_payload(result.result)
+    assert "monday_hours" not in serialized
+    assert serialized["tuesday_hours"] == 8.0

@@ -78,8 +78,12 @@ from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
+from ._payload_masking import record_payload, stamped_write_results
 from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
+
+# The title of an upload is its file name: one fact under two names, hidden together.
+_FILE_NAME_ALIASES: dict[str, Any] = {"title": None, "file_name": None}
 
 # Files that must never be uploaded even from inside the attachment root: the
 # config often lives in the server's working directory, so directory
@@ -180,6 +184,7 @@ class _PreparedFile:
     content_type: str
 
 
+@stamped_write_results
 class AttachmentService:
     def __init__(
         self,
@@ -197,7 +202,9 @@ class AttachmentService:
         self._resolve_work_package_record = resolve_work_package_record
 
     def _stamp(self, summary: AttachmentSummary) -> AttachmentSummary:
-        return hidden_fields.apply_hidden_fields("attachment", summary, settings=self._settings)
+        return hidden_fields.apply_hidden_fields_with_aliases(
+            "attachment", summary, settings=self._settings, aliases=_FILE_NAME_ALIASES
+        )
 
     async def list_for_work_package(
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None, include_total_size: bool = False
@@ -479,7 +486,7 @@ class AttachmentService:
             "attachment", "file_size_bytes", settings=self._settings
         ):
             size_bytes = None
-        return hidden_fields.apply_hidden_fields(
+        result = hidden_fields.apply_hidden_fields(
             "attachment",
             AttachmentContentResult(
                 attachment_id=summary.id,
@@ -492,6 +499,10 @@ class AttachmentService:
             ),
             settings=self._settings,
         )
+        # The title of an upload is its file name: hiding either hides the key (`_FILE_NAME_ALIASES`).
+        if hidden_fields.field_hidden("attachment", "title", settings=self._settings):
+            result._hidden_keys = getattr(result, "_hidden_keys", frozenset()) | frozenset({"file_name"})
+        return result
 
     def _classify(
         self, summary: AttachmentSummary, content: AttachmentContent, *, limit: int, aggregate: bool = False
@@ -660,6 +671,7 @@ class AttachmentService:
         """The upload state machine shared by work-package and other-container
         uploads, run after the caller has authorized the target container."""
         hidden_fields.ensure_field_writable("attachment", "file_name", settings=self._settings)
+        hidden_fields.ensure_field_writable("attachment", "title", settings=self._settings)
         if description is not None:
             hidden_fields.ensure_field_writable("attachment", "description", settings=self._settings)
         # Stat and validate the size BEFORE reading file bytes into memory:
@@ -726,12 +738,9 @@ class AttachmentService:
         record = await self._api.get(attachment_id)
         attachment = self._stamp(record.summary)
         work_package_id = await self._ensure_container_allowed(record.container_link, write=True)
-        preview_payload = {
-            "id": attachment.id,
-            "title": attachment.title,
-            "fileName": attachment.file_name,
-            "fileSize": attachment.file_size_bytes,
-        }
+        preview_payload = record_payload(
+            attachment, id="id", title="title", fileName="file_name", fileSize="file_size_bytes"
+        )
 
         async def _commit(p: dict[str, Any]) -> None:
             await self._api.delete(attachment_id)
@@ -741,6 +750,7 @@ class AttachmentService:
             settings=self._settings,
             confirm=confirm,
             payload=preview_payload,
+            record_built_payload=True,
             validation_errors={},
             identity={"attachment_id": attachment.id, "work_package_id": work_package_id},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),

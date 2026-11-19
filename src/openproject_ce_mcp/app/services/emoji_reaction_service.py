@@ -45,6 +45,7 @@ from ..policies.scope import id_from_href
 from ..ports.emoji_reaction_api import EmojiReactionApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ._payload_masking import stamped_write_results
 
 #: Valid reactions per the OpenProject API spec.
 EMOJI_REACTIONS = (
@@ -59,6 +60,7 @@ EMOJI_REACTIONS = (
 )
 
 
+@stamped_write_results
 class EmojiReactionService:
     def __init__(
         self,
@@ -116,9 +118,8 @@ class EmojiReactionService:
                 state="preview",
                 ready=True,
                 message=(
-                    f"Toggles the '{reaction}' reaction on activity {activity_id} — adds it if not "
-                    "already present, removes it if present. Ask for confirmation, then call again "
-                    "with confirm=true to apply it."
+                    "Toggles the reaction on the activity: adds it if not already present, removes it if "
+                    "present. Ask for confirmation, then call again with confirm=true to apply it."
                 ),
                 activity_id=activity_id,
                 reaction=reaction,
@@ -131,7 +132,7 @@ class EmojiReactionService:
             action="toggle_reaction",
             state="confirmed",
             ready=True,
-            message=f"Toggled '{reaction}' reaction on activity {activity_id}.",
+            message="Reaction toggled.",
             activity_id=activity_id,
             reaction=reaction,
             result=EmojiReactionListResult(count=len(results), results=results),
