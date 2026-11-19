@@ -32,9 +32,11 @@ from ...models import WatcherListResult, WatcherSummary, WatcherWriteResult
 from ..policies import access, hidden_fields
 from ..ports.watcher_api import WatcherApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
+from ._payload_masking import stamped_write_results
 from ._work_package_presentation import present_target
 
 
+@stamped_write_results
 class WatcherService:
     def __init__(
         self,

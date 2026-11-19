@@ -43,6 +43,7 @@ from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.user_working_hours_api import UserWorkingHoursApi, UserWorkingHoursRecord
 from ..version_gate import call_version_gated
+from ._payload_masking import stamped_write_results
 
 _WRITABLE_FIELDS: tuple[tuple[str, str], ...] = (
     ("valid_from", "validFrom"),
@@ -57,6 +58,7 @@ _WRITABLE_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
+@stamped_write_results
 class UserWorkingHoursService:
     def __init__(self, *, api: UserWorkingHoursApi, settings: Settings) -> None:
         self._api = api

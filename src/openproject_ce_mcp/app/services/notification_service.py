@@ -74,6 +74,7 @@ from ..ports.notification_api import NotificationApi, NotificationRecord
 from ..ports.readable_projects import ReadableProjects
 from ..ports.work_package_ref import WorkPackageProjectAllowedBulkCheck
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._payload_masking import stamped_write_results
 
 _NOTIFICATION_READ_DENIED = "OpenProject access to this notification is disabled by OPENPROJECT_READ_PROJECTS."
 _NO_READABLE_PROJECT = (
@@ -81,6 +82,7 @@ _NO_READABLE_PROJECT = (
 )
 
 
+@stamped_write_results
 class NotificationService:
     def __init__(
         self,
@@ -282,10 +284,7 @@ class NotificationService:
                 action="mark_read",
                 state="preview",
                 ready=True,
-                message=(
-                    f"Ask for confirmation, then call again with confirm=true to mark "
-                    f"notification {notification_id} read."
-                ),
+                message=("Ask for confirmation, then call again with confirm=true to mark the notification read."),
                 notification_id=notification_id,
             )
         await self._api.mark_read(notification_id)
@@ -293,7 +292,7 @@ class NotificationService:
             action="mark_read",
             state="confirmed",
             ready=True,
-            message=f"Notification {notification_id} marked read.",
+            message="Notification marked read.",
             notification_id=notification_id,
         )
 

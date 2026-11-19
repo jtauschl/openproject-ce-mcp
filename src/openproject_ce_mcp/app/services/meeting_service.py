@@ -34,7 +34,7 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..version_gate import call_version_gated
-from ._payload_masking import record_payload
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -47,6 +47,7 @@ def _with_participants(form_payload: dict[str, Any], request_payload: dict[str, 
     return {**form_payload, "_links": {**form_payload.get("_links", {}), "participants": participants}}
 
 
+@stamped_write_results
 class MeetingService:
     def __init__(
         self,

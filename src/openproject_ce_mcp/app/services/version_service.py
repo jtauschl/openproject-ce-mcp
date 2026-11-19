@@ -22,10 +22,11 @@ from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.version_api import VersionApi
 from ..resolvers.version_query import fetch_version_page
-from ._payload_masking import record_payload
+from ._payload_masking import record_payload, stamped_write_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
+@stamped_write_results
 class VersionService:
     def __init__(
         self,

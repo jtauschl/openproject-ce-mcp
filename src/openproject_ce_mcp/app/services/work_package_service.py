@@ -157,7 +157,7 @@ from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated
 from ._custom_field_filters import append_custom_field_filters
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
-from ._payload_masking import record_payload
+from ._payload_masking import record_payload, stamped_write_results
 from ._schema_write_helpers import resolve_schema_option_href, resolve_wp_ref_id
 from ._work_package_parents import parent_href, without_parent_unless
 from ._work_package_presentation import present_detail, present_summaries, present_target, stamp_detail
@@ -398,6 +398,7 @@ def _requested(**parameters: Any) -> list[str]:
     return [name for name, value in parameters.items() if value is not None and value is not False and value != []]
 
 
+@stamped_write_results
 class WorkPackageService:
     def __init__(
         self,

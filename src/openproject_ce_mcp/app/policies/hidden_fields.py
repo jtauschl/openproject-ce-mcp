@@ -11,6 +11,7 @@ from typing import Any, cast
 
 from ...config import HIDE_FIELD_ENV_BY_ENTITY, Settings
 from ..errors import InvalidInputError
+from .identity_fields import IDENTITY_BY_ACTION, IDENTITY_FIELDS, PAYLOAD_COPIES
 from .payload_fields import COUPLED_FIELDS, NO_FIELD, PAYLOAD_KEYS
 
 
@@ -68,6 +69,27 @@ def payload_key_hidden(entity: str, key: str, *, settings: Settings) -> bool:
     if carried_by is None:
         return key not in NO_FIELD[entity] and bool(hidden_patterns(entity, settings=settings))
     return any(_field_or_coupled_hidden(entity, name, settings=settings) for name in carried_by)
+
+
+def hidden_identity_keys(result_class: str, *, action: str | None = None, settings: Settings) -> frozenset[str]:
+    """The members of a write result of this class that repeat the value of a field the settings hide."""
+    table = IDENTITY_FIELDS.get(result_class, {}) | IDENTITY_BY_ACTION.get((result_class, action or ""), {})
+    if not table:
+        return frozenset()
+    return frozenset(
+        member
+        for member, owners in table.items()
+        if any(_field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
+    )
+
+
+def hidden_payload_copies(result_class: str, *, settings: Settings) -> frozenset[str]:
+    """The keys of a hand-built payload of this write result class that copy a field the settings hide."""
+    return frozenset(
+        key
+        for key, owners in PAYLOAD_COPIES.get(result_class, {}).items()
+        if any(_field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
+    )
 
 
 def ensure_field_writable(entity: str, field_name: str, *, settings: Settings) -> None:

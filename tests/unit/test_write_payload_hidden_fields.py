@@ -19,6 +19,7 @@ from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.app.policies.payload_fields import COUPLED_FIELDS, NO_FIELD, NOT_IN_PAYLOAD, PAYLOAD_KEYS
 from openproject_ce_mcp.app.services._payload_masking import shown_payload
 from openproject_ce_mcp.app.services._work_package_presentation import _VERSION_ALIASES
+from openproject_ce_mcp.app.services.attachment_service import _FILE_NAME_ALIASES
 from openproject_ce_mcp.app.services.time_entry_service import _USER_ALIASES
 from openproject_ce_mcp.app.services.user_service import _LOCK_STATE_ALIASES
 
@@ -31,6 +32,7 @@ _MODELS = {
     "grid": ("GridSummary", "GridDetail"),
     "meeting": ("MeetingSummary", "MeetingDetail"),
     "time_entry": ("TimeEntrySummary", "TimeEntryDetail"),
+    "relation": ("RelationSummary",),
     "work_package": ("WorkPackageSummary", "WorkPackageDetail"),
 }
 
@@ -70,14 +72,21 @@ def test_the_coupled_groups_are_the_alias_groups_the_services_stamp() -> None:
     assert COUPLED_FIELDS["user"] == (frozenset(_LOCK_STATE_ALIASES),)
     assert COUPLED_FIELDS["work_package"] == (frozenset(_VERSION_ALIASES),)
     assert COUPLED_FIELDS["time_entry"] == (frozenset(_USER_ALIASES),)
+    assert COUPLED_FIELDS["attachment"] == (frozenset(_FILE_NAME_ALIASES),)
     for entity, groups in COUPLED_FIELDS.items():
-        assert all(group <= _model_fields(entity) for group in groups)
+        fields = (
+            _model_fields(entity)
+            if entity in _MODELS
+            else {f.name for f in dataclasses.fields(models.AttachmentSummary)}
+        )
+        assert all(group <= fields for group in groups)
 
 
 # The form echo of each entity, written from the payload representer of 17.9. Keys under `_links` are written as
 # `_links.<rel>`; `unpack` below turns the flat form into the payload dict a service shows.
 ECHO: dict[str, dict[str, Any]] = {
     "user": {
+        "id": 5,
         "login": "ada",
         "admin": False,
         "firstName": "Ada",
@@ -164,6 +173,13 @@ ECHO: dict[str, dict[str, Any]] = {
         "_links.user": {"href": "/api/v3/users/5", "title": "Ada"},
         "_links.activity": {"href": "/api/v3/time_entries/activities/1"},
     },
+    "relation": {
+        "type": "follows",
+        "description": {"raw": "d"},
+        "lag": 2,
+        "_links.to": {"href": "/api/v3/work_packages/43"},
+        "to_work_package_id": 43,
+    },
     "work_package": {
         "subject": "S",
         "description": {"raw": "d"},
@@ -199,6 +215,7 @@ ECHO: dict[str, dict[str, Any]] = {
 # representers: it is the claim under test, independent of PAYLOAD_KEYS.
 GONE: dict[str, dict[str, set[str]]] = {
     "user": {
+        "id": {"id"},
         "login": {"login"},
         "admin": {"admin"},
         "firstname": {"firstName"},
@@ -292,6 +309,12 @@ GONE: dict[str, dict[str, set[str]]] = {
         "user": {"_links.user"},
         "user_id": {"_links.user"},
         "activity": {"_links.activity"},
+    },
+    "relation": {
+        "type": {"type"},
+        "description": {"description"},
+        "to_id": {"_links.to", "to_work_package_id"},
+        "from_id": {"_links.to", "to_work_package_id"},
     },
     "work_package": {
         "subject": {"subject"},

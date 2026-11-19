@@ -46,8 +46,10 @@ from ..policies.scope import id_from_href
 from ..ports.file_link_api import FileLinkApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ._payload_masking import stamped_write_results
 
 
+@stamped_write_results
 class FileLinkService:
     def __init__(
         self,

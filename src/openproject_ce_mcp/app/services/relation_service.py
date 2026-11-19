@@ -86,7 +86,7 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
-from ._payload_masking import record_payload
+from ._payload_masking import record_payload, shown_payload, stamped_write_results
 from ._work_package_presentation import present_target
 
 # Mirrors OpenProject's own Relation::TYPES hash (app/models/relation.rb):
@@ -140,6 +140,7 @@ def _queried_relation_perspective(
     )
 
 
+@stamped_write_results
 class RelationService:
     def __init__(
         self,
@@ -330,7 +331,9 @@ class RelationService:
         if lag is not None:
             payload["lag"] = lag
 
-        preview_payload = payload | {"to_work_package_id": related_numeric_id}
+        preview_payload = shown_payload(
+            payload | {"to_work_package_id": related_numeric_id}, entity="relation", settings=self._settings
+        )
         if not confirm:
             return RelationWriteResult(
                 action="create",
@@ -385,9 +388,9 @@ class RelationService:
                 action="update",
                 state="preview",
                 ready=True,
-                message=f"Ready to update relation {relation_id}. Call again with confirm=true.",
+                message="Ready to update the relation. Call again with confirm=true.",
                 relation_id=relation_id,
-                payload=body,
+                payload=shown_payload(body, entity="relation", settings=self._settings),
                 result=existing,
             )
         access.ensure_write_enabled("work_package", settings=self._settings)
@@ -399,7 +402,7 @@ class RelationService:
             ready=True,
             message="Relation updated successfully.",
             relation_id=relation_id,
-            payload=body,
+            payload=shown_payload(body, entity="relation", settings=self._settings),
             result=detail,
         )
 

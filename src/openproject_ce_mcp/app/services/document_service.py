@@ -36,9 +36,11 @@ from ..policies import scope as scope_policy
 from ..policies.document_policy import document_payload_allowed
 from ..ports.document_api import DocumentApi
 from ..ports.project_ref import ProjectRefResolver
+from ._payload_masking import stamped_write_results
 from .project_scoped_list import record_in_project, resolve_project_filter_id
 
 
+@stamped_write_results
 class DocumentService:
     def __init__(
         self,

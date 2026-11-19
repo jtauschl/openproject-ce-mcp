@@ -76,8 +76,11 @@ from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
-from ._payload_masking import record_payload
+from ._payload_masking import record_payload, stamped_write_results
 from ._work_package_presentation import present_target
+
+# The title of an upload is its file name: one fact under two names, hidden together.
+_FILE_NAME_ALIASES: dict[str, Any] = {"title": None, "file_name": None}
 
 # Files that must never be uploaded even from inside the attachment root: the
 # config often lives in the server's working directory, so directory
@@ -167,6 +170,7 @@ class _PreparedFile:
     content_type: str
 
 
+@stamped_write_results
 class AttachmentService:
     def __init__(
         self,
@@ -184,7 +188,9 @@ class AttachmentService:
         self._resolve_work_package_record = resolve_work_package_record
 
     def _stamp(self, summary: AttachmentSummary) -> AttachmentSummary:
-        return hidden_fields.apply_hidden_fields("attachment", summary, settings=self._settings)
+        return hidden_fields.apply_hidden_fields_with_aliases(
+            "attachment", summary, settings=self._settings, aliases=_FILE_NAME_ALIASES
+        )
 
     async def list_for_work_package(
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None, include_total_size: bool = False
@@ -393,7 +399,7 @@ class AttachmentService:
             "attachment", "file_size_bytes", settings=self._settings
         ):
             size_bytes = None
-        return hidden_fields.apply_hidden_fields(
+        result = hidden_fields.apply_hidden_fields(
             "attachment",
             AttachmentContentResult(
                 attachment_id=summary.id,
@@ -406,6 +412,10 @@ class AttachmentService:
             ),
             settings=self._settings,
         )
+        # The title of an upload is its file name: hiding either hides the key (`_FILE_NAME_ALIASES`).
+        if hidden_fields.field_hidden("attachment", "title", settings=self._settings):
+            result._hidden_keys = getattr(result, "_hidden_keys", frozenset()) | frozenset({"file_name"})
+        return result
 
     def _classify(
         self, summary: AttachmentSummary, content: AttachmentContent, *, limit: int, aggregate: bool = False
@@ -513,6 +523,7 @@ class AttachmentService:
         resolved_id = resolved.id
         target = present_target(resolved.payload, settings=self._settings)
         hidden_fields.ensure_field_writable("attachment", "file_name", settings=self._settings)
+        hidden_fields.ensure_field_writable("attachment", "title", settings=self._settings)
         if description is not None:
             hidden_fields.ensure_field_writable("attachment", "description", settings=self._settings)
         # Stat and validate the size BEFORE reading file bytes into memory:

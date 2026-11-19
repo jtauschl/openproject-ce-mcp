@@ -93,8 +93,6 @@ UNMASKED: dict[tuple[str, str, str], str] = {
         "update",
         "await self._build_write_payload(project=None, title=title, frequency=frequency, start_time=start_time, interval=interval, end_after=end_after, end_date=end_date, iterations=iterations, monthly_day=None, monthly_ordinal=None, monthly_weekday=None)",
     ): CALLER_INPUT,
-    ("relation_service.py", "create", "payload | {'to_work_package_id': related_numeric_id}"): CALLER_INPUT,
-    ("relation_service.py", "update", "{}"): CALLER_INPUT,
     ("reminder_service.py", "create", "{'remindAt': remind_at}"): CALLER_INPUT,
     ("reminder_service.py", "delete", "{}"): CALLER_INPUT,
     ("reminder_service.py", "update", "{}"): CALLER_INPUT,

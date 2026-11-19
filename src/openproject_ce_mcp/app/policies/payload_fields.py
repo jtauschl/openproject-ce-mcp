@@ -17,6 +17,7 @@ from __future__ import annotations
 
 PAYLOAD_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
     "user": {
+        "id": ("id",),
         "login": ("login",),
         "admin": ("admin",),
         "firstName": ("firstname", "name"),
@@ -101,6 +102,12 @@ PAYLOAD_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
         "_links.user": ("user", "user_id"),
         "_links.activity": ("activity",),
     },
+    "relation": {
+        "type": ("type",),
+        "description": ("description",),
+        "_links.to": ("to_id", "from_id"),
+        "to_work_package_id": ("to_id", "from_id"),
+    },
     "work_package": {
         "subject": ("subject",),
         "description": ("description",),
@@ -132,15 +139,15 @@ PAYLOAD_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 # Keys the representer can render that carry no model field and are worth nothing to hide (`_meta` of a
-# project copy holds the copy options and `sendNotifications`; `id` of a user is the caller's own id in the
-# delete and lock previews, the form never renders it).
+# project copy holds the copy options and `sendNotifications`)
 NO_FIELD: dict[str, frozenset[str]] = {
-    "user": frozenset({"id"}),
+    "user": frozenset(),
     "project": frozenset({"_meta"}),
     "version": frozenset(),
     "membership": frozenset({"_meta"}),
     "board": frozenset(),
     "grid": frozenset({"_type"}),
+    "relation": frozenset({"lag"}),
     "meeting": frozenset(),
     "time_entry": frozenset(),
     "work_package": frozenset({"_meta"}),
@@ -152,7 +159,6 @@ _CUSTOM = "custom field keys are judged by without_hidden_custom_fields"
 
 NOT_IN_PAYLOAD: dict[str, dict[str, str]] = {
     "user": {
-        "id": _READ_ONLY,
         "avatar_url": _READ_ONLY,
         "created_at": _READ_ONLY,
         "updated_at": _READ_ONLY,
@@ -216,6 +222,14 @@ NOT_IN_PAYLOAD: dict[str, dict[str, str]] = {
         "comment_truncated": _COMPUTED,
         "comment_length": _COMPUTED,
     },
+    "relation": {
+        "id": _READ_ONLY,
+        "from_subject": _COMPUTED,
+        "to_subject": _COMPUTED,
+        "description_truncated": _COMPUTED,
+        "description_length": _COMPUTED,
+        "queried_perspective": _COMPUTED,
+    },
     "work_package": {
         "id": _READ_ONLY,
         "display_id": "not writable",
@@ -248,4 +262,5 @@ COUPLED_FIELDS: dict[str, tuple[frozenset[str], ...]] = {
     "user": (frozenset({"status", "locked"}),),
     "work_package": (frozenset({"version", "target_versions"}),),
     "time_entry": (frozenset({"user", "user_id"}),),
+    "attachment": (frozenset({"title", "file_name"}),),
 }

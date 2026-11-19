@@ -119,11 +119,42 @@ that carries a field `OPENPROJECT_HIDE_<ENTITY>_FIELDS` hides, under its wire na
   goes as soon as any field of the entity is hidden.
 - **The preview of a delete** reads its values from the record, which the hide setting stamps but does not
   change; it leaves out the values of the hidden fields too. When you hide `name` (or `title`, `identifier`), the
-  preview of a delete names its target by its id only (in `payload`, and in the identity fields of the result,
-  which are not covered yet, see below): hiding wins over "a preview names its target". The record in `result`
-  is stamped like any read, so a hidden field is absent there as well.
-- The identity fields at the top of a result (the project name beside a version, for instance) and the texts of
-  `validation_errors` for a hidden field are not covered yet.
+  preview of a delete names its target by its id only (see "Write results" below): hiding wins over "a preview
+  names its target". The record in `result` is stamped like any read, so a hidden field is absent there as well.
+- The texts of `validation_errors`, of a rejected commit and of a batch item error for a hidden field are not
+  covered yet: the server's message can name the field or quote its value.
+
+## Write results: identity fields and copies of a hidden value
+
+A write result repeats the value of a field in members beside `payload` and `result`: the identity fields
+(`project`, `meeting_id`, `grid_id`, `work_package_id` ...) and the work package `target` and `related_target` of a
+write that names a work package through an association (`time_entry.entity_id`, `relation.from_id` and `to_id`,
+`attachment.container_id`). Each member names the field it repeats (its owner; a few members name two fields that
+carry the same value, such as the id and the display id of a work package): when the settings hide that field the
+member leaves the result, key and value. The owner of `project` is the field of the entity that was written
+(`version.defining_project`, `membership.project_name`, `work_package.project`), not the `name` of the project;
+hiding a project's name does not change another entity's result, as on reads.
+
+- **Ids are fields.** `work_package_id`, `meeting_id` and the like leave the result when the `id` (for a work
+  package reference also the `display_id`) or the named association field is hidden, in every copy: the `id`, the
+  meeting, agenda item and occurrence references and the file name and size of an upload in a preview `payload` too.
+  A hidden `id` leaves a delete preview without the id; the record in `result` and the message still describe it.
+- **A relation names its ends by direction.** OpenProject stores `precedes` as `follows` with the ends swapped, so
+  on a create hiding `from_id` or `to_id` hides every member that names an end of the relation: the ids, the work
+  package `target` and `related_target` and the destination link in the `payload`; hiding a caption of an end
+  (`from_subject`, `to_subject`) hides the two targets only. A delete preview names the stored ends, which are fields
+  of their own, and keeps the other one.
+- **The title of an attachment is its file name**; the two hide together, in every attachment result.
+- **The target of a work package create is its parent**, so it hangs on `parent_id` and `parent_display_id`; the
+  target of an update is the work package itself and stays.
+- **The messages of a write name no value.** They say what the tool did; the storage update preview keeps a
+  fixed note about Nextcloud storages, which is advice and not the record's value.
+- The `target` of a time entry is a work package: hiding `entity_id` or `entity_name` removes the `target`; the
+  `parent_target` of a work package or project update goes with `parent_id` (and `parent_display_id` or `parent_name`);
+  hiding the work package's own fields
+  works through the work package settings as on reads.
+- A value that is a part of another visible field (the date inside a visible start time) stays: the fields are
+  hidden one by one.
 
 ## Help text `attribute_caption` and `caption`
 
