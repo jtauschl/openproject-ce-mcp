@@ -199,6 +199,11 @@ _REQUEST_MODULES = (
 # (owner, name) of a member in a wire module that is not a response body.
 _REQUEST_MEMBERS: dict[tuple[str, str], str] = {
     ("CustomFieldCarrier", "custom_fields"): "the custom field values a write carries, built by the client",
+    ("_ValidatedCreate", "requested"): "the draft a create sends to the form, built by the client",
+    (
+        "_ValidatedCreate",
+        "commit_body",
+    ): "the request a create commits: the form answer without the parent, plus the link",
 }
 # `get_json` and its siblings carry the bodies; these names are the Protocol that declares them.
 _TRANSPORT_OWNER = "Transport"

@@ -1488,6 +1488,8 @@ async def test_add_work_package_comment_hides_other_configured_activity_fields()
 
 @pytest.mark.asyncio
 async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
+    form_bodies: list[dict] = []
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
             return httpx.Response(
@@ -1527,7 +1529,7 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
             body = json.loads(request.content)
             assert body["subject"] == "Implement API client"
             assert body["_links"]["type"]["href"] == "/api/v3/types/8"
-            assert body["_links"]["parent"]["href"] == "/api/v3/work_packages/42"
+            form_bodies.append(body)
             return httpx.Response(
                 200,
                 json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}},
@@ -1559,6 +1561,7 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
     assert result.ready is True
     assert result.state == "preview"
     assert result.payload["_links"]["parent"]["href"] == "/api/v3/work_packages/42"
+    assert ["parent" in body["_links"] for body in form_bodies] == [False, True]
 
     await client.aclose()
 

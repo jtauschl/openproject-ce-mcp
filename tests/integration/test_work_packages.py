@@ -144,6 +144,45 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
     assert wp.subject
 
 
+async def test_a_child_created_under_an_automatically_scheduled_parent_gets_no_dates(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    parent = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} auto parent", confirm=True
+    )
+    assert parent.ready
+    wp_ids.append(parent.work_package_id)
+    dated = await client.work_package.create_subtask(
+        parent_work_package_id=parent.work_package_id,
+        type="Task",
+        subject=f"{_SUBJECT} dated child",
+        start_date="2026-12-07",
+        due_date="2026-12-11",
+        confirm=True,
+    )
+    assert dated.ready, dated.validation_errors
+    wp_ids.append(dated.work_package_id)
+    lock_version = (await client._http.get(f"work_packages/{parent.work_package_id}")).json()["lockVersion"]
+    scheduled = await client._http.patch(
+        f"work_packages/{parent.work_package_id}", json={"lockVersion": lock_version, "scheduleManually": False}
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    assert (await client.work_package.get(parent.work_package_id)).start_date == "2026-12-07"
+
+    child = await client.work_package.create_subtask(
+        parent_work_package_id=parent.work_package_id,
+        type="Task",
+        subject=f"{_SUBJECT} undated child",
+        confirm=True,
+    )
+    assert child.ready, child.validation_errors
+    wp_ids.append(child.work_package_id)
+
+    stored = await client.work_package.get(child.work_package_id)
+    assert (stored.start_date, stored.due_date, stored.duration) == (None, None, None)
+    assert (await client.work_package.get(parent.work_package_id)).start_date == "2026-12-07"
+
+
 async def test_create_work_package_rejects_assignee_supplied_by_name(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
