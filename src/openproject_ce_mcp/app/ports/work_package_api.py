@@ -23,6 +23,12 @@ full-payload validation call, and a possible second validation call for the
 auto-derivation pass), and `parse_form` is called on each of their raw
 responses independently.
 
+A create under a parent POSTs `validate_create` twice: first for the draft without the parent link, then for
+that form answer plus the link (OpenProject copies the parent's dates into a child that does not name them,
+at the form and at the commit alike; an explicit `null` wins, which the second request carries). Without a
+parent it is one call (with or without a parent, one more where a `version` the form cannot take is
+validated again as `targetVersions`). See `WorkPackageService`'s `_validate_create_under_a_parent`.
+
 Schema-option-resolution logic (matching a caller-supplied id-or-name against
 `schema[key]._embedded.allowedValues`, resolving custom-field keys) is
 deliberately NOT part of this Port -- it is pure, no-I/O matching logic over

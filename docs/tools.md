@@ -402,6 +402,20 @@ has
 | `list_work_package_file_links` | List Nextcloud file links attached to a work package (Community Edition) |
 | `delete_file_link` | Validate and then delete a Nextcloud file link; only deletes when called again with `confirm=true` |
 
+### Dates of a work package created under a parent
+
+OpenProject copies the dates and the duration of an automatically scheduled parent into a new child that does not
+name them, at the preview and at the write. A create with a parent (`create_work_package`, `create_subtask`, the
+items of `bulk_create_work_packages`) therefore validates the work package without the parent link first and adds
+the link afterwards: two form calls instead of one, a third when a `version` has to be validated again as
+`target_versions`. The stored dates and duration are the ones you passed; the defaults of the project and the type
+stay, what the parent would have supplied does not. Pass `start_date` or `due_date` (and `duration` to `create_work_package`) to give the child
+a span.
+
+A parent that is scheduled automatically takes its span from its children. When the new child has no dates and no
+other child has any (a parent whose start comes only from a predecessor), the parent has no span from its children
+and loses the one it had; a parent with dated children keeps its span.
+
 ### Bulk writes vs. parallel single calls
 
 `bulk_create_work_packages`/`bulk_update_work_packages` process items strictly

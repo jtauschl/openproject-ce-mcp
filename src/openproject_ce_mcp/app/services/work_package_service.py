@@ -146,7 +146,7 @@ from ..ports.status_ref import StatusRefResolver
 from ..ports.type_ref import TypeRefResolver
 from ..ports.user_names import UserNames
 from ..ports.version_ref import VersionIdResolver
-from ..ports.work_package_api import WorkPackageApi, WorkPackageRecord
+from ..ports.work_package_api import WorkPackageApi, WorkPackageFormResult, WorkPackageRecord
 from ..ports.work_package_ref import (
     WorkPackageProjectAllowedBulkCheck,
     WorkPackageRecordResolver,
@@ -294,6 +294,39 @@ async def _validate_with_version_model(
         payload = _version_as_target_versions(payload)
         form = await validate(payload)
     return payload, form
+
+
+@dataclasses.dataclass(frozen=True)
+class _ValidatedCreate:
+    """What a create validated: `requested` is the draft as the version model left it, `parsed` the answer of the
+    last form call (what the preview shows), `commit_body` the request the commit sends."""
+
+    requested: dict[str, Any]
+    parsed: WorkPackageFormResult
+    commit_body: dict[str, Any]
+
+
+async def _validate_create_under_a_parent(
+    validate: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+    parse: Callable[[dict[str, Any]], Awaitable[WorkPackageFormResult]],
+    draft: dict[str, Any],
+) -> _ValidatedCreate:
+    """The server copies attributes of the parent (the dates and the duration of an automatically scheduled
+    one) into a new child unless the request names them, at the form and at the commit alike; an explicit
+    `null` wins. The draft is therefore validated without the parent link, and the parent link joins the form
+    answer afterwards: every attribute the form lists is then explicit, a named value stays, a value the parent
+    would have supplied takes the value it has without a parent. The request that is validated a second time
+    is the one that is committed."""
+    links = draft.get("_links", {})
+    if "parent" not in links:
+        requested, form = await _validate_with_version_model(validate, draft)
+        parsed = await parse(form)
+        return _ValidatedCreate(requested=requested, parsed=parsed, commit_body=parsed.payload)
+    parent_free = {**draft, "_links": {key: value for key, value in links.items() if key != "parent"}}
+    requested, baseline_form = await _validate_with_version_model(validate, parent_free)
+    baseline = _with_requested_version_links((await parse(baseline_form)).payload, requested)
+    request = {**baseline, "_links": {**baseline.get("_links", {}), "parent": links["parent"]}}
+    return _ValidatedCreate(requested=requested, parsed=await parse(await validate(request)), commit_body=request)
 
 
 def _with_requested_version_links(committed: dict[str, Any], requested: dict[str, Any]) -> dict[str, Any]:
@@ -1592,6 +1625,16 @@ class WorkPackageService:
             **outcome.identity,
         )
 
+    async def _validate_create(self, project_id: str, draft: dict[str, Any]) -> _ValidatedCreate:
+        return await _validate_create_under_a_parent(
+            lambda body: self._api.validate_create(project_id, body), self._api.parse_form, draft
+        )
+
+    async def _commit_create(self, validated: _ValidatedCreate) -> WorkPackageRecord:
+        return await self._api.commit_create(
+            _with_requested_version_links(validated.commit_body, validated.requested), text_limit=FORMATTABLE_LIMIT
+        )
+
     async def create(
         self,
         *,
@@ -1670,8 +1713,8 @@ class WorkPackageService:
             duration=duration,
             resolution_context=wp_context,
         )
-        payload, form = await _validate_with_version_model(lambda p: self._api.validate_create(project_id, p), payload)
-        parsed = await self._api.parse_form(form)
+        validated = await self._validate_create(project_id, payload)
+        parsed = validated.parsed
         outcome = await _finalize_write(
             confirm=confirm,
             entity="work_package",
@@ -1680,9 +1723,7 @@ class WorkPackageService:
             validation_errors=parsed.validation_errors,
             identity={"work_package_id": None, "project": project_payload.get("name")},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
-            commit=lambda p: self._api.commit_create(
-                _with_requested_version_links(p, payload), text_limit=FORMATTABLE_LIMIT
-            ),
+            commit=lambda _shown: self._commit_create(validated),
             committed_identity=lambda record: {
                 "work_package_id": record.id,
                 "project": record.project,
@@ -1755,10 +1796,8 @@ class WorkPackageService:
             due_date=due_date,
             resolution_context=wp_context,
         )
-        payload, form = await _validate_with_version_model(
-            lambda p: self._api.validate_create(str(project_id), p), payload
-        )
-        parsed = await self._api.parse_form(form)
+        validated = await self._validate_create(str(project_id), payload)
+        parsed = validated.parsed
         parent_title = _trim_text(parent_project_link.get("title") if parent_project_link else None)
         outcome = await _finalize_write(
             confirm=confirm,
@@ -1768,9 +1807,7 @@ class WorkPackageService:
             validation_errors=parsed.validation_errors,
             identity={"work_package_id": None, "project": parent_title},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
-            commit=lambda p: self._api.commit_create(
-                _with_requested_version_links(p, payload), text_limit=FORMATTABLE_LIMIT
-            ),
+            commit=lambda _shown: self._commit_create(validated),
             committed_identity=lambda record: {
                 "work_package_id": record.id,
                 "project": record.project,

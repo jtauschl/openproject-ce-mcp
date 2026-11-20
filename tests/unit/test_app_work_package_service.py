@@ -2039,9 +2039,9 @@ async def test_create_subtask_derives_project_from_parent_link() -> None:
     result = await service.create_subtask(parent_work_package_id=6, type="Task", subject="Child task", confirm=False)
 
     assert result.ready is True
-    project_id, payload = api.validate_create_calls[0]
-    assert project_id == "1"
-    assert payload["_links"]["parent"]["href"] == "/api/v3/work_packages/6"
+    assert [project_id for project_id, _ in api.validate_create_calls] == ["1", "1"]
+    assert "parent" not in api.validate_create_calls[0][1]["_links"]
+    assert api.validate_create_calls[-1][1]["_links"]["parent"]["href"] == "/api/v3/work_packages/6"
 
 
 @pytest.mark.asyncio
