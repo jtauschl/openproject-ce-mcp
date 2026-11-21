@@ -76,7 +76,7 @@ from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._work_package_presentation import present_target
 
 # The title of an upload is its file name: one fact under two names, hidden together.
@@ -170,7 +170,7 @@ class _PreparedFile:
     content_type: str
 
 
-@stamped_write_results
+@stamped_results
 class AttachmentService:
     def __init__(
         self,

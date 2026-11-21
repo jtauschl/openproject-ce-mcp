@@ -7,8 +7,12 @@ id of 5, the readable project `demo`), `OVERRIDES` fixes the few tools whose gen
 
 from __future__ import annotations
 
+import datetime
 import inspect
+import json
+import re
 import typing
+import zlib
 from collections.abc import Callable
 from typing import Any
 
@@ -153,3 +157,140 @@ def arguments(function: Callable[..., Any]) -> dict[str, Any]:
         else:
             arguments[name] = "x"
     return arguments
+
+
+# The sentinel fake of the read-result scans: `serve` with every value rewritten so that each scalar of each resource is
+# a string, number or date of its own, and the same resource reads the same wherever it is linked.
+SENTINEL_BASE = 7_000_000
+_KEEP_KEYS = frozenset(
+    {"_type", "format", "identifier", "total", "count", "pageSize", "offset", "lockVersion", "avatar"}
+)
+_LABEL_KEYS = frozenset({"subject", "name", "title"})
+_RESOURCE_HREF = re.compile(r"^(/api/v3/(?!projects/)[a-z_]+/)(\d+)$")
+
+
+def sentinel_id(kind: str, number: int) -> int:
+    """The id a resource carries under the sentinel fake; idempotent, so a request for it is served again."""
+    if kind == "Project" or number >= SENTINEL_BASE:
+        return number
+    return SENTINEL_BASE + (zlib.crc32(kind.encode()) % 900) * 1000 + number
+
+
+def _kind_of_href(href: str) -> str:
+    match = re.match(r"^/api/v3/([a-z_]+)/", href)
+    if match is None:
+        return "Thing"
+    return KIND_BY_SEGMENT.get(match.group(1)) or match.group(1).title().replace("_", "")
+
+
+def sentinel_tag(kind: str, number: int) -> str:
+    """A token of the resource that does not contain its id, so a text never repeats the number by accident."""
+    return f"{zlib.crc32(f'{kind}{sentinel_id(kind, number)}'.encode()):08x}"
+
+
+def sentinel_label(kind: str, number: int) -> str:
+    return f"LBL-{kind}-{sentinel_tag(kind, number)}"
+
+
+def sentinel_display_id(kind: str, number: int) -> str:
+    return f"DSP-{sentinel_tag(kind, number)}"
+
+
+def sentinel_date(seed: str) -> str:
+    moment = datetime.datetime(2031, 1, 1) + datetime.timedelta(minutes=zlib.crc32(seed.encode()) % 400_000)
+    return moment.strftime("%Y-%m-%dT%H:%M:00Z")
+
+
+def _rewrite_href(href: str) -> str:
+    match = _RESOURCE_HREF.match(href)
+    if match is None:
+        return href
+    return f"{match.group(1)}{sentinel_id(_kind_of_href(href), int(match.group(2)))}"
+
+
+def _sentinel_value(path: str, key: str, value: Any, kind: str, number: int) -> Any:
+    if isinstance(value, bool) or value is None or key in _KEEP_KEYS:
+        return value
+    if key in _LABEL_KEYS:
+        return sentinel_label(kind, number)
+    if isinstance(value, int):
+        return SENTINEL_BASE + zlib.crc32(f"{kind}{number}{path}".encode()) % 1_000_000
+    if isinstance(value, str) and re.match(r"^\d{4}-\d\d-\d\dT", value):
+        return sentinel_date(f"{kind}{number}{path}")
+    return f"{path}-{kind}-{sentinel_tag(kind, number)}" if isinstance(value, str) else value
+
+
+def _sentinel_walk(node: Any, path: str, kind: str, number: int, segment: str = "x") -> Any:
+    if isinstance(node, list):
+        return [_sentinel_walk(entry, path, kind, number, segment) for entry in node]
+    if not isinstance(node, dict):
+        return node
+    if "href" in node and ("title" in node or "displayId" in node or len(node) == 1):
+        href = _rewrite_href(str(node["href"]))
+        target = re.search(r"/(\d+)$", href)
+        rewritten: dict[str, Any] = {"href": href}
+        if "title" in node and target:
+            rewritten["title"] = sentinel_label(_kind_of_href(href), int(target.group(1)))
+        elif "title" in node:
+            rewritten["title"] = node["title"]
+        if "displayId" in node and target:
+            rewritten["displayId"] = sentinel_display_id("WorkPackage", int(target.group(1)))
+        return rewritten
+    if "_type" in node and "id" in node and isinstance(node["id"], int):
+        kind, number = node["_type"], node["id"]
+        own = f"/api/v3/{segment}/{sentinel_id(kind, number)}"
+        node = {**node, "id": sentinel_id(kind, number), "_links": {**node["_links"], "self": {"href": own}}}
+        if kind == "WorkPackage":
+            node = {**node, "displayId": sentinel_display_id(kind, number), "_links": _hierarchy(node["_links"])}
+        elif kind == "Project":
+            node = {**node, "_links": {**node["_links"], **_project_hierarchy()}}
+        elif kind == "User":
+            node = {**node, "avatar": f"https://op.example.com/users/{sentinel_id(kind, number)}/avatar"}
+        elif kind == "Attachment":
+            download = {"href": f"/api/v3/attachments/{sentinel_id(kind, number)}/content"}
+            node = {**node, "_links": {**node["_links"], "downloadLocation": download}}
+    out: dict[str, Any] = {}
+    for key, value in node.items():
+        if key == "id" or isinstance(value, (dict, list)):
+            out[key] = (
+                _sentinel_walk(value, key if not path else f"{path}.{key}", kind, number, segment)
+                if key != "id"
+                else value
+            )
+        else:
+            out[key] = _sentinel_value(f"{path}.{key}" if path else key, key, value, kind, number)
+    return out
+
+
+def _linked(kind_segment: str, number: int) -> dict[str, Any]:
+    return {"href": f"/api/v3/{kind_segment}/{number}", "title": "x", "displayId": "x"}
+
+
+def _hierarchy(links: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **links,
+        "parent": _linked("work_packages", 8),
+        "ancestors": [_linked("work_packages", 7), _linked("work_packages", 8)],
+        "children": [_linked("work_packages", 9), _linked("work_packages", 10)],
+    }
+
+
+def _project_hierarchy() -> dict[str, Any]:
+    return {
+        "parent": {"href": "/api/v3/projects/98", "title": "x"},
+        "ancestors": [{"href": "/api/v3/projects/97", "title": "x"}, {"href": "/api/v3/projects/98", "title": "x"}],
+    }
+
+
+def sentinel_serve(request: httpx.Request) -> httpx.Response:
+    response = serve(request)
+    body = json.loads(response.content)
+    segments = request.url.path.removeprefix("/api/v3/").strip("/").split("/")
+    segment = segments[-2] if segments[-1].isdigit() and len(segments) > 1 else segments[-1]
+    rewritten = _sentinel_walk(body, "", "Thing", 0, segment)
+    return httpx.Response(
+        response.status_code,
+        content=json.dumps(rewritten),
+        headers={"content-type": "application/json"},
+        request=request,
+    )

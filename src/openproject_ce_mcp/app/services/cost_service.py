@@ -56,8 +56,10 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.cost_api import CostApi
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ._payload_masking import stamped_results
 
 
+@stamped_results
 class CostService:
     def __init__(
         self,

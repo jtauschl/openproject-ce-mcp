@@ -62,12 +62,14 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.action_capability_api import ActionCapabilityApi
 from ..ports.project_ref import ProjectRefResolver
+from ._payload_masking import stamped_results
 
 
 def _context_href(context_link: dict[str, Any] | None) -> Any:
     return context_link.get("href") if isinstance(context_link, dict) else None
 
 
+@stamped_results
 class ActionCapabilityService:
     def __init__(
         self,

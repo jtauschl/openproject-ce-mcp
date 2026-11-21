@@ -115,7 +115,7 @@ def _batch_read(items=None) -> m.BatchWorkPackageReadResult:
     items = (
         items
         if items is not None
-        else [m.BatchWorkPackageReadItemResult(id=5, success=True, work_package=_wp_detail(), error=None)]
+        else [m.BatchWorkPackageReadItemResult(id=5, index=0, success=True, work_package=_wp_detail(), error=None)]
     )
     return m.BatchWorkPackageReadResult(
         action="batch_read",
@@ -365,14 +365,14 @@ def test_batch_read_select_trims_nested_work_package_fields() -> None:
     assert sorted(row["work_package"]) == ["id", "subject"]
     # wrapper fields always survive regardless of select, but None-valued ones
     # (error=None on this successful item) are still elided (Phase 1).
-    assert sorted(row) == ["id", "success", "work_package"]
+    assert sorted(row) == ["id", "index", "success", "work_package"]
 
 
 def test_batch_read_select_with_only_wrapper_fields_keeps_the_full_work_package() -> None:
     out = _to_payload(_batch_read(), select=frozenset({"success", "error"}))
     row = out["results"][0]
     assert row["work_package"] == _to_payload(_batch_read())["results"][0]["work_package"]
-    assert sorted(row) == ["id", "success", "work_package"]
+    assert sorted(row) == ["id", "index", "success", "work_package"]
 
 
 def test_batch_read_select_id_selects_the_work_package_id() -> None:
@@ -387,8 +387,8 @@ def test_batch_read_select_none_returns_full_detail() -> None:
 
 def test_batch_read_select_skips_failed_items_without_crash() -> None:
     items = [
-        m.BatchWorkPackageReadItemResult(id=5, success=True, work_package=_wp_detail(), error=None),
-        m.BatchWorkPackageReadItemResult(id=6, success=False, work_package=None, error="not found"),
+        m.BatchWorkPackageReadItemResult(id=5, index=0, success=True, work_package=_wp_detail(), error=None),
+        m.BatchWorkPackageReadItemResult(id=6, index=1, success=False, work_package=None, error="not found"),
     ]
     out = _to_payload(_batch_read(items=items), select=frozenset({"id", "subject"}))
     assert out["results"][1]["work_package"] is None
@@ -429,7 +429,7 @@ def test_select_custom_fields_round_trips_through_batch_nested_work_package() ->
     WorkPackageDetail in a list that trimming recurses through -- select
     must reach custom_fields there too, the same as any other field."""
     detail = _wp_detail(custom_fields={"customField1": "Acme Corp"}, custom_comments={"customField1": "note"})
-    items = [m.BatchWorkPackageReadItemResult(id=5, success=True, work_package=detail, error=None)]
+    items = [m.BatchWorkPackageReadItemResult(id=5, index=0, success=True, work_package=detail, error=None)]
 
     out = _to_payload(_batch_read(items=items), select=frozenset({"id", "custom_fields"}))
 

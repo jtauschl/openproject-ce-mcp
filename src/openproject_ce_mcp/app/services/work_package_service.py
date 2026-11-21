@@ -157,7 +157,7 @@ from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated
 from ._custom_field_filters import append_custom_field_filters
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._schema_write_helpers import resolve_schema_option_href, resolve_wp_ref_id
 from ._work_package_parents import parent_href, without_parent_unless
 from ._work_package_presentation import present_detail, present_summaries, present_target, stamp_detail
@@ -431,7 +431,7 @@ def _requested(**parameters: Any) -> list[str]:
     return [name for name, value in parameters.items() if value is not None and value is not False and value != []]
 
 
-@stamped_write_results
+@stamped_results
 class WorkPackageService:
     def __init__(
         self,
@@ -1252,8 +1252,14 @@ class WorkPackageService:
         return stamp_detail(detail, settings=self._settings)
 
     async def get_batch(
-        self, *, ids: builtins.list[int | str], text_limit: int | None = None
+        self,
+        *,
+        ids: builtins.list[int | str],
+        text_limit: int | None = None,
+        positions: builtins.list[int] | None = None,
     ) -> BatchWorkPackageReadResult:
+        """`positions[i]` is where `ids[i]` first stands in the caller's own list (the tool layer drops duplicates
+        before the call); it becomes the `index` of the item. Without it the position in `ids` is used."""
         if not ids:
             raise ValueError("ids list cannot be empty")
         if len(ids) > BATCH_READ_MAX_IDS:
@@ -1288,15 +1294,21 @@ class WorkPackageService:
         items: builtins.list[BatchWorkPackageReadItemResult] = []
         succeeded = 0
         failed = 0
-        for input_id, work_package, error in results:
+        for index, (input_id, work_package, error) in zip(positions or range(len(ids)), results, strict=True):
             if work_package is not None:
                 succeeded += 1
                 items.append(
-                    BatchWorkPackageReadItemResult(id=input_id, success=True, work_package=work_package, error=None)
+                    BatchWorkPackageReadItemResult(
+                        id=input_id, index=index, success=True, work_package=work_package, error=None
+                    )
                 )
             else:
                 failed += 1
-                items.append(BatchWorkPackageReadItemResult(id=input_id, success=False, work_package=None, error=error))
+                items.append(
+                    BatchWorkPackageReadItemResult(
+                        id=input_id, index=index, success=False, work_package=None, error=error
+                    )
+                )
 
         if failed == 0:
             message = f"Successfully fetched all {succeeded} work packages."

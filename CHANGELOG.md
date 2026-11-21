@@ -27,6 +27,7 @@ and 0.2.0 the first one published to PyPI.
 - Write results no longer repeat a hidden field's value in identity fields, `target`, `payload` copies of ids or messages.
 - Hiding an attachment's `title` or `file_name` hides both: the title of an upload is its file name.
 - `create_work_package`, `create_subtask` and `bulk_create_work_packages` no longer write the dates and the duration that OpenProject copies from an automatically scheduled parent into a child that does not name them. A parent whose start comes only from a predecessor and that has no other dated child loses its span.
+- Read results no longer repeat a hidden field's value outside its record (batch `id`, costs, attachments, `url`s, project copies, `ancestors` rows); batch items gain `index`.
 - `list_boards` honours `offset` and `limit`: without a filter it ignored both, because the boards collection is unpaginated.
 - The previews of `delete_reminder`, `delete_user_working_hours` and `set_user_locked` name their target; lock and unlock report a missing user before `confirm`.
 - `get_job_status` returns the job message between the `<user-content>` tags like every other long-form text.

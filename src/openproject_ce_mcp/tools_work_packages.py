@@ -499,10 +499,12 @@ async def get_work_packages(
 
     select restricts each result's work_package to the given fields (e.g.
     ["id", "subject", "status"]); an invalid name returns the allowed set.
-    The id/success/error fields on each result are always included regardless
-    of select, so you can still tell which items succeeded; listing success or
-    error in select is accepted and changes nothing, while id doubles as a
-    selectable work_package field.
+    The id/index/success/error fields on each result are included regardless
+    of select, so you can still tell which items succeeded (a null error is
+    left out; id is left out while the work package id or display_id is
+    hidden). index is the position of the first occurrence of the reference in
+    ids and stays then. Listing success or error in select is accepted and
+    changes nothing, while id doubles as a selectable work_package field.
 
     For batches with many full-detail items, set text_limit and/or select
     proactively; an unbounded batch of large work packages can exceed the
@@ -524,12 +526,14 @@ async def get_work_packages(
 
     seen = set()
     unique_ids: list[int | str] = []
-    for raw_id in ids:
+    positions: list[int] = []
+    for position, raw_id in enumerate(ids):
         safe_id = _validate_work_package_ref(raw_id)
         normalized = str(safe_id)
         if normalized not in seen:
             seen.add(normalized)
             unique_ids.append(safe_id)
+            positions.append(position)
 
     if len(unique_ids) > BATCH_READ_MAX_IDS:
         raise ValueError(f"Maximum {BATCH_READ_MAX_IDS} unique work packages per batch (got {len(unique_ids)})")
@@ -537,7 +541,9 @@ async def get_work_packages(
     safe_text_limit = _validate_optional_text_limit(text_limit)
     _validate_select(select, row_type=WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS)
 
-    return await _run_tool(client.work_package.get_batch(ids=unique_ids, text_limit=safe_text_limit))
+    return await _run_tool(
+        client.work_package.get_batch(ids=unique_ids, text_limit=safe_text_limit, positions=positions)
+    )
 
 
 def _validate_work_package_create_fields(

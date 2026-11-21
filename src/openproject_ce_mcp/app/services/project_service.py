@@ -63,7 +63,7 @@ from ._custom_field_masking import (
     redacted_validation_errors,
 )
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
-from ._payload_masking import record_payload, shown_payload, stamped_write_results
+from ._payload_masking import record_payload, shown_payload, stamped_results
 from ._project_presentation import hidden_references_replaced, present_detail, present_summaries
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -165,7 +165,7 @@ def _stamp_project(value: Any, *, settings: Settings, project_id_to_identifier: 
     return hidden_fields.apply_hidden_fields("project", value, settings=settings)
 
 
-@stamped_write_results
+@stamped_results
 class ProjectService:
     def __init__(
         self,

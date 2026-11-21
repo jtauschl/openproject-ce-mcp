@@ -11,7 +11,14 @@ from typing import Any, cast
 
 from ...config import HIDE_FIELD_ENV_BY_ENTITY, Settings
 from ..errors import InvalidInputError
-from .identity_fields import IDENTITY_BY_ACTION, IDENTITY_FIELDS, PAYLOAD_COPIES
+from .identity_fields import (
+    IDENTITY_BY_ACTION,
+    IDENTITY_FIELDS,
+    PARENT_ROW_KEYS,
+    PAYLOAD_COPIES,
+    READ_IDENTITY_FIELDS,
+    ROW_KEYS,
+)
 from .payload_fields import COUPLED_FIELDS, NO_FIELD, PAYLOAD_KEYS
 
 
@@ -72,13 +79,31 @@ def payload_key_hidden(entity: str, key: str, *, settings: Settings) -> bool:
 
 
 def hidden_identity_keys(result_class: str, *, action: str | None = None, settings: Settings) -> frozenset[str]:
-    """The members of a write result of this class that repeat the value of a field the settings hide."""
-    table = IDENTITY_FIELDS.get(result_class, {}) | IDENTITY_BY_ACTION.get((result_class, action or ""), {})
+    """The members of a result of this class that repeat the value of a field the settings hide."""
+    table = (
+        IDENTITY_FIELDS.get(result_class, {})
+        | READ_IDENTITY_FIELDS.get(result_class, {})
+        | IDENTITY_BY_ACTION.get((result_class, action or ""), {})
+    )
     if not table:
         return frozenset()
     return frozenset(
         member
         for member, owners in table.items()
+        if any(_field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
+    )
+
+
+def hidden_row_keys(result_class: str, member: str, *, parent_row: bool, settings: Settings) -> frozenset[str]:
+    """The keys of a dict row of a list member (`children`, `ancestors`) that repeat a field the settings hide;
+    `parent_row` adds the keys that repeat the parent fields of the record."""
+    tables = [ROW_KEYS.get((result_class, member), {})]
+    if parent_row:
+        tables.append(PARENT_ROW_KEYS.get((result_class, member), {}))
+    return frozenset(
+        key
+        for table in tables
+        for key, owners in table.items()
         if any(_field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
     )
 

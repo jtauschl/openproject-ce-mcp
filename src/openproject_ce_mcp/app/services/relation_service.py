@@ -86,7 +86,7 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
-from ._payload_masking import record_payload, shown_payload, stamped_write_results
+from ._payload_masking import record_payload, shown_payload, stamped_results
 from ._work_package_presentation import present_target
 
 # Mirrors OpenProject's own Relation::TYPES hash (app/models/relation.rb):
@@ -140,7 +140,7 @@ def _queried_relation_perspective(
     )
 
 
-@stamped_write_results
+@stamped_results
 class RelationService:
     def __init__(
         self,
@@ -171,9 +171,12 @@ class RelationService:
         # still leak the identical id back out through the nested field.
         # Skip computing queried_perspective at all when either raw id is
         # hidden, mirroring the from_subject/to_subject zeroing above.
-        ids_hidden = hidden_fields.field_hidden(
-            "relation", "from_id", settings=self._settings
-        ) or hidden_fields.field_hidden("relation", "to_id", settings=self._settings)
+        # The perspective also names the relation's type (`effective_type`, and which of `predecessor_id` and
+        # `successor_id` is filled), so a hidden type skips it as well.
+        ids_hidden = any(
+            hidden_fields.field_hidden("relation", name, settings=self._settings)
+            for name in ("from_id", "to_id", "type")
+        )
         if queried_work_package_id is not None and not ids_hidden:
             perspective = _queried_relation_perspective(
                 queried_work_package_id=queried_work_package_id,

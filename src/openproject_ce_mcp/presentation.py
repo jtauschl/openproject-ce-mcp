@@ -44,6 +44,19 @@ class ContentBundle:
     blocks: tuple[Any, ...] = ()
 
 
+def _attr(value: Any, name: str) -> Any:
+    """The member of a result as shown: the dict rows keep the keys the stamp did not list in `_hidden_row_keys`,
+    a row that carries no value any more is dropped, and a member whose every row went reads as unset."""
+    child = getattr(value, name)
+    hidden = getattr(value, "_hidden_row_keys", {}).get(name)
+    if not hidden or not isinstance(child, list):
+        return child
+    rows = [
+        {key: item for key, item in row.items() if key not in drop} for row, drop in zip(child, hidden, strict=True)
+    ]
+    return [row for row in rows if any(value is not None for value in row.values())] or None
+
+
 def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none: bool = True) -> Any:
     """Serialize a tool result to a trimmed plain dict for context reduction.
 
@@ -88,7 +101,7 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
     row. For a row type registered in ``_SELECT_NESTED_FIELD`` (e.g. a batch-read
     item that wraps a single work package, or a bulk item that wraps a single
     write result, rather than being the entity itself), ``select`` instead trims
-    that nested entity — the row's own wrapper fields (id/success/error, or
+    that nested entity — the row's own wrapper fields (id/index/success/error, or
     index/success/error) are kept regardless of ``select``. When the top-level
     value itself has neither ``results``/``items`` NOR ``payload``/``next_offset``
     (a genuinely bare single-entity result, e.g. ``WorkPackageDetail`` —
@@ -138,7 +151,7 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
                 continue
             if is_list_result and name in ("count", "truncated"):
                 continue
-            child = getattr(value, name)
+            child = _attr(value, name)
             if name == "next_offset":
                 out[name] = child
                 continue
@@ -168,7 +181,7 @@ def _has_field(value: Any, name: str) -> bool:
 
 # Rows that wrap a single nested entity instead of being the entity itself.
 # `select` trims the nested entity; the row's own non-None wrapper fields
-# (id/success/error, or index/success/error) survive regardless of `select`,
+# (id/index/success/error, or index/success/error) survive regardless of `select`,
 # since a batch caller needs them to correlate results regardless of which
 # entity fields it asked for — a None-valued wrapper field is still elided,
 # same as everywhere else (the wrapper fields are never select-targetable).
@@ -230,7 +243,7 @@ def _select_fields(row: Any, select: frozenset[str], *, elide_none: bool) -> Any
             )
         return out
     return {
-        f.name: _to_payload(getattr(row, f.name), elide_none=elide_none)
+        f.name: _to_payload(_attr(row, f.name), elide_none=elide_none)
         for f in dataclass_fields(row)
         if f.name in select and f.name not in hidden
     }

@@ -56,11 +56,11 @@ from ..ports.current_user import CurrentUserLookup
 from ..ports.wiki_page_link_api import WikiPageLinkApi, WikiPageLinkRecord
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
-from ._payload_masking import stamped_write_results
+from ._payload_masking import stamped_results
 from ._work_package_presentation import present_target
 
 
-@stamped_write_results
+@stamped_results
 class WikiPageLinkService:
     def __init__(
         self,

@@ -148,6 +148,7 @@ from .app.resolvers.type_resolver import TypeResolver
 from .app.resolvers.user_name_resolver import UserNameResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.resolvers.work_package_resolver import WorkPackageResolver
+from .app.services._payload_masking import stamp_result
 from .app.services.action_capability_service import ActionCapabilityService
 from .app.services.activity_service import ActivityService
 from .app.services.attachment_service import AttachmentService
@@ -1364,9 +1365,12 @@ class OpenProjectClient:
         serialization seam (presentation._to_payload) reads it and drops those
         keys entirely from the response — hidden fields cost neither their key
         name nor a null value. Stamping is possible because the response
-        dataclasses are not frozen.
+        dataclasses are not frozen. The members that repeat the value of a field
+        of another entity (`project_id` of a project context) are listed too.
         """
-        return _hidden_fields_policy.apply_hidden_fields(entity, value, settings=self.settings)
+        return stamp_result(
+            _hidden_fields_policy.apply_hidden_fields(entity, value, settings=self.settings), settings=self.settings
+        )
 
     def _api_href(self, relative_path: str) -> str:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"

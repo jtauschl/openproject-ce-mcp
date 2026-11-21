@@ -45,11 +45,11 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._work_package_presentation import present_target
 
 
-@stamped_write_results
+@stamped_results
 class MeetingAgendaItemService:
     def __init__(
         self,

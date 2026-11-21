@@ -156,6 +156,37 @@ hiding a project's name does not change another entity's result, as on reads.
 - A value that is a part of another visible field (the date inside a visible start time) stays: the fields are
   hidden one by one.
 
+## Read results: copies of a hidden value outside the record
+
+A read result repeats the value of a field in members beside the record, and the same rule applies: the member names
+the field it repeats and leaves the result, key and value, when the settings hide that field. An id that a row
+carries as its own member (`parent_id`, `from_id`) belongs to that row's entity; a member that echoes the record the
+tool is about belongs to that record's entity.
+
+- **The reference of a batch read item** (`get_work_packages`, `id`) goes when the work package `id` or `display_id`
+  is hidden, also when it is the reference the caller typed. The item keeps `index`, the position of the first
+  occurrence of the reference in `ids`, so the caller can still tell the items apart.
+- **Echoes of the record a tool is about** go with its owner: `work_package_id` of the costs by type (a display id
+  resolves to an id) with the work package `id` or `display_id`, `attachment_id` of an attachment's content and the
+  `download_url` of an attachment with the attachment `id`, `project_id`, `project_name` and `project_identifier` of a
+  project configuration, access summary and work package context with the project `id`, `name` and `identifier`,
+  `current_user_id` and `current_user_name` of the access summary with the current user's `id` and `name`.
+- **Option lists of the work package context** (`available_*` and `selected_type_*` of `get_project_work_package_context`) are the context's own fields: hiding a type's or status's `id` or `name` does not reach them; hide them with the context's own settings.
+- **A URL built from the id of its own record** (`url` of an action, capability and query filter, column, operator,
+  sort criterion and filter instance schema, `avatar_url` of a user) goes with that record's `id`. The perspective of
+  a relation (`queried_perspective`) goes with `from_id`, `to_id` and `type`.
+- **An occurrence names two entities**: `recurring_meeting_id` of an occurrence list goes with the recurring meeting
+  `id` or the meeting's `recurring_meeting_id`, `start_time` of an occurrence with the `start_time` of either, and
+  `meeting_id` of an occurrence with the meeting `id`.
+- **The rows of `children` and `ancestors`** are the work packages (or projects) around the record: `href` follows
+  the `id` and `display_id`, `title` the `subject`, `display_id` the `display_id` (a project row: `href` follows
+  the project `id`, `title` the `name`). The row of the parent also follows `parent_id` and `parent_display_id`
+  (project: `parent_id`, `parent_name`). A row with no
+  value left is dropped; the data of the record is not edited.
+- **Not covered yet:** the fallback titles built from an id when the server sends no name (`Attachment 5`, `File
+  link 5`, `Notification 5`) repeat a hidden `id`; the server error text of a failed batch item is judged with the other server
+  error texts.
+
 ## Help text `attribute_caption` and `caption`
 
 `attribute_caption` is the label of the attribute and `caption` the text an administrator stored for it (17.0 and
