@@ -901,7 +901,7 @@ def _clearable_duration(value: str | None, *, field_name: str, sentinel: object)
 # results), so naming them in ``select`` is accepted as a no-op rather than
 # rejected as an unknown entity field.
 BULK_ITEM_WRAPPER_FIELDS = frozenset({"index", "success", "error"})
-BATCH_READ_ITEM_WRAPPER_FIELDS = frozenset({"id", "success", "error"})
+BATCH_READ_ITEM_WRAPPER_FIELDS = frozenset({"id", "index", "success", "error"})
 
 _SELECT_NOTHING_SENT = "No request was sent."
 

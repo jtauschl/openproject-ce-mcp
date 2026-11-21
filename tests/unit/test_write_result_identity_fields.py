@@ -2,7 +2,7 @@
 
 `IDENTITY_FIELDS` names, per write result class, the members that repeat the value of one field of one entity.
 These tests keep the table complete (every member of every class is classified, every named field exists), keep every
-service that returns such a result decorated with `stamped_write_results`, and check the stamp itself. What a stamp
+service that returns such a result decorated with `stamped_results`, and check the stamp itself. What a stamp
 leaves out of a real tool result, in every state and every copy, is the job of
 `test_write_results_hide_values_everywhere.py`.
 """
@@ -26,7 +26,7 @@ from openproject_ce_mcp.app.policies.identity_fields import (
     PAYLOAD_COPIES,
     STAMPED_BY_THEIR_OWN_ENTITY,
 )
-from openproject_ce_mcp.app.services._payload_masking import stamp_write_result
+from openproject_ce_mcp.app.services._payload_masking import stamp_result
 from openproject_ce_mcp.config import HIDE_FIELD_ENV_BY_ENTITY
 from openproject_ce_mcp.presentation import _to_payload
 from openproject_ce_mcp.tools_runtime import _TOOL_FUNCTIONS, _return_model
@@ -110,12 +110,12 @@ def test_every_table_row_names_a_real_member_and_a_real_owner_field(name: str) -
 
 
 def _decorated(node: ast.ClassDef) -> bool:
-    return any(isinstance(item, ast.Name) and item.id == "stamped_write_results" for item in node.decorator_list)
+    return any(isinstance(item, ast.Name) and item.id == "stamped_results" for item in node.decorator_list)
 
 
 def test_every_service_that_returns_a_write_result_stamps_it() -> None:
     """A public async method whose return annotation names a write result class (also inside a union or an
-    optional) puts its class under `stamped_write_results`; a result class the tables do not know fails here."""
+    optional) puts its class under `stamped_results`; a result class the tables do not know fails here."""
     returned = set(IDENTITY_FIELDS) | {"BulkWorkPackageWriteResult"}
     undecorated: list[str] = []
     unknown: list[str] = []
@@ -173,31 +173,31 @@ def _work_package_result() -> models.WorkPackageWriteResult:
 
 @pytest.mark.parametrize("hidden", ["id", "display_id"])
 def test_the_work_package_reference_is_hidden_with_either_spelling(hidden: str) -> None:
-    result = stamp_write_result(_work_package_result(), settings=_settings("work_package", hidden))
+    result = stamp_result(_work_package_result(), settings=_settings("work_package", hidden))
 
     assert "work_package_id" not in _to_payload(result)
     assert _to_payload(result)["project"] == "Demo"
 
 
 def test_an_unrelated_hide_setting_keeps_the_identity_fields() -> None:
-    result = stamp_write_result(_work_package_result(), settings=_settings("work_package", "description"))
+    result = stamp_result(_work_package_result(), settings=_settings("work_package", "description"))
 
     assert _to_payload(result)["work_package_id"] == "PROJ-42"
     assert not hasattr(result, "_hidden_keys")
 
 
 def test_the_project_name_is_the_one_owner_of_a_project_member() -> None:
-    result = stamp_write_result(_work_package_result(), settings=_settings("project", "name"))
+    result = stamp_result(_work_package_result(), settings=_settings("project", "name"))
 
     assert _to_payload(result)["project"] == "Demo"
 
 
 def test_stamping_twice_changes_nothing() -> None:
     settings = _settings("work_package", "project")
-    once = stamp_write_result(_work_package_result(), settings=settings)
+    once = stamp_result(_work_package_result(), settings=settings)
     hidden = once._hidden_keys  # type: ignore[attr-defined]
 
-    twice = stamp_write_result(once, settings=settings)
+    twice = stamp_result(once, settings=settings)
 
     assert twice._hidden_keys == hidden  # type: ignore[attr-defined]
     assert hidden == frozenset({"project"})
@@ -216,7 +216,7 @@ def test_the_write_result_of_each_batch_item_is_stamped() -> None:
         items=[item],
     )
 
-    stamp_write_result(batch, settings=_settings("work_package", "project"))
+    stamp_result(batch, settings=_settings("work_package", "project"))
 
     assert _to_payload(batch)["items"][0]["result"].get("project") is None
 
@@ -231,13 +231,13 @@ def _created_with_a_parent(action: str) -> models.WorkPackageWriteResult:
 
 
 def test_the_target_of_a_create_is_the_parent_and_hangs_on_the_parent_fields() -> None:
-    result = stamp_write_result(_created_with_a_parent("create"), settings=_settings("work_package", "parent_id"))
+    result = stamp_result(_created_with_a_parent("create"), settings=_settings("work_package", "parent_id"))
 
     assert "target" not in _to_payload(result)
 
 
 def test_the_target_of_an_update_is_the_work_package_itself_and_stays() -> None:
-    result = stamp_write_result(_created_with_a_parent("update"), settings=_settings("work_package", "parent_id"))
+    result = stamp_result(_created_with_a_parent("update"), settings=_settings("work_package", "parent_id"))
 
     assert _to_payload(result)["target"]["id"] == 42
 
@@ -267,7 +267,7 @@ def test_a_payload_copy_leaves_with_each_of_its_owners(name: str, key: str, enti
     result.payload = _payload_with(key)  # type: ignore[attr-defined]
     result.action = "create"  # type: ignore[attr-defined]
 
-    stamp_write_result(result, settings=_settings(entity, field))
+    stamp_result(result, settings=_settings(entity, field))
 
     shown = result.payload  # type: ignore[attr-defined]
     assert shown["keep"] == 1
@@ -294,8 +294,8 @@ def test_a_member_leaves_with_each_of_its_owners_and_stays_with_any_other_field(
     other = CLASSES[name].__new__(CLASSES[name])
     result.action = other.action = "update"  # type: ignore[attr-defined]
 
-    stamp_write_result(result, settings=_settings(entity, field))
-    stamp_write_result(other, settings=_settings(entity, "no_such_field"))
+    stamp_result(result, settings=_settings(entity, field))
+    stamp_result(other, settings=_settings(entity, "no_such_field"))
 
     assert member in result._hidden_keys  # type: ignore[attr-defined]
     assert not hasattr(other, "_hidden_keys")

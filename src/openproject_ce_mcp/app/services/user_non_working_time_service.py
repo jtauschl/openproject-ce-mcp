@@ -53,11 +53,11 @@ from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.user_non_working_time_api import UserNonWorkingTimeApi, UserNonWorkingTimeRecord
 from ..version_gate import call_version_gated
-from ._payload_masking import stamped_write_results
+from ._payload_masking import stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
-@stamped_write_results
+@stamped_results
 class UserNonWorkingTimeService:
     def __init__(self, *, api: UserNonWorkingTimeApi, settings: Settings) -> None:
         self._api = api

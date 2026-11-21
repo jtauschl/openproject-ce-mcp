@@ -630,9 +630,11 @@ class WorkPackageListResult(PageResult):
 
 @dataclass
 class BatchWorkPackageReadItemResult:
-    """Single item result from batch read operation."""
+    """Single item result from batch read operation. `index` is the position of the first occurrence of the
+    reference in the caller's `ids`: it correlates the item with the input when `id` is hidden."""
 
     id: int | str
+    index: int
     success: bool
     work_package: WorkPackageDetail | None
     error: str | None

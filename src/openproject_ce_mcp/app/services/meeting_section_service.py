@@ -35,11 +35,11 @@ from ..ports.meeting_api import MeetingApi
 from ..ports.meeting_section_api import MeetingSectionApi
 from ..version_gate import call_version_gated
 from . import _meeting_scope as meeting_scope
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
-@stamped_write_results
+@stamped_results
 class MeetingSectionService:
     def __init__(
         self,

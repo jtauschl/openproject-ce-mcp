@@ -32,13 +32,13 @@ from ..policies.news_policy import news_payload_allowed
 from ..ports.news_api import NewsApi
 from ..ports.project_ref import ProjectRefResolver
 from . import _stored_text_edit
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_scoped_list import SUBJECT_LIMIT, record_in_project, resolve_project_filter_id
 from .project_scoped_list import trim_text as _trim_text
 
 
-@stamped_write_results
+@stamped_results
 class NewsService:
     def __init__(
         self,

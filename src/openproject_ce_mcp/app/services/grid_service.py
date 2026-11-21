@@ -69,7 +69,7 @@ from ..policies.grid_policy import (
 from ..policies.scope import PrefixMismatch
 from ..ports.grid_api import GridApi, GridRecord
 from ..ports.project_lookup_api import ProjectLookupApi
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 # Bounds the project lookups one page of grids can start at once.
@@ -82,7 +82,7 @@ def _href(link: Any) -> Any:
     return link.get("href") if isinstance(link, dict) else None
 
 
-@stamped_write_results
+@stamped_results
 class GridService:
     def __init__(
         self,

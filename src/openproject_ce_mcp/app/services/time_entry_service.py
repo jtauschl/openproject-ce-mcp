@@ -70,7 +70,7 @@ from ..ports.time_entry_api import TimeEntryApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver, work_package_ref
 from ..resolvers.project_query import fetch_project_page
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._work_package_target import check_target
 from ._write_outcome import _finalize_write
 from .project_scoped_list import SUBJECT_LIMIT
@@ -124,7 +124,7 @@ def _seconds_to_duration(total_seconds: float) -> str:
 _USER_ALIASES: dict[str, Any] = {"user": None, "user_id": None}
 
 
-@stamped_write_results
+@stamped_results
 class TimeEntryService:
     def __init__(
         self,

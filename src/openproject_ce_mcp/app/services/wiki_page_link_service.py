@@ -58,12 +58,12 @@ from ..ports.current_user import CurrentUserLookup
 from ..ports.wiki_page_link_api import WikiPageLinkApi, WikiPageLinkRecord
 from ..ports.work_package_ref import WorkPackageRecordResolver
 from ..version_gate import call_version_gated
-from ._payload_masking import stamped_write_results
+from ._payload_masking import stamped_results
 from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
-@stamped_write_results
+@stamped_results
 class WikiPageLinkService:
     def __init__(
         self,

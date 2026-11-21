@@ -46,11 +46,11 @@ from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.recurring_meeting_api import RecurringMeetingApi
 from ..version_gate import call_version_gated
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
-@stamped_write_results
+@stamped_results
 class RecurringMeetingService:
     def __init__(
         self,

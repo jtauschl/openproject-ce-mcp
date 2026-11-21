@@ -98,7 +98,7 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.storage_api import StorageApi
-from ._payload_masking import stamped_write_results
+from ._payload_masking import stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 _PROVIDER_TYPE_URN = {
@@ -120,7 +120,7 @@ _AUTHENTICATION_METHOD_URN = {
 }
 
 
-@stamped_write_results
+@stamped_results
 class StorageService:
     def __init__(self, *, api: StorageApi, settings: Settings) -> None:
         self._api = api

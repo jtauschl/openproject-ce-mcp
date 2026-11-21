@@ -25,12 +25,12 @@ from ..ports.version_api import VersionApi
 from ..resolvers.project_query import fetch_allowed_project_page
 from ..resolvers.version_query import fetch_version_page
 from . import _stored_text_edit
-from ._payload_masking import record_payload, stamped_write_results
+from ._payload_masking import record_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_service import _stamp_project
 
 
-@stamped_write_results
+@stamped_results
 class VersionService:
     def __init__(
         self,

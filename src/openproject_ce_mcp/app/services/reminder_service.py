@@ -51,13 +51,13 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..version_gate import call_version_gated
-from ._payload_masking import stamped_write_results
+from ._payload_masking import stamped_results
 from ._work_package_presentation import present_target
 from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
-@stamped_write_results
+@stamped_results
 class ReminderService:
     def __init__(
         self,
