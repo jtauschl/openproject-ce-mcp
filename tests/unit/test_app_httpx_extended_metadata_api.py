@@ -112,7 +112,7 @@ async def test_render_text_posts_raw_text_plain_body() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.render_text(text="**Hello**", format="markdown")
 
     assert record.summary.html == '<p class="op-uc-p"><strong>Hello</strong></p>'
@@ -127,7 +127,7 @@ async def test_render_text_plain_format_uses_plain_endpoint() -> None:
         return httpx.Response(200, content=b"<p>Hello</p>", headers={"content-type": "text/html"}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         await api.render_text(text="Hello", format="plain")
 
 
@@ -142,7 +142,7 @@ async def test_list_help_texts_sends_get_and_builds_records() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_help_texts()
 
     assert len(records) == 1
@@ -156,7 +156,7 @@ async def test_get_help_text_sends_get_single_path() -> None:
         return httpx.Response(200, json={"id": 5, "attribute": "description"}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get_help_text(5)
 
     assert record.summary.id == 5
@@ -174,7 +174,7 @@ async def test_list_working_days_sends_days_week_path() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_working_days()
 
     assert len(records) == 1
@@ -189,7 +189,7 @@ async def test_list_non_working_days_without_year_sends_no_filter_params() -> No
         return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_non_working_days(year=None)
 
     assert records == []
@@ -208,7 +208,7 @@ async def test_list_non_working_days_with_year_builds_date_range_filter() -> Non
         )
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_non_working_days(year=2026)
 
     assert len(records) == 1
@@ -222,7 +222,7 @@ async def test_get_custom_option_sends_get_single_path() -> None:
         return httpx.Response(200, json={"id": 42, "value": "High Priority"}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxExtendedMetadataApi(HttpxTransport(http_client))
+        api = HttpxExtendedMetadataApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get_custom_option(42)
 
     assert record.summary.id == 42

@@ -31,8 +31,10 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.category_api import CategoryApi
 from ..ports.project_ref import ProjectRefResolver
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("category")
 class CategoryService:
     def __init__(
         self,

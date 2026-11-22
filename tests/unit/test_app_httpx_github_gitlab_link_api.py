@@ -101,7 +101,7 @@ async def test_get_github_pull_request_raw_requests_single_pull_request() -> Non
         return httpx.Response(200, json=_github_pull_request_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client))
+        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client, redact_server_text=False))
         raw = await api.get_github_pull_request_raw(9)
 
     assert raw["id"] == 9
@@ -120,7 +120,7 @@ async def test_fetch_github_pull_requests_for_work_package_requests_the_sub_reso
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client))
+        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client, redact_server_text=False))
         elements = await api.fetch_github_pull_requests_for_work_package(42)
 
     assert len(elements) == 1
@@ -203,7 +203,7 @@ async def test_fetch_gitlab_issues_for_work_package_requests_the_sub_resource() 
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client))
+        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client, redact_server_text=False))
         elements = await api.fetch_gitlab_issues_for_work_package(42)
 
     assert len(elements) == 1
@@ -267,7 +267,7 @@ async def test_fetch_gitlab_merge_requests_for_work_package_requests_the_sub_res
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client))
+        api = HttpxGithubGitlabLinkApi(HttpxTransport(http_client, redact_server_text=False))
         elements = await api.fetch_gitlab_merge_requests_for_work_package(42)
 
     assert len(elements) == 1

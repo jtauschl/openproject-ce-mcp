@@ -24,7 +24,7 @@ async def test_request_raw_returns_status_and_lowercase_headers() -> None:
         return httpx.Response(204, headers={"X-Custom": "value"}, request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         result = await transport.request_raw("POST", "workspaces/6/favorite", json_body={})
 
     assert result.status_code == 204
@@ -39,7 +39,7 @@ async def test_request_raw_normalizes_mixed_case_location_header() -> None:
         return httpx.Response(200, headers={"Location": "/api/v3/projects/6/copy/status/42"}, request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         result = await transport.request_raw("POST", "projects/6/copy", json_body={})
 
     assert result.headers["location"] == "/api/v3/projects/6/copy/status/42"
@@ -57,7 +57,7 @@ async def test_request_raw_exposes_redirect_history_headers() -> None:
         return httpx.Response(200, json={"status": "in_progress"}, request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         result = await transport.request_raw("POST", "projects/6/copy", json_body={})
 
     assert result.status_code == 200
@@ -72,7 +72,7 @@ async def test_request_raw_no_history_falls_back_to_final_response_headers() -> 
         return httpx.Response(200, headers={"Location": "/api/v3/projects/6/copy/status/42"}, request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         result = await transport.request_raw("POST", "projects/6/copy", json_body={})
 
     assert result.redirect_headers == ()
@@ -85,7 +85,7 @@ async def test_request_raw_raises_on_error_status() -> None:
         return httpx.Response(500, json={}, request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         with pytest.raises(OpenProjectServerError):
             await transport.request_raw("POST", "workspaces/6/favorite", json_body={})
 
@@ -96,7 +96,7 @@ async def test_request_raw_wraps_timeout_as_transport_error() -> None:
         raise httpx.TimeoutException("timed out", request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         with pytest.raises(TransportError):
             await transport.request_raw("POST", "workspaces/6/favorite", json_body={})
 
@@ -119,7 +119,7 @@ async def test_post_text_sends_content_and_headers_and_returns_the_body_as_text(
         )
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         result = await transport.post_text(
             "render/markdown", content=b"**Hello**", headers={"Content-Type": "text/plain"}
         )
@@ -133,7 +133,7 @@ async def test_post_text_raises_on_error_status() -> None:
         return httpx.Response(500, json={}, request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         with pytest.raises(OpenProjectServerError):
             await transport.post_text("render/markdown", content=b"x", headers={"Content-Type": "text/plain"})
 
@@ -152,7 +152,7 @@ async def test_post_text_maps_the_unsupported_media_type_answer_through_the_shar
         )
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         with pytest.raises(OpenProjectServerError, match="415"):
             await transport.post_text("render/markdown", content=b"x", headers={"Content-Type": "application/json"})
 
@@ -163,7 +163,7 @@ async def test_post_text_wraps_timeout_as_transport_error() -> None:
         raise httpx.TimeoutException("timed out", request=request)
 
     async with _client(handler) as http_client:
-        transport = HttpxTransport(http_client)
+        transport = HttpxTransport(http_client, redact_server_text=False)
         with pytest.raises(TransportError):
             await transport.post_text("render/markdown", content=b"x", headers={"Content-Type": "text/plain"})
 
@@ -182,7 +182,9 @@ async def test_get_binary_returns_body_and_served_content_type() -> None:
         return httpx.Response(200, content=_PNG, headers={"Content-Type": "image/png"}, request=request)
 
     async with _client(handler) as http_client:
-        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+        result = await HttpxTransport(http_client, redact_server_text=False).get_binary(
+            "attachments/5/content", max_bytes=1024
+        )
 
     assert result.data == _PNG
     assert result.content_type == "image/png"
@@ -195,7 +197,9 @@ async def test_get_binary_body_exactly_at_limit_is_not_truncated() -> None:
         return httpx.Response(200, content=b"0123456789", request=request)
 
     async with _client(handler) as http_client:
-        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=10)
+        result = await HttpxTransport(http_client, redact_server_text=False).get_binary(
+            "attachments/5/content", max_bytes=10
+        )
 
     assert result.data == b"0123456789"
     assert result.truncated is False
@@ -208,7 +212,9 @@ async def test_get_binary_stops_at_limit_and_reports_truncation() -> None:
         return httpx.Response(200, content=b"abcdefghijklmnop", request=request)
 
     async with _client(handler) as http_client:
-        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=10)
+        result = await HttpxTransport(http_client, redact_server_text=False).get_binary(
+            "attachments/5/content", max_bytes=10
+        )
 
     assert result.data == b"abcdefghij"
     assert result.truncated is True
@@ -254,7 +260,9 @@ async def _hops(status: int, location: str) -> list[httpx.Request]:
         return httpx.Response(200, content=_PNG, request=request)
 
     async with _credentialed_client(handler) as http_client:
-        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+        result = await HttpxTransport(http_client, redact_server_text=False).get_binary(
+            "attachments/5/content", max_bytes=1024
+        )
 
     assert result.data == _PNG
     return hops
@@ -307,7 +315,7 @@ async def test_get_binary_redirect_back_to_the_instance_does_not_regain_credenti
         return httpx.Response(200, content=_PNG, request=request)
 
     async with _credentialed_client(handler) as http_client:
-        await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+        await HttpxTransport(http_client, redact_server_text=False).get_binary("attachments/5/content", max_bytes=1024)
 
     assert hops[2].url.host == "op.example.com"
     assert set(hops[2].headers.keys()) == {"host", "accept", "accept-encoding", "user-agent"}
@@ -343,7 +351,7 @@ async def test_get_binary_applies_client_auth_only_until_the_chain_leaves_the_or
         return httpx.Response(200, content=_PNG, request=request)
 
     async with _client_auth_hops(handler) as http_client:
-        await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+        await HttpxTransport(http_client, redact_server_text=False).get_binary("attachments/5/content", max_bytes=1024)
 
     assert seen == expected
 
@@ -355,7 +363,9 @@ async def test_get_binary_gives_up_after_too_many_redirects() -> None:
 
     async with _client(handler) as http_client:
         with pytest.raises(OpenProjectServerError, match="too many times"):
-            await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+            await HttpxTransport(http_client, redact_server_text=False).get_binary(
+                "attachments/5/content", max_bytes=1024
+            )
 
 
 @pytest.mark.asyncio
@@ -367,7 +377,9 @@ async def test_get_binary_maps_error_status_like_json_requests() -> None:
 
     async with _client(handler) as http_client:
         with pytest.raises(NotFoundError):
-            await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+            await HttpxTransport(http_client, redact_server_text=False).get_binary(
+                "attachments/5/content", max_bytes=1024
+            )
 
 
 @pytest.mark.asyncio
@@ -377,7 +389,9 @@ async def test_get_binary_wraps_timeout_as_transport_error() -> None:
 
     async with _client(handler) as http_client:
         with pytest.raises(TransportError):
-            await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+            await HttpxTransport(http_client, redact_server_text=False).get_binary(
+                "attachments/5/content", max_bytes=1024
+            )
 
 
 # --- get_binary through RetryTransport -----------------------------------------
@@ -415,7 +429,9 @@ async def test_get_binary_through_retry_transport_retries_a_transient_status() -
         return httpx.Response(200, content=_PNG, headers={"Content-Type": "image/png"}, request=request)
 
     async with _retry_client(handler) as http_client:
-        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+        result = await HttpxTransport(http_client, redact_server_text=False).get_binary(
+            "attachments/5/content", max_bytes=1024
+        )
 
     assert result.data == _PNG
     assert result.content_type == "image/png"
@@ -446,7 +462,9 @@ async def test_get_binary_through_retry_transport_keeps_the_byte_limit_on_a_retr
         return httpx.Response(200, content=b"abcdefghijklmnop", request=request)
 
     async with _retry_client(handler, **credentials) as http_client:
-        result = await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=10)
+        result = await HttpxTransport(http_client, redact_server_text=False).get_binary(
+            "attachments/5/content", max_bytes=10
+        )
 
     assert result.data == b"abcdefghij"
     assert result.truncated is True
@@ -471,6 +489,8 @@ async def test_get_binary_through_retry_transport_maps_a_persistent_transient_st
 
     async with _retry_client(handler) as http_client:
         with pytest.raises(OpenProjectServerError):
-            await HttpxTransport(http_client).get_binary("attachments/5/content", max_bytes=1024)
+            await HttpxTransport(http_client, redact_server_text=False).get_binary(
+                "attachments/5/content", max_bytes=1024
+            )
 
     assert len(attempts) == 4

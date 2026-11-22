@@ -53,7 +53,7 @@ async def test_list_hits_projects_endpoint_with_filters() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_project_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         page = await api.list(server_offset=1, server_page_size=10, search=None)
 
     assert page.server_total == 1
@@ -70,7 +70,7 @@ async def test_get_fetches_by_ref_and_builds_detail_with_ancestors() -> None:
         return httpx.Response(200, json=_project_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("demo")
 
     assert record.summary.identifier == "demo"
@@ -86,7 +86,7 @@ async def test_get_url_escapes_the_project_ref() -> None:
         return httpx.Response(200, json=_project_payload(identifier="demo/slash"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("demo/slash")
 
     assert record.summary.identifier == "demo/slash"
@@ -104,7 +104,7 @@ async def test_get_rejects_path_traversal_ref() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(InvalidInputError, match="project_ref"):
             await api.get("../job_statuses/77")
 
@@ -119,7 +119,7 @@ async def test_list_applies_the_requested_text_limit_to_records() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         page = await api.list(server_offset=1, server_page_size=10, search=None, text_limit=10)
 
     record = page.records[0]
@@ -137,7 +137,7 @@ async def test_get_applies_the_requested_text_limit() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("demo", text_limit=10)
 
     assert record.summary.description_truncated is True
@@ -152,7 +152,7 @@ async def test_create_form_posts_to_form_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         form = await api.create_form({"name": "Demo"})
 
     assert form.payload == {"name": "Demo"}
@@ -181,7 +181,7 @@ async def test_create_form_validation_errors_prefer_raw_over_message() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         form = await api.create_form({"name": "Demo"})
 
     assert form.validation_errors == {"name": "raw error"}
@@ -195,7 +195,7 @@ async def test_commit_create_posts_and_returns_normalized_detail() -> None:
         return httpx.Response(201, json=_project_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.commit_create({"name": "Demo"})
 
     assert record.summary.id == 6
@@ -209,7 +209,7 @@ async def test_commit_update_patches_and_returns_normalized_detail() -> None:
         return httpx.Response(200, json=_project_payload(name="Renamed"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.commit_update(6, {"name": "Renamed"})
 
     assert record.summary.name == "Renamed"
@@ -224,7 +224,7 @@ async def test_delete_issues_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.delete(6)  # must not raise
 
 
@@ -236,7 +236,7 @@ async def test_set_favorite_uses_request_raw_for_empty_204_body() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.set_favorite(6, favorite=True)  # must not raise
 
 
@@ -248,7 +248,7 @@ async def test_set_favorite_removal_issues_delete() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.set_favorite(6, favorite=False)  # must not raise
 
 
@@ -264,7 +264,7 @@ async def test_list_available_parent_projects_accepts_relative_link() -> None:
 
     schema = {"parent": {"_links": {}}}
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         refs = await api.list_available_parent_projects(6, schema=schema)
 
     assert refs[0].id == 1
@@ -280,7 +280,7 @@ async def test_list_available_parent_projects_accepts_absolute_same_origin_link(
         "parent": {"_links": {"allowedValues": {"href": f"{BASE_URL}/api/v3/projects/available_parent_projects"}}}
     }
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         refs = await api.list_available_parent_projects(6, schema=schema)
 
     assert refs == []
@@ -293,7 +293,7 @@ async def test_list_available_parent_projects_rejects_foreign_origin_link_before
 
     schema = {"parent": {"_links": {"allowedValues": {"href": "https://evil.example.com/api/v3/projects/foo"}}}}
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(OpenProjectServerError, match="unexpected link host"):
             await api.list_available_parent_projects(6, schema=schema)
 
@@ -306,7 +306,7 @@ async def test_commit_copy_relative_location_becomes_absolute_web_url() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         job_status_url = await api.commit_copy(6, {"name": "Copy"})
 
     assert job_status_url == f"{BASE_URL}/api/v3/projects/6/copy/status/42"
@@ -320,7 +320,7 @@ async def test_commit_copy_foreign_origin_location_returns_none() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         job_status_url = await api.commit_copy(6, {"name": "Copy"})
 
     assert job_status_url is None
@@ -334,7 +334,7 @@ async def test_copy_form_posts_to_copy_form_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         result = await api.copy_form(6, {"name": "Copy"})
 
     assert result.payload == {"name": "Copy"}
@@ -348,7 +348,7 @@ async def test_get_configuration_fetches_project_configuration_endpoint() -> Non
         return httpx.Response(200, json={"hostName": "op.example.com"}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         config = await api.get_configuration(6)
 
     assert config["hostName"] == "op.example.com"
@@ -373,7 +373,7 @@ async def test_list_phase_definitions_filters_by_type() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         results = await api.list_phase_definitions()
 
     assert len(results) == 1
@@ -413,7 +413,7 @@ async def test_list_phase_definitions_reads_every_page() -> None:
         return _server_page(request, rows, server_max_page_size=30)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         results = await api.list_phase_definitions()
 
     assert [definition.id for definition in results] == list(range(1, 46))
@@ -436,7 +436,7 @@ async def test_list_available_parent_projects_reads_every_page_and_keeps_the_of_
         return _server_page(request, rows, server_max_page_size=30)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         refs = await api.list_available_parent_projects(6, schema={"parent": {"_links": {}}})
 
     assert [ref.id for ref in refs] == list(range(1, 46))
@@ -461,7 +461,7 @@ async def test_get_phase_fetches_by_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get_phase(3)
 
     assert record.phase.id == 3
@@ -494,7 +494,7 @@ async def test_list_narrows_to_the_descendants_of_one_project() -> None:
         return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.list(server_offset=1, server_page_size=10, search=None, ancestor_id=7)
         await api.list(server_offset=1, server_page_size=10, search=None)
 
@@ -512,7 +512,7 @@ async def test_list_is_not_exhausted_while_a_server_that_cut_the_page_size_has_m
         )
 
     async with _client(handler) as http_client:
-        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         page = await api.list(server_offset=2, server_page_size=100, search=None)
 
     assert page.exhausted is False  # 2 * 20 = 40 < 100, although 2 * 100 >= 100

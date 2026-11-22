@@ -16,6 +16,7 @@ from typing import Any, TypeVar
 
 from ...config import Settings
 from ..policies import hidden_fields
+from ..policies.hidden_fields import custom_field_key_hidden
 from ..ports.custom_field_carrier import CustomFieldCarrier
 
 T = TypeVar("T", bound=CustomFieldCarrier)
@@ -31,22 +32,6 @@ def is_custom_field_key(key: str) -> bool:
 def is_custom_comment_key(key: str) -> bool:
     match = _KEY.fullmatch(key)
     return match is not None and match.group(1) == "customComment"
-
-
-def custom_field_key_hidden(key: str, *, entity: str, settings: Settings) -> bool:
-    """True for a `customField<N>` or `customComment<N>` key the settings hide. A comment is part of its
-    field, so it is judged by the field's key: the pairing cannot depend on the field's value being
-    present next to it."""
-    match = _KEY.fullmatch(key)
-    if match is None:
-        return False
-    kind, field_id = match.groups()
-    if hidden_fields.field_hidden(entity, "custom_fields", settings=settings):
-        return True
-    if kind == "customComment" and hidden_fields.field_hidden(entity, "custom_comments", settings=settings):
-        return True
-    field_key = f"customField{field_id}"
-    return hidden_fields.custom_field_hidden(field_key, field_key, settings=settings)
 
 
 def _without_hidden(values: dict[str, Any] | None, *, entity: str, settings: Settings) -> dict[str, Any] | None:
@@ -84,16 +69,13 @@ def without_hidden_custom_fields(payload: dict[str, Any], *, entity: str, settin
     return shown
 
 
-def redacted_validation_errors(errors: dict[str, str], *, entity: str, settings: Settings) -> dict[str, str]:
-    """A form error on a hidden field keeps its key, so the write stays explainable, but not its text: the
-    text names the field (`Secret can't be blank`)."""
-    if not errors:
-        return errors
+def custom_field_names(schema: dict[str, Any]) -> dict[str, str]:
+    """`customField<N>` -> the field's name in the form schema the write already fetched: a hide pattern written
+    as the name judges an error entry of the work package by it (the friendly name never reaches an error key)."""
     return {
-        key: "A custom field hidden by the hide settings is invalid."
-        if custom_field_key_hidden(key, entity=entity, settings=settings)
-        else message
-        for key, message in errors.items()
+        key: str(spec["name"])
+        for key, spec in schema.items()
+        if isinstance(spec, dict) and isinstance(spec.get("name"), str) and _KEY.fullmatch(key)
     }
 
 

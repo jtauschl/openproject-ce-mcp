@@ -118,7 +118,7 @@ async def test_get_requests_job_status_by_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client))
+        api = HttpxJobStatusApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get("77")
 
     assert record.summary.id == "77"
@@ -138,7 +138,7 @@ async def test_get_rejects_path_traversal_id() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client))
+        api = HttpxJobStatusApi(HttpxTransport(http_client, redact_server_text=False))
         with pytest.raises(InvalidInputError, match="job_status_id"):
             await api.get("../projects/42")
 
@@ -161,7 +161,7 @@ async def test_get_record_carries_raw_project_link_for_allowlist_check() -> None
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client))
+        api = HttpxJobStatusApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get("77")
 
     assert record.project_link == {"href": "/api/v3/projects/6", "title": "Demo"}
@@ -184,7 +184,7 @@ async def test_get_record_has_no_scoping_link_without_a_payload_project(payload:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client))
+        api = HttpxJobStatusApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get("77")
 
     assert record.project_link is None
@@ -211,7 +211,7 @@ async def test_get_record_keeps_a_falsy_present_project_link_as_it_is() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client))
+        api = HttpxJobStatusApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get("77")
 
     assert record.project_link == {}

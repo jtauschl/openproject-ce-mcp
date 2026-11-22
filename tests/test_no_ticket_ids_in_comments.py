@@ -73,6 +73,7 @@ _MAY_NAME_THE_MIRROR = {
     "test_check_field_completeness.py",
     "test_fetch_sources.py",
     "test_check_coverage.py",
+    "test_error_keys_oracle.py",
 }
 
 

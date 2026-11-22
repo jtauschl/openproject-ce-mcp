@@ -177,7 +177,7 @@ def test_the_references_of_a_payload_are_listed_per_result_field() -> None:
 
 
 def test_a_record_names_nothing_until_it_is_asked_for_a_summary_with_a_decision() -> None:
-    api = HttpxWorkPackageApi(HttpxTransport(None), base_url="https://op.example.com")  # type: ignore[arg-type]
+    api = HttpxWorkPackageApi(HttpxTransport(None, redact_server_text=False), base_url="https://op.example.com")  # type: ignore[arg-type]
     payload = _payload(targetVersions=[_version(7, "Secret")])
 
     record = api.to_record(payload, text_limit=None)

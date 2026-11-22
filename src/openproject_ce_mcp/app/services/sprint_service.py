@@ -50,8 +50,10 @@ from ..policies.sprint_policy import ensure_sprint_workspace_allowed, sprint_pay
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.sprint_api import SprintApi, SprintRecord
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("sprint")
 class SprintService:
     def __init__(
         self,

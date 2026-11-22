@@ -51,10 +51,12 @@ from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.user_non_working_time_api import UserNonWorkingTimeApi, UserNonWorkingTimeRecord
 from ..version_gate import call_version_gated
+from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
 
 
 @stamped_results
+@redacted_server_errors("user_non_working_time")
 class UserNonWorkingTimeService:
     def __init__(self, *, api: UserNonWorkingTimeApi, settings: Settings) -> None:
         self._api = api

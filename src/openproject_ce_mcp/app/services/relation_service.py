@@ -86,6 +86,7 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._error_masking import redacted_server_errors
 from ._payload_masking import record_payload, shown_payload, stamped_results
 from ._work_package_presentation import present_target
 
@@ -141,6 +142,7 @@ def _queried_relation_perspective(
 
 
 @stamped_results
+@redacted_server_errors("relation")
 class RelationService:
     def __init__(
         self,

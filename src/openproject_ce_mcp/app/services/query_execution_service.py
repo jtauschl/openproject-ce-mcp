@@ -45,9 +45,11 @@ from ..ports.query_execution_api import QueryExecutionApi
 from ..ports.scoped_reference import ScopedReferencesAllowedBulkCheck
 from ..ports.work_package_api import WorkPackageApi, WorkPackageRecord
 from ..ports.work_package_ref import WorkPackageProjectAllowedBulkCheck
+from ._error_masking import redacted_server_errors
 from ._work_package_presentation import present_summaries
 
 
+@redacted_server_errors("work_package")
 class QueryExecutionService:
     def __init__(
         self,

@@ -1425,6 +1425,21 @@ async def test_update_refuses_to_replace_a_version_the_result_cannot_name() -> N
 
 
 @pytest.mark.asyncio
+async def test_the_refusal_to_replace_a_version_names_the_project_by_the_reference_the_caller_passed() -> None:
+    """With the identifier hidden, the sentence must not give it back: it names the project as typed."""
+    api = _FakeProjectApi([_attribute_record()])
+    api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}
+    settings = dataclasses.replace(_enabled_settings(), hidden_fields={"project": ("identifier",)})
+    service = _service(api, settings=settings, references_allowed=_only_visible_versions)
+
+    with pytest.raises(InvalidInputError) as refused:
+        await service.update(project_ref="6", custom_fields={"Release": None}, confirm=True)
+
+    assert str(refused.value).startswith("Project 6 has 1 version custom field value")
+    assert "demo" not in str(refused.value)
+
+
+@pytest.mark.asyncio
 async def test_update_may_change_an_attribute_next_to_a_version_it_does_not_touch() -> None:
     api = _FakeProjectApi([_attribute_record()])
     api.schema = {**api.schema, **_ATTRIBUTE_SCHEMA}

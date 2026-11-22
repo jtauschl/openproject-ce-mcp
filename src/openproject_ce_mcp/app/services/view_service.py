@@ -33,9 +33,11 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.view_api import ViewApi
+from ._error_masking import redacted_server_errors
 from .project_scoped_list import record_in_project, resolve_project_filter_id
 
 
+@redacted_server_errors("view")
 class ViewService:
     def __init__(
         self,

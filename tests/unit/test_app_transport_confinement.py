@@ -82,7 +82,7 @@ async def test_a_redirect_that_leaves_the_instance_is_refused_before_it_is_sent(
     server = _Server(redirect=(status, location))
     async with _http(server) as http:
         with pytest.raises(OpenProjectServerError) as raised:
-            await _CALLS[call](HttpxTransport(http))
+            await _CALLS[call](HttpxTransport(http, redact_server_text=False))
 
     assert type(raised.value) is OpenProjectServerError
     assert len(server.seen) == 1
@@ -95,7 +95,7 @@ async def test_a_redirect_that_leaves_the_instance_is_refused_before_it_is_sent(
 async def test_a_redirect_inside_the_api_path_of_the_instance_is_followed(call: str, status: int) -> None:
     server = _Server(redirect=(status, "/api/v3/job_statuses/7"))
     async with _http(server) as http:
-        await _CALLS[call](HttpxTransport(http))
+        await _CALLS[call](HttpxTransport(http, redact_server_text=False))
 
     assert [request.url.path for request in server.seen][-1] == "/api/v3/job_statuses/7"
     assert len(server.seen) == 2
@@ -117,7 +117,7 @@ async def test_a_redirect_inside_the_api_path_of_the_instance_is_followed(call: 
 async def test_a_request_to_another_origin_or_out_of_the_api_path_is_refused(path: str) -> None:
     server = _Server()
     async with _http(server) as http:
-        transport = HttpxTransport(http)
+        transport = HttpxTransport(http, redact_server_text=False)
         with pytest.raises(OpenProjectServerError):
             await transport.get_json(path)
         with pytest.raises(OpenProjectServerError):
@@ -133,7 +133,7 @@ async def test_the_refusal_names_both_origins_and_never_a_path_or_a_query() -> N
     server = _Server(redirect=(307, "https://evil.example:8443/steal?token=abc"))
     async with _http(server) as http:
         with pytest.raises(OpenProjectServerError) as raised:
-            await HttpxTransport(http).post_json("projects", json_body={})
+            await HttpxTransport(http, redact_server_text=False).post_json("projects", json_body={})
 
     message = str(raised.value)
     assert message == "OpenProject request left the instance: https://evil.example:8443 is not https://op.example.com."
@@ -146,7 +146,7 @@ async def test_the_refusal_of_a_path_outside_the_api_names_no_url() -> None:
     server = _Server(redirect=(307, "/admin/users?token=abc"))
     async with _http(server) as http:
         with pytest.raises(OpenProjectServerError) as raised:
-            await HttpxTransport(http).post_json("projects", json_body={})
+            await HttpxTransport(http, redact_server_text=False).post_json("projects", json_body={})
 
     assert str(raised.value) == "OpenProject request left the API path of the instance."
 
@@ -155,7 +155,7 @@ async def test_the_refusal_of_a_path_outside_the_api_names_no_url() -> None:
 async def test_an_instance_under_a_root_path_and_an_internationalized_host_still_works() -> None:
     server = _Server()
     async with _http(server, base_url="https://Bücher.Example:443/OP") as http:
-        await HttpxTransport(http).get_json("projects")
+        await HttpxTransport(http, redact_server_text=False).get_json("projects")
 
     assert [str(request.url) for request in server.seen] == ["https://xn--bcher-kva.example/OP/api/v3/projects"]
 
@@ -165,7 +165,7 @@ async def test_an_instance_under_a_root_path_refuses_the_api_path_of_the_bare_ho
     server = _Server(redirect=(307, "/api/v3/projects"))
     async with _http(server, base_url="https://op.example.com/OP") as http:
         with pytest.raises(OpenProjectServerError):
-            await HttpxTransport(http).post_json("projects", json_body={})
+            await HttpxTransport(http, redact_server_text=False).post_json("projects", json_body={})
 
 
 @pytest.mark.parametrize("location", ["/api/v3x/projects", "/api/v30/projects", "/api/v3"])
@@ -174,9 +174,9 @@ async def test_a_path_that_only_starts_like_the_api_path_is_refused(location: st
     server = _Server(redirect=(307, location))
     async with _http(server) as http:
         with pytest.raises(OpenProjectServerError, match="API path"):
-            await HttpxTransport(http).post_json("projects", json_body={})
+            await HttpxTransport(http, redact_server_text=False).post_json("projects", json_body={})
         with pytest.raises(OpenProjectServerError, match="API path"):
-            await HttpxTransport(http).get_json("../v3x/projects")
+            await HttpxTransport(http, redact_server_text=False).get_json("../v3x/projects")
 
 
 @pytest.mark.parametrize("marker", [True, 1, "1", "openproject_ce_mcp.unconfined", object()])
@@ -195,7 +195,7 @@ async def test_the_refusal_of_credentials_in_a_url_says_so_instead_of_naming_the
     server = _Server(redirect=(307, "https://user:pw@op.example.com/api/v3/projects"))
     async with _http(server) as http:
         with pytest.raises(OpenProjectServerError) as raised:
-            await HttpxTransport(http).post_json("projects", json_body={})
+            await HttpxTransport(http, redact_server_text=False).post_json("projects", json_body={})
 
     assert str(raised.value) == "OpenProject request carried credentials in its URL."
     assert "pw" not in str(raised.value)
@@ -206,7 +206,7 @@ async def test_the_refusal_names_an_ipv6_origin_in_brackets() -> None:
     server = _Server(redirect=(307, "http://[::1]:8081/api/v3/projects"))
     async with _http(server, base_url="http://[::1]:8080") as http:
         with pytest.raises(OpenProjectServerError) as raised:
-            await HttpxTransport(http).post_json("projects", json_body={})
+            await HttpxTransport(http, redact_server_text=False).post_json("projects", json_body={})
 
     assert str(raised.value) == "OpenProject request left the instance: http://[::1]:8081 is not http://[::1]:8080."
 
@@ -216,7 +216,9 @@ def _binary_hops(status: int, location: str) -> tuple[_Server, Callable[[], Awai
 
     async def download() -> Any:
         async with _http(server) as http:
-            return await HttpxTransport(http).get_binary("attachments/5/content", max_bytes=1024)
+            return await HttpxTransport(http, redact_server_text=False).get_binary(
+                "attachments/5/content", max_bytes=1024
+            )
 
     return server, download
 

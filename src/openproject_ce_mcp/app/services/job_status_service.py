@@ -37,8 +37,10 @@ from ...models import JobStatusDetail
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.job_status_api import JobStatusApi
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("job_status")
 class JobStatusService:
     def __init__(
         self,

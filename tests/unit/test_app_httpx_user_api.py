@@ -80,7 +80,7 @@ async def test_list_users_requests_offset_and_page_size() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_user_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         records, total = await api.list_users(offset=1, page_size=20)
 
     assert total == 1
@@ -103,7 +103,7 @@ async def test_list_users_falls_back_to_record_count_when_total_missing() -> Non
         )
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         records, total = await api.list_users(offset=1, page_size=20)
 
     assert total == 2
@@ -117,7 +117,7 @@ async def test_get_user_quotes_the_ref() -> None:
         return httpx.Response(200, json=_user_payload(login="ada@example.com"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get_user("ada@example.com")
 
     assert record.summary.login == "ada@example.com"
@@ -136,7 +136,7 @@ async def test_get_user_rejects_path_traversal_ref() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(InvalidInputError, match="user_ref"):
             await api.get_user("../projects/42")
 
@@ -157,7 +157,7 @@ async def test_create_form_returns_payload_and_validation_errors() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         form = await api.create_form({"login": "ada"})
 
     assert form.payload == {"login": "ada"}
@@ -172,7 +172,7 @@ async def test_commit_create_posts_to_users() -> None:
         return httpx.Response(200, json=_user_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         detail = await api.commit_create({"login": "ada"})
 
     assert detail.id == 5
@@ -186,7 +186,7 @@ async def test_commit_update_patches_the_user() -> None:
         return httpx.Response(200, json=_user_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         detail = await api.commit_update(5, {"login": "ada"})
 
     assert detail.id == 5
@@ -200,7 +200,7 @@ async def test_commit_delete_sends_delete() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.commit_delete(5)
 
 
@@ -218,7 +218,7 @@ async def test_commit_lock_posts_to_the_lock_subresource() -> None:
         return httpx.Response(200, json=_user_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         detail = await api.commit_lock(5)
 
     assert detail.id == 5
@@ -234,7 +234,7 @@ async def test_commit_unlock_sends_delete_and_parses_the_response_body() -> None
         return httpx.Response(200, json=_user_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxUserApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         detail = await api.commit_unlock(5)
 
     assert detail.id == 5

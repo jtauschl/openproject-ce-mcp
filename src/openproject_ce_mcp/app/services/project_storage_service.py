@@ -53,9 +53,11 @@ from ..policies import scope as scope_policy
 from ..policies.project_storage_policy import project_storage_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_storage_api import ProjectStorageApi
+from ._error_masking import redacted_server_errors
 from .project_scoped_list import record_in_project, resolve_project_filter_id
 
 
+@redacted_server_errors("project_storage")
 class ProjectStorageService:
     def __init__(
         self,

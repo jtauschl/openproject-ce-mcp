@@ -1,6 +1,6 @@
 # API source-check
 
-Three tools that keep this MCP honest against the OpenProject API:
+Four tools that keep this MCP honest against the OpenProject API:
 
 - **`check_api.py`** — verifies, offline, that the API symbols the client depends
   on (paths, fields, filters) still exist in each OpenProject version. Guards
@@ -17,10 +17,19 @@ Three tools that keep this MCP honest against the OpenProject API:
   of verifying fields it already depends on still exist. Writes
   `FIELD_COMPLETENESS.md`.
 
+- **`error_keys.py`** — lists, per entity and pinned version, every attribute a
+  rejected write can name in an error (`_embedded.details.attribute`), the message
+  templates that quote a value, and the `errors.add` sites with a computed name.
+  The client judges a server error by that attribute (`app/policies/error_fields.py`);
+  the committed snapshot `error_keys.json` records what the sources said, and
+  `tests/test_error_keys_oracle.py` requires every attribute in the table or waived.
+
 ## Usage
 
 ```bash
 tools/api-check/fetch-sources.sh        # clone OP source for each version; re-run anytime to sync sparse-checkout paths
+
+python tools/api-check/error_keys.py --check   # the error-attribute snapshot against the sources; --write rewrites it
 
 python tools/api-check/check_api.py     # curated version matrix; exit 1 on unexpected drift
 python tools/api-check/check_api.py --verbose   # also list matching symbols

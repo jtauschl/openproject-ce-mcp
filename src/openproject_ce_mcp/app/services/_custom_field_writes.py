@@ -63,7 +63,7 @@ async def apply_custom_fields(
         schema_key = resolve_custom_field_key(schema, raw_key, subject=subject)
         field = schema[schema_key]
         hidden_fields.ensure_custom_field_writable(
-            _trim_text(field.get("name")) or schema_key, schema_key, settings=settings
+            _trim_text(field.get("name")) or schema_key, schema_key, settings=settings, typed=raw_key
         )
         if field.get("location") != "_links":
             payload[schema_key] = (

@@ -41,7 +41,7 @@ async def test_list_all_requests_the_views_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_view_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client))
+        api = HttpxViewApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert total == 1
@@ -67,7 +67,7 @@ async def test_list_all_normalizes_a_view_without_a_project_link() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client))
+        api = HttpxViewApi(HttpxTransport(http_client, redact_server_text=False))
         records, _ = await api.list_all(offset=1, page_size=50)
 
     summary = records[0].summary
@@ -82,7 +82,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client))
+        api = HttpxViewApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
@@ -97,7 +97,7 @@ async def test_get_requests_the_single_view_endpoint() -> None:
         return httpx.Response(200, json=_view_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client))
+        api = HttpxViewApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -110,7 +110,7 @@ async def test_detail_reuses_every_summary_field_and_adds_sorted_links() -> None
         return httpx.Response(200, json=_view_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client))
+        api = HttpxViewApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     detail = record.detail

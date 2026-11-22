@@ -35,8 +35,10 @@ from ...models import WikiPageDetail
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.wiki_page_api import WikiPageApi
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("wiki_page")
 class WikiPageService:
     def __init__(
         self,

@@ -47,7 +47,7 @@ async def test_list_actions_requests_offset_and_page_size() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_action_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         records, total = await api.list_actions(offset=1, page_size=20)
 
     assert total == 1
@@ -63,7 +63,7 @@ async def test_list_actions_missing_embedded_elements_returns_empty_list() -> No
         return httpx.Response(200, json={"total": 0}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         records, total = await api.list_actions(offset=1, page_size=20)
 
     assert records == []
@@ -81,7 +81,7 @@ async def test_list_capabilities_sends_filters_as_json() -> None:
 
     filters = [{"context": {"operator": "=", "values": ["p1"]}}]
     async with _client(handler) as http_client:
-        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         records, total = await api.list_capabilities(filters=filters, offset=1, page_size=20)
 
     assert total == 1
@@ -103,7 +103,7 @@ async def test_get_capability_requests_single_item_endpoint() -> None:
         return httpx.Response(200, json=_capability_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get_capability("update-project")
 
     assert record.summary.id == "update-project"
@@ -123,7 +123,7 @@ async def test_get_capability_rejects_path_traversal_id() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(InvalidInputError, match="capability_id"):
             await api.get_capability("../users/7")
 
@@ -134,7 +134,7 @@ async def test_list_capabilities_missing_embedded_elements_returns_empty_list() 
         return httpx.Response(200, json={"total": 0}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         records, total = await api.list_capabilities(filters=[], offset=1, page_size=20)
 
     assert records == []
@@ -149,7 +149,7 @@ async def test_list_capabilities_handles_missing_action_and_principal_links() ->
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         records, _total = await api.list_capabilities(filters=[], offset=1, page_size=20)
 
     summary = records[0].summary

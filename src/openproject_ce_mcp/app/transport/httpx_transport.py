@@ -130,8 +130,9 @@ class HttpxTransport:
     constructs ("httpx confinement") -- one connection pool, not two.
     """
 
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    def __init__(self, client: httpx.AsyncClient, *, redact_server_text: bool) -> None:
         self._client = client
+        self._redact_server_text = redact_server_text
 
     async def get_json(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
         return await self._request_json("GET", path, params=params)
@@ -237,7 +238,7 @@ class HttpxTransport:
             payload = response.json()
         except (ValueError, httpx.HTTPError):
             payload = {}
-        raise_for_status(response.status_code, payload)
+        raise_for_status(response.status_code, payload, redact_server_text=self._redact_server_text)
 
     async def _request_json(
         self,
@@ -281,5 +282,5 @@ class HttpxTransport:
                 payload = response.json()
             except ValueError:
                 payload = {}
-            raise_for_status(response.status_code, payload)
+            raise_for_status(response.status_code, payload, redact_server_text=self._redact_server_text)
         return response

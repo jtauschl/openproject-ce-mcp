@@ -30,8 +30,10 @@ from ...models import PostDetail
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.post_api import PostApi
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("post")
 class PostService:
     def __init__(
         self,

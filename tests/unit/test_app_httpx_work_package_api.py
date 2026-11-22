@@ -79,7 +79,7 @@ async def test_list_hits_work_packages_endpoint_with_filters_sort_and_group() ->
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_wp_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         page = await api.list(
             filters=[{"project_id": {"operator": "=", "values": ["1"]}}],
             offset=1,
@@ -104,7 +104,7 @@ async def test_list_sends_show_sums_only_when_include_sums_is_true() -> None:
         return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by="status", include_sums=True)
         await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by="status", include_sums=False)
 
@@ -135,7 +135,7 @@ async def test_list_parses_top_level_groups_and_total_sums_when_include_sums() -
         )
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         page = await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by="status", include_sums=True)
 
     assert page.groups == [
@@ -161,7 +161,7 @@ async def test_list_ignores_groups_and_total_sums_in_response_when_include_sums_
         )
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         page = await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by=None, include_sums=False)
 
     assert page.groups is None
@@ -179,7 +179,7 @@ async def test_list_returns_raw_unnormalized_elements_not_records() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_wp_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         page = await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by=None)
 
     assert isinstance(page.raw_elements[0], dict)
@@ -193,7 +193,7 @@ async def test_get_fetches_by_ref_and_builds_record() -> None:
         return httpx.Response(200, json=_wp_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("6")
 
     assert record.scoped_summary(visible=VisibleReferences.everything()).id == 6
@@ -208,7 +208,7 @@ async def test_get_url_escapes_a_semantic_ref() -> None:
         return httpx.Response(200, json=_wp_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.get("PROJ-123")
 
 
@@ -218,7 +218,7 @@ async def test_get_rejects_path_traversal_ref() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(InvalidInputError):
             await api.get("../job_statuses/77")
 
@@ -236,7 +236,7 @@ async def test_to_record_lazy_to_detail_diverges_from_summary_on_long_text() -> 
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("6", text_limit=10)
 
     assert record.scoped_summary(visible=VisibleReferences.everything()).description_truncated is True
@@ -255,7 +255,7 @@ async def test_to_record_to_detail_is_lazy_not_precomputed() -> None:
     not eagerly compute .to_detail() -- proven by a record whose payload would
     raise if detail-normalized (a payload missing a required field detail
     normalization reads), confirming to_detail is a deferred callable."""
-    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient()), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient(), redact_server_text=False), base_url=BASE_URL)
     payload = _wp_payload()
     record = api.to_record(payload, text_limit=None)
 
@@ -279,7 +279,7 @@ async def test_normalize_detail_milestone_date_fallback() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("6")
 
     assert record.scoped_summary(visible=VisibleReferences.everything()).start_date == "2026-03-15"
@@ -296,7 +296,7 @@ async def test_normalize_detail_children_and_ancestors_truncation() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("6")
 
     detail = record.scoped_detail(visible=VisibleReferences.everything())
@@ -316,7 +316,7 @@ async def test_normalize_detail_ancestors_missing_display_id_on_classic_instance
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("6")
 
     detail = record.scoped_detail(visible=VisibleReferences.everything())
@@ -334,7 +334,7 @@ async def test_validate_create_posts_to_project_scoped_form() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         form = await api.validate_create("1", {"subject": "Draft"})
 
     assert form["_embedded"]["payload"] == {"subject": "Draft"}
@@ -351,7 +351,7 @@ async def test_validate_update_posts_to_work_package_scoped_form_and_escapes_ref
         )
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.validate_update("PROJ-123", {"subject": "Updated"})
 
 
@@ -361,14 +361,14 @@ async def test_validate_update_rejects_path_traversal_ref() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(InvalidInputError):
             await api.validate_update("../job_statuses/77", {})
 
 
 @pytest.mark.asyncio
 async def test_parse_form_extracts_payload_validation_errors_and_schema() -> None:
-    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient()), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient(), redact_server_text=False), base_url=BASE_URL)
     form = {
         "_type": "Form",
         "_embedded": {
@@ -387,7 +387,7 @@ async def test_parse_form_extracts_payload_validation_errors_and_schema() -> Non
 
 @pytest.mark.asyncio
 async def test_parse_form_defaults_missing_sections_to_empty() -> None:
-    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient()), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient(), redact_server_text=False), base_url=BASE_URL)
 
     result = await api.parse_form({"_type": "Form", "_embedded": {}})
 
@@ -421,7 +421,7 @@ async def test_parse_form_dereferences_linked_allowed_values() -> None:
         )
 
     http_client = _client(handler)
-    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
     form = {
         "_type": "Form",
         "_embedded": {
@@ -467,7 +467,7 @@ async def test_parse_form_reads_every_page_of_a_linked_allowed_values_collection
         return httpx.Response(200, json={"total": len(users), "_embedded": {"elements": elements}}, request=request)
 
     http_client = _client(handler)
-    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
     form = {
         "_embedded": {
             "payload": {},
@@ -499,7 +499,7 @@ async def test_parse_form_uses_the_allowed_values_cache_when_the_href_is_a_hit()
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     http_client = _client(handler)
-    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
     cache = WorkPackageResolutionContext(ProjectResolutionContext(resolve=None))  # type: ignore[arg-type]
     cache.store_allowed_values("/api/v3/principals?filters=x", [{"id": 15, "name": "Cached User"}])
     form = {
@@ -536,7 +536,7 @@ async def test_parse_form_populates_the_allowed_values_cache_on_a_miss() -> None
         )
 
     http_client = _client(handler)
-    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
     cache = WorkPackageResolutionContext(ProjectResolutionContext(resolve=None))  # type: ignore[arg-type]
     form = {
         "_embedded": {
@@ -578,7 +578,7 @@ async def test_parse_form_two_different_hrefs_never_share_a_cache_entry() -> Non
         )
 
     http_client = _client(handler)
-    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
     cache = WorkPackageResolutionContext(ProjectResolutionContext(resolve=None))  # type: ignore[arg-type]
 
     def _form(work_package_id: int) -> dict:
@@ -615,7 +615,7 @@ async def test_parse_form_skips_link_dereference_by_default() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     http_client = _client(handler)
-    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
     form = {
         "_embedded": {
             "payload": {},
@@ -645,7 +645,7 @@ async def test_commit_create_posts_to_work_packages_and_caps_text_limit() -> Non
         return httpx.Response(200, json=_wp_payload(description=long_description), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.commit_create({"subject": "New"}, text_limit=10)
 
     assert record.scoped_summary(visible=VisibleReferences.everything()).description_truncated is True
@@ -659,7 +659,7 @@ async def test_commit_update_patches_by_ref_and_escapes() -> None:
         return httpx.Response(200, json=_wp_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.commit_update("PROJ-123", {"subject": "Updated"}, text_limit=None)
 
     assert record.scoped_summary(visible=VisibleReferences.everything()).id == 6
@@ -673,7 +673,7 @@ async def test_delete_issues_delete_by_ref_and_escapes() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.delete("PROJ-123")
 
 
@@ -683,7 +683,7 @@ async def test_delete_rejects_path_traversal_ref() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(InvalidInputError):
             await api.delete("../job_statuses/77")
 
@@ -698,7 +698,7 @@ async def test_post_comment_builds_params_and_body() -> None:
         return httpx.Response(201, json={"id": 99, "_links": {}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         activity = await api.post_comment("6", comment="Hello", internal=True, notify=True)
 
     assert activity["id"] == 99
@@ -1149,7 +1149,7 @@ async def test_get_work_package_exposes_custom_fields_end_to_end() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         record = await api.get("6")
 
     detail = record.scoped_detail(visible=VisibleReferences.everything())
@@ -1169,7 +1169,7 @@ async def test_list_sends_include_subprojects_only_when_asked(include_subproject
         return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         await api.list(
             filters=[], offset=1, limit=10, sort_by=None, group_by=None, include_subprojects=include_subprojects
         )

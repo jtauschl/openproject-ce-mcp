@@ -50,6 +50,7 @@ from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.role_api import RoleApi, RoleRecord
+from ._error_masking import redacted_server_errors
 from ._payload_masking import record_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 from .project_scoped_list import SUBJECT_LIMIT
@@ -57,6 +58,7 @@ from .project_scoped_list import trim_text as _trim_text
 
 
 @stamped_results
+@redacted_server_errors("membership")
 class MembershipService:
     def __init__(
         self,

@@ -65,7 +65,7 @@ async def test_list_for_agenda_item_requires_meeting_id_and_agenda_item_id_in_pa
         return httpx.Response(200, json={"_embedded": {"elements": [_outcome_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client))
+        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_agenda_item(12, 21)
 
     assert [r.summary.id for r in records] == [31]
@@ -78,7 +78,7 @@ async def test_get_requests_the_outcome_id() -> None:
         return httpx.Response(200, json=_outcome_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client))
+        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(31)
 
     assert record.summary.id == 31
@@ -92,7 +92,7 @@ async def test_create_posts_to_global_meeting_outcomes() -> None:
         return httpx.Response(201, json=_outcome_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client))
+        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.create({"kind": "info"})
 
     assert record.summary.id == 31
@@ -106,7 +106,7 @@ async def test_update_patches_the_outcome_id() -> None:
         return httpx.Response(200, json=_outcome_payload(kind="action"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client))
+        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.update(31, {"kind": "action"})
 
     assert record.summary.kind == "action"
@@ -120,5 +120,5 @@ async def test_delete_requests_the_outcome_id() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client))
+        api = HttpxMeetingOutcomeApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(31)

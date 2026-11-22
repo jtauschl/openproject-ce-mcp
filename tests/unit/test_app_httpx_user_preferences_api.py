@@ -44,7 +44,7 @@ async def test_get_sends_get_my_preferences_and_builds_record() -> None:
         return httpx.Response(200, json=_preferences_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserPreferencesApi(HttpxTransport(http_client))
+        api = HttpxUserPreferencesApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get()
 
     assert record.detail.time_zone == "Europe/Berlin"
@@ -67,7 +67,7 @@ async def test_commit_update_patches_my_preferences_with_given_payload() -> None
         return httpx.Response(200, json=_preferences_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxUserPreferencesApi(HttpxTransport(http_client))
+        api = HttpxUserPreferencesApi(HttpxTransport(http_client, redact_server_text=False))
         payload = {
             "timeZone": "UTC",
             "commentSortDescending": False,

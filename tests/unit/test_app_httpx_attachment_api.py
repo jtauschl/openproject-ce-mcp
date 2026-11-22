@@ -50,7 +50,9 @@ async def test_list_for_work_package_requests_one_page_with_offset_and_page_size
         )
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         records, total = await api.list_for_work_package(9, offset=2, page_size=2)
 
     assert [r.summary.id for r in records] == [3]
@@ -69,7 +71,9 @@ async def test_list_for_work_package_falls_back_to_page_length_when_total_is_mis
         )
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         records, total = await api.list_for_work_package(9, offset=1, page_size=50)
 
     assert len(records) == 2
@@ -83,7 +87,9 @@ async def test_get_requests_single_attachment() -> None:
         return httpx.Response(200, json=_attachment_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         record = await api.get(5)
 
     assert record.summary.id == 5
@@ -100,7 +106,9 @@ async def test_create_sends_multipart_request() -> None:
         return httpx.Response(201, json=_attachment_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         record = await api.create(
             9,
             metadata={"fileName": "report.pdf"},
@@ -120,7 +128,9 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         await api.delete(5)
 
 
@@ -131,7 +141,9 @@ async def test_get_max_attachment_size_bytes_reads_configuration_field() -> None
         return httpx.Response(200, json={"maximumAttachmentFileSize": 5_242_880}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         maximum = await api.get_max_attachment_size_bytes()
 
     assert maximum == 5_242_880
@@ -143,7 +155,9 @@ async def test_get_max_attachment_size_bytes_returns_none_when_absent() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         maximum = await api.get_max_attachment_size_bytes()
 
     assert maximum is None
@@ -201,7 +215,9 @@ async def test_get_content_downloads_from_content_endpoint_and_maps_to_port_reco
         return httpx.Response(200, content=b"\x89PNG rest", headers={"Content-Type": "image/png"}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxAttachmentApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         content = await api.get_content(5, max_bytes=4)
 
     assert content.data == b"\x89PNG"

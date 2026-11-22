@@ -74,6 +74,7 @@ from ..ports.notification_api import NotificationApi, NotificationRecord
 from ..ports.readable_projects import ReadableProjects
 from ..ports.work_package_ref import WorkPackageProjectAllowedBulkCheck
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
 
 _NOTIFICATION_READ_DENIED = "OpenProject access to this notification is disabled by OPENPROJECT_READ_PROJECTS."
@@ -83,6 +84,7 @@ _NO_READABLE_PROJECT = (
 
 
 @stamped_results
+@redacted_server_errors("notification")
 class NotificationService:
     def __init__(
         self,

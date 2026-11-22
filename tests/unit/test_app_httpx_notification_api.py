@@ -56,7 +56,7 @@ async def test_list_all_requests_notifications_and_builds_records() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.list_all(unread_only=False, offset=1, limit=20)
 
     assert page.total == 1
@@ -78,7 +78,7 @@ async def test_list_all_reports_not_exhausted_when_more_pages_remain() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.list_all(unread_only=False, offset=1, limit=20)
 
     assert page.exhausted is False  # 1 * 20 = 20 < 100
@@ -90,7 +90,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_page() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.list_all(unread_only=False, offset=1, limit=20)
 
     assert page.records == []
@@ -104,7 +104,7 @@ async def test_list_all_unread_only_sends_read_ian_filter() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         await api.list_all(unread_only=True, offset=1, limit=20)
 
 
@@ -121,7 +121,7 @@ async def test_list_all_never_normalizes_until_summary_is_called() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.list_all(unread_only=False, offset=1, limit=20)
 
     assert page.records[0].summary().id == 1
@@ -141,7 +141,7 @@ async def test_mark_read_posts_an_empty_json_body() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         await api.mark_read(10)
 
     assert requests == [("POST", "/api/v3/notifications/10/read_ian", b"{}")]
@@ -158,7 +158,7 @@ async def test_mark_all_read_posts_an_empty_json_body_limited_to_unread() -> Non
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         await api.mark_all_read(project_ids=None)
 
     assert requests == [
@@ -181,7 +181,7 @@ async def test_mark_all_read_narrows_to_the_given_projects_sorted_by_id() -> Non
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         await api.mark_all_read(project_ids=frozenset({10, 7, 3}))
 
     assert requests == [
@@ -203,7 +203,7 @@ async def test_mark_all_read_refuses_an_empty_project_set_without_a_request() ->
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         with pytest.raises(ValueError, match="at least one project"):
             await api.mark_all_read(project_ids=frozenset())
 
@@ -221,7 +221,7 @@ async def test_get_reads_one_notification() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(10)
 
     assert requests == [("GET", "/api/v3/notifications/10")]
@@ -259,7 +259,7 @@ async def test_list_all_is_not_exhausted_while_a_server_that_cut_the_page_size_h
         )
 
     async with _client(handler) as http_client:
-        api = HttpxNotificationApi(HttpxTransport(http_client))
+        api = HttpxNotificationApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.list_all(unread_only=False, offset=2, limit=100)
 
     assert page.exhausted is False  # 2 * 20 = 40 < 100, although 2 * 100 >= 100

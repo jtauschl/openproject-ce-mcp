@@ -156,7 +156,9 @@ from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated
 from ._custom_field_filters import append_custom_field_filters
+from ._custom_field_masking import custom_field_names
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
+from ._error_masking import redacted_server_errors
 from ._payload_masking import record_payload, stamped_results
 from ._schema_write_helpers import resolve_schema_option_href, resolve_wp_ref_id
 from ._work_package_parents import parent_href, without_parent_unless
@@ -432,6 +434,7 @@ def _requested(**parameters: Any) -> list[str]:
 
 
 @stamped_results
+@redacted_server_errors("work_package")
 class WorkPackageService:
     def __init__(
         self,
@@ -1743,6 +1746,7 @@ class WorkPackageService:
             rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Work package created successfully.",
+            names=custom_field_names(parsed.schema),
         )
         return await self._to_write_result("create", outcome, target)
 
@@ -1827,6 +1831,7 @@ class WorkPackageService:
             rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the subtask. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Subtask created successfully.",
+            names=custom_field_names(parsed.schema),
         )
         return await self._to_write_result("create", outcome, target)
 
@@ -2117,6 +2122,7 @@ class WorkPackageService:
             rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Work package updated successfully.",
+            names=custom_field_names(parsed.schema),
         )
         if outcome.state == "confirmed" and outcome.detail is not None:
             # `target` named the work package as read before the write, which is what a preview shows; after the commit

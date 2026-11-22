@@ -143,7 +143,11 @@ async def test_every_entity_shows_a_payload_without_the_hidden_custom_fields_the
     settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField4",))
     payload = {"name": "x", "customField4": "SECRET", "customField5": "visible", "_links": {"customField4": {}}}
 
-    for errors in ({}, {"customField4": "Secret can't be blank", "name": "is required"}):
+    # An attribute the error table of the entity knows: an unknown one is hidden once any hide setting is active.
+    known = {"version": "name", "time_entry": "comments", "project": "name", "work_package": "subject"}.get(
+        entity, "user"
+    )
+    for errors in ({}, {"customField4": "Secret can't be blank", known: "is required"}):
         outcome = await _finalize_write(
             confirm=confirm,
             entity=entity,
@@ -160,7 +164,7 @@ async def test_every_entity_shows_a_payload_without_the_hidden_custom_fields_the
         )
         assert outcome.payload == {"name": "x", "customField5": "visible", "_links": {}}
         if errors:
-            assert outcome.validation_errors["name"] == "is required"
+            assert outcome.validation_errors[known] == "is required"
             assert "Secret" not in outcome.validation_errors["customField4"]
 
 

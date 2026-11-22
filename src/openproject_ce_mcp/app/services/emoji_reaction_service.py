@@ -45,6 +45,7 @@ from ..policies.scope import id_from_href
 from ..ports.emoji_reaction_api import EmojiReactionApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
 
 #: Valid reactions per the OpenProject API spec.
@@ -61,6 +62,7 @@ EMOJI_REACTIONS = (
 
 
 @stamped_results
+@redacted_server_errors("emoji_reaction")
 class EmojiReactionService:
     def __init__(
         self,

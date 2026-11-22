@@ -20,13 +20,15 @@ exports stay private the same way every per-Service copy it replaces did.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 from ...config import Settings
 from ...models import WriteResultState
+from ..errors import OpenProjectError
 from ..link_titles import without_foreign_capable_titles
-from ._custom_field_masking import redacted_validation_errors
+from ._error_masking import redacted_server_error, redacted_validation_errors
 from ._payload_masking import shown_payload
 
 _DetailT = TypeVar("_DetailT")
@@ -57,6 +59,7 @@ async def _finalize_write(
     rejected_message: str,
     preview_message: str,
     success_message: str,
+    names: Mapping[str, str] | None = None,
 ) -> _WriteOutcome[Any]:
     """Rejected/preview/committed state machine, shared by every Service that
     needs it (Versions, Projects, Memberships)."""
@@ -67,7 +70,9 @@ async def _finalize_write(
             state="invalid" if confirm else "rejected",
             message=rejected_message,
             payload=shown,
-            validation_errors=redacted_validation_errors(validation_errors, entity=entity, settings=settings),
+            validation_errors=redacted_validation_errors(
+                validation_errors, entity=entity, settings=settings, names=names
+            ),
             detail=None,
             identity=identity,
         )
@@ -82,7 +87,13 @@ async def _finalize_write(
             identity=identity,
         )
     ensure_write_enabled()
-    detail = await commit(payload)
+    try:
+        detail = await commit(payload)
+    except OpenProjectError as exc:
+        redacted = redacted_server_error(exc, entity=entity, settings=settings, names=names)
+        if redacted is exc:
+            raise
+        raise redacted from exc.__cause__
     return _WriteOutcome(
         ready=True,
         state="confirmed",

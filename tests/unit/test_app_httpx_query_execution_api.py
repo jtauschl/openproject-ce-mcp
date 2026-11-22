@@ -35,7 +35,7 @@ async def test_execute_requests_offset_and_page_size() -> None:
         return httpx.Response(200, json=_query_response([{"id": 5}]), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxQueryExecutionApi(HttpxTransport(http_client))
+        api = HttpxQueryExecutionApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.execute(7, offset=2, page_size=10)
 
     assert page.raw_elements == [{"id": 5}]
@@ -47,7 +47,7 @@ async def test_execute_returns_empty_list_when_no_results_embedded() -> None:
         return httpx.Response(200, json={"_type": "Query", "id": 7}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxQueryExecutionApi(HttpxTransport(http_client))
+        api = HttpxQueryExecutionApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.execute(7, offset=1, page_size=10)
 
     assert page.raw_elements == []
@@ -59,7 +59,7 @@ async def test_execute_ignores_non_dict_elements() -> None:
         return httpx.Response(200, json=_query_response([{"id": 1}, "not-a-dict", None]), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxQueryExecutionApi(HttpxTransport(http_client))
+        api = HttpxQueryExecutionApi(HttpxTransport(http_client, redact_server_text=False))
         page = await api.execute(7, offset=1, page_size=10)
 
     assert page.raw_elements == [{"id": 1}]

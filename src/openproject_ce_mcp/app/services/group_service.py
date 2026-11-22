@@ -49,10 +49,12 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.group_api import GroupApi
+from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
 
 
 @stamped_results
+@redacted_server_errors("group")
 class GroupService:
     def __init__(self, *, api: GroupApi, settings: Settings, api_prefix: str) -> None:
         self._api = api

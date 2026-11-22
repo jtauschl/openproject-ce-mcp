@@ -40,8 +40,10 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.role_api import RoleApi
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("role")
 class RoleService:
     def __init__(self, *, api: RoleApi, settings: Settings) -> None:
         self._api = api

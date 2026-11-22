@@ -39,10 +39,12 @@ from ..errors import InvalidInputError
 from ..policies import access, hidden_fields
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.query_metadata_api import QueryMetadataApi
+from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
 
 
 @stamped_results
+@redacted_server_errors("query_filter")
 class QueryMetadataService:
     def __init__(
         self,

@@ -48,8 +48,10 @@ from ..policies.backlog_bucket_policy import backlog_bucket_payload_allowed, ens
 from ..ports.backlog_bucket_api import BacklogBucketApi, BacklogBucketRecord
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("backlog_bucket")
 class BacklogBucketService:
     def __init__(
         self,

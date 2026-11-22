@@ -90,7 +90,7 @@ async def test_list_page_sends_offset_and_page_size() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_page(offset=2, limit=5, project_id=None)
 
     assert [r.summary.id for r in records] == [3]
@@ -105,7 +105,7 @@ async def test_list_page_sends_project_id_filter_when_given() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.list_page(offset=1, limit=10, project_id=6)
 
 
@@ -117,7 +117,7 @@ async def test_get_requests_the_meeting_id() -> None:
         return httpx.Response(200, json=_meeting_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(12)
 
     assert record.summary.id == 12
@@ -133,7 +133,7 @@ async def test_create_form_posts_to_meetings_form() -> None:
         return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         form = await api.create_form({"title": "Standup"})
 
     assert form.payload == {"title": "Standup"}
@@ -155,7 +155,7 @@ async def test_create_form_extracts_message_first_validation_errors() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         form = await api.create_form({})
 
     assert form.validation_errors == {"title": "can't be blank"}
@@ -169,7 +169,7 @@ async def test_update_form_posts_to_meeting_id_form() -> None:
         return httpx.Response(200, json={"_embedded": {"payload": {}, "validationErrors": {}}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.update_form(12, {})
 
 
@@ -181,7 +181,7 @@ async def test_commit_create_posts_to_meetings() -> None:
         return httpx.Response(201, json=_meeting_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.commit_create({"title": "Standup"})
 
     assert record.summary.id == 12
@@ -195,7 +195,7 @@ async def test_commit_update_patches_meeting_id() -> None:
         return httpx.Response(200, json=_meeting_payload(title="Standup Updated"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.commit_update(12, {"title": "Standup Updated"})
 
     assert record.summary.title == "Standup Updated"
@@ -209,5 +209,5 @@ async def test_delete_requests_the_meeting_id() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingApi(HttpxTransport(http_client))
+        api = HttpxMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(12)

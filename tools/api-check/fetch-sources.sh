@@ -60,6 +60,10 @@ SPARSE_PATHS=(
     "app/validators"   # core field-level validators (e.g. custom-field format rules)
     "app/representers" # core API v3 HAL representers, where present outside lib/api
     "/config/routes.rb"
+    "app/services"                             # core services: they add errors too (members, users, projects/types)
+    "config/constants"                         # ar_to_api_conversions.rb: the model attribute -> API property names of an error
+    "/config/initializers/inflections.rb"      # the acronyms `camelize(:lower)` keeps (API, OAuth, ...)
+    "/config/locales/en.yml"                   # the error message templates (which ones quote a value)
     "modules/*/lib/api/v3"                     # every module's API subtree (Backlogs, Meetings, etc.)
     "modules/*/lib/open_project/*/patches/api" # module patches to core representers (e.g. Backlogs' sprint link on work packages)
     "modules/*/app/models"                     # module-specific models (e.g. Meetings' MeetingSection, Storages)

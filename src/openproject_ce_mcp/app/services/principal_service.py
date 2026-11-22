@@ -28,8 +28,10 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server as _paginate_server
 from ..policies import access, hidden_fields
 from ..ports.principal_api import PrincipalApi
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("principal")
 class PrincipalService:
     def __init__(self, *, api: PrincipalApi, settings: Settings) -> None:
         self._api = api

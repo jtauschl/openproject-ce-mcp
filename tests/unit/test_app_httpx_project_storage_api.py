@@ -67,7 +67,7 @@ async def test_list_all_requests_offset_and_page_size_but_server_ignores_them() 
         )
 
     async with _client(handler) as http_client:
-        api = HttpxProjectStorageApi(HttpxTransport(http_client))
+        api = HttpxProjectStorageApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=100)
 
     assert total == 1
@@ -83,7 +83,7 @@ async def test_get_requests_single_project_storage_path() -> None:
         return httpx.Response(200, json=LIVE_PROJECT_STORAGE_PAYLOAD, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxProjectStorageApi(HttpxTransport(http_client))
+        api = HttpxProjectStorageApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.project == "TST Test"
