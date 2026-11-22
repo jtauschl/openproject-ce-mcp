@@ -25,8 +25,10 @@ from ...models import InstanceConfiguration
 from ..caches import CachedValue
 from ..policies import access, hidden_fields
 from ..ports.instance_configuration_api import InstanceConfigurationApi, InstanceConfigurationRecord
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("instance_configuration")
 class InstanceConfigurationService:
     def __init__(
         self, *, api: InstanceConfigurationApi, settings: Settings, cache: CachedValue[InstanceConfigurationRecord]

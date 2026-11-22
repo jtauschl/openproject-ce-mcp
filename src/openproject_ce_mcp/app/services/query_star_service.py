@@ -24,10 +24,12 @@ from ..policies import access
 from ..policies import scope as scope_policy
 from ..ports.current_user import CurrentUserLookup
 from ..ports.query_star_api import QueryStarApi
+from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
 
 
 @stamped_results
+@redacted_server_errors("view")
 class QueryStarService:
     def __init__(
         self,

@@ -116,9 +116,25 @@ def test_ensure_custom_field_input_writable_noop_when_raw_key_does_not_match() -
 def test_ensure_custom_field_writable_raises_when_resolved_name_matches() -> None:
     settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_CUSTOM_FIELDS"):
-        hidden_fields.ensure_custom_field_writable("Story points", "customField10", settings=settings)
+        hidden_fields.ensure_custom_field_writable(
+            "Story points", "customField10", settings=settings, typed="Story points"
+        )
 
 
 def test_ensure_custom_field_writable_noop_for_visible_field() -> None:
     settings = make_settings()
-    hidden_fields.ensure_custom_field_writable("Story points", "customField10", settings=settings)  # must not raise
+    hidden_fields.ensure_custom_field_writable(
+        "Story points", "customField10", settings=settings, typed="Story points"
+    )  # must not raise
+
+
+def test_the_refusal_to_write_a_hidden_custom_field_names_what_the_caller_typed_not_the_schema_title() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Secret*",))
+
+    with pytest.raises(InvalidInputError) as refused:
+        hidden_fields.ensure_custom_field_writable(
+            "Secret salary", "customField7", settings=settings, typed="customField7"
+        )
+
+    assert "customField7" in str(refused.value)
+    assert "Secret salary" not in str(refused.value)

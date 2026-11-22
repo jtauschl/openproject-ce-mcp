@@ -87,7 +87,7 @@ async def test_list_for_meeting_requests_the_meeting_scoped_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_agenda_item_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client))
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_meeting(12)
 
     assert [r.summary.id for r in records] == [21]
@@ -100,7 +100,7 @@ async def test_list_for_work_package_requests_the_work_package_scoped_endpoint()
         return httpx.Response(200, json={"_embedded": {"elements": [_agenda_item_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client))
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_work_package(99)
 
     assert [r.summary.id for r in records] == [21]
@@ -114,7 +114,7 @@ async def test_list_for_meeting_per_call_text_limit_overrides_the_constructor_de
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client), text_limit=1000)
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False), text_limit=1000)
         records = await api.list_for_meeting(12, text_limit=10)
 
     assert records[0].summary.notes_truncated is True
@@ -129,7 +129,7 @@ async def test_list_for_meeting_falls_back_to_the_constructor_default_when_text_
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client), text_limit=10)
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False), text_limit=10)
         records = await api.list_for_meeting(12)
 
     assert records[0].summary.notes_truncated is True
@@ -149,7 +149,7 @@ async def test_get_always_uses_the_constructor_default_never_a_list_call_overrid
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client), text_limit=10)
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False), text_limit=10)
         record = await api.get(21)
 
     assert record.summary.notes_truncated is True
@@ -164,7 +164,7 @@ async def test_get_requests_the_agenda_item_id() -> None:
         return httpx.Response(200, json=_agenda_item_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client))
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(21)
 
     assert record.summary.id == 21
@@ -180,7 +180,7 @@ async def test_create_posts_to_global_meeting_agenda_items() -> None:
         return httpx.Response(201, json=_agenda_item_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client))
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.create({"title": "Discuss roadmap"})
 
     assert record.summary.id == 21
@@ -194,7 +194,7 @@ async def test_update_patches_the_agenda_item_id() -> None:
         return httpx.Response(200, json=_agenda_item_payload(title="Updated"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client))
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.update(21, {"title": "Updated"})
 
     assert record.summary.title == "Updated"
@@ -208,7 +208,7 @@ async def test_delete_requests_the_agenda_item_id() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client))
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(21)
 
 
@@ -224,7 +224,9 @@ async def test_a_record_carries_the_project_link_of_the_embedded_meeting() -> No
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        records = await HttpxMeetingAgendaItemApi(HttpxTransport(http_client)).list_for_work_package(99)
+        records = await HttpxMeetingAgendaItemApi(
+            HttpxTransport(http_client, redact_server_text=False)
+        ).list_for_work_package(99)
 
     assert records[0].meeting_project_link == {"href": "/api/v3/projects/7"}
 
@@ -235,6 +237,8 @@ async def test_a_record_without_an_embedded_meeting_has_no_project_link() -> Non
         return httpx.Response(200, json={"_embedded": {"elements": [_agenda_item_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        records = await HttpxMeetingAgendaItemApi(HttpxTransport(http_client)).list_for_work_package(99)
+        records = await HttpxMeetingAgendaItemApi(
+            HttpxTransport(http_client, redact_server_text=False)
+        ).list_for_work_package(99)
 
     assert records[0].meeting_project_link is None

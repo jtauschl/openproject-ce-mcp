@@ -45,7 +45,7 @@ async def test_list_for_meeting_requests_the_meeting_scoped_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_section_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingSectionApi(HttpxTransport(http_client))
+        api = HttpxMeetingSectionApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_meeting(12)
 
     assert [r.summary.id for r in records] == [41]
@@ -58,7 +58,7 @@ async def test_get_requests_the_section_id() -> None:
         return httpx.Response(200, json=_section_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingSectionApi(HttpxTransport(http_client))
+        api = HttpxMeetingSectionApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(41)
 
     assert record.summary.id == 41
@@ -72,7 +72,7 @@ async def test_create_posts_to_global_meeting_sections() -> None:
         return httpx.Response(201, json=_section_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingSectionApi(HttpxTransport(http_client))
+        api = HttpxMeetingSectionApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.create({"title": "Backlog"})
 
     assert record.summary.id == 41
@@ -86,7 +86,7 @@ async def test_update_patches_the_section_id() -> None:
         return httpx.Response(200, json=_section_payload(title="Updated"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingSectionApi(HttpxTransport(http_client))
+        api = HttpxMeetingSectionApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.update(41, {"title": "Updated"})
 
     assert record.summary.title == "Updated"
@@ -100,5 +100,5 @@ async def test_delete_requests_the_section_id() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxMeetingSectionApi(HttpxTransport(http_client))
+        api = HttpxMeetingSectionApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(41)

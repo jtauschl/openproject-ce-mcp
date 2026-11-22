@@ -26,7 +26,7 @@ def _client(handler) -> httpx.AsyncClient:
 
 
 def _api(http_client: httpx.AsyncClient) -> HttpxProjectApi:
-    return HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+    return HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
 
 
 def _payload(**extra: Any) -> dict[str, Any]:

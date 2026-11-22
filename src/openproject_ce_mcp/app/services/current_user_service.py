@@ -34,8 +34,10 @@ from ...models import CurrentUser
 from ..caches import CachedValue
 from ..policies import access, hidden_fields
 from ..ports.current_user_api import CurrentUserApi, CurrentUserRecord
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("current_user")
 class CurrentUserService:
     def __init__(self, *, api: CurrentUserApi, settings: Settings, cache: CachedValue[CurrentUserRecord]) -> None:
         self._api = api

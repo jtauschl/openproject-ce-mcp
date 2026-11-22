@@ -59,12 +59,9 @@ from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated, call_version_gated
 from . import _stored_text_edit
 from ._custom_field_filters import append_custom_field_filters
-from ._custom_field_masking import (
-    is_custom_comment_key,
-    mask_custom_field_values,
-    redacted_validation_errors,
-)
+from ._custom_field_masking import is_custom_comment_key, mask_custom_field_values
 from ._custom_field_writes import apply_custom_fields, ensure_custom_fields_input_writable
+from ._error_masking import redacted_server_errors, redacted_validation_errors
 from ._payload_masking import record_payload, shown_payload, stamped_results
 from ._project_presentation import hidden_references_replaced, present_detail, present_summaries
 from ._write_outcome import _finalize_write, _WriteOutcome
@@ -164,6 +161,7 @@ def _stamp_project(value: Any, *, settings: Settings, project_id_to_identifier: 
 
 
 @stamped_results
+@redacted_server_errors("project")
 class ProjectService:
     def __init__(
         self,
@@ -388,7 +386,7 @@ class ProjectService:
         )
         if hidden_replaced:
             raise InvalidInputError(
-                f"Project {project.identifier} has {hidden_replaced} version custom field value(s) in a project "
+                f"Project {project_ref} has {hidden_replaced} version custom field value(s) in a project "
                 "OPENPROJECT_READ_PROJECTS does not cover or the token cannot see, which this change would replace or remove. "
                 "Leave the version custom fields unchanged."
             )

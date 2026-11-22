@@ -159,7 +159,7 @@ async def _form_errors(api_factory, call) -> dict[str, ValidationFailure]:
         )
 
     async with _client(handler) as http_client:
-        api = api_factory(HttpxTransport(http_client))
+        api = api_factory(HttpxTransport(http_client, redact_server_text=False))
         return (await call(api)).validation_errors
 
 

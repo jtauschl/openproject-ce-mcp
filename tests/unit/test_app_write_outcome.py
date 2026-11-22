@@ -149,7 +149,11 @@ async def test_every_entity_shows_a_payload_without_the_hidden_custom_fields_the
     payload = {"name": "x", "customField4": "SECRET", "customField5": "visible", "_links": {"customField4": {}}}
 
     blank = ValidationFailure("Secret can't be blank", ("Blank",))
-    for errors in ({}, {"customField4": blank, "name": ValidationFailure("is required")}):
+    # An attribute the error table of the entity knows: an unknown one is hidden once any hide setting is active.
+    known = {"version": "name", "time_entry": "comments", "project": "name", "work_package": "subject"}.get(
+        entity, "user"
+    )
+    for errors in ({}, {"customField4": blank, known: ValidationFailure("is required")}):
         outcome = await _finalize_write(
             confirm=confirm,
             entity=entity,
@@ -166,7 +170,7 @@ async def test_every_entity_shows_a_payload_without_the_hidden_custom_fields_the
         )
         assert outcome.payload == {"name": "x", "customField5": "visible", "_links": {}}
         if errors:
-            assert outcome.validation_errors["name"] == ValidationFailure("is required")
+            assert outcome.validation_errors[known] == ValidationFailure("is required")
             assert "Secret" not in outcome.validation_errors["customField4"].message
             assert outcome.validation_errors["customField4"].error_codes == ("Blank",)
 
@@ -270,8 +274,10 @@ def test_each_service_redacts_a_write_under_its_own_entity() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("confirm", [False, True])
-@pytest.mark.parametrize("errors", [{}, {"name": "is required"}])
-async def test_a_hidden_static_field_is_not_shown_but_is_still_committed(confirm: bool, errors: dict[str, str]) -> None:
+@pytest.mark.parametrize("errors", [{}, {"name": ValidationFailure("is required")}])
+async def test_a_hidden_static_field_is_not_shown_but_is_still_committed(
+    confirm: bool, errors: dict[str, ValidationFailure]
+) -> None:
     import dataclasses
 
     committed: list[dict] = []

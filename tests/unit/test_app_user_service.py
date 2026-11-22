@@ -715,7 +715,7 @@ async def test_update_leaves_out_the_status_the_form_echoes_when_status_or_locke
 ) -> None:
     api = _EchoingUserApi()
     if rejected:
-        api.validation_errors = {"firstName": "is too long"}
+        api.validation_errors = {"firstName": ValidationFailure("is too long")}
     settings = dataclasses.replace(_admin_write_settings(), hidden_fields={"user": (hidden,)})
 
     result = await _service(api, settings=settings).update(user_id=5, firstname="Ada", confirm=False)

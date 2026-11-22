@@ -136,7 +136,9 @@ async def test_get_filter_percent_encodes_the_id_in_the_path() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         record = await api.get_filter("subject_or_id")
 
     assert record.summary.id == "subject_or_id"
@@ -155,7 +157,9 @@ async def test_get_sort_by_requests_the_hyphen_route_and_reports_the_requested_i
         )
 
     async with _client(handler) as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         record = await api.get_sort_by(SortCriterion("subject", "asc"), requested_id="subject")
 
     # The public id is the caller's, although the server's self-link uses the hyphen form.
@@ -173,7 +177,9 @@ async def test_get_operator_percent_encodes_special_characters_in_the_id() -> No
         )
 
     async with _client(handler) as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         record = await api.get_operator("=")
 
     assert record.summary.id == "="
@@ -202,7 +208,9 @@ async def test_list_filter_instance_schemas_without_project_id_requests_global_e
         )
 
     async with _client(handler) as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         records = await api.list_filter_instance_schemas(project_id=None)
 
     assert len(records) == 1
@@ -216,7 +224,9 @@ async def test_list_filter_instance_schemas_with_project_id_requests_project_sco
         return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         records = await api.list_filter_instance_schemas(project_id=6)
 
     assert records == []
@@ -233,7 +243,9 @@ async def test_get_filter_instance_schema_percent_encodes_the_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         record = await api.get_filter_instance_schema("assignee")
 
     assert record.summary.id == "assignee"
@@ -253,7 +265,9 @@ async def test_get_filter_rejects_path_traversal_id() -> None:
     to itself unchanged (quote() never escapes ".") and httpx then normalizes
     ".." away when building the request, redirecting to an unrelated endpoint."""
     async with await _no_request_client() as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         with pytest.raises(InvalidInputError, match="filter_id"):
             await api.get_filter("../projects/42")
 
@@ -261,7 +275,9 @@ async def test_get_filter_rejects_path_traversal_id() -> None:
 @pytest.mark.asyncio
 async def test_get_column_rejects_path_traversal_id() -> None:
     async with await _no_request_client() as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         with pytest.raises(InvalidInputError, match="column_id"):
             await api.get_column("../projects/42")
 
@@ -269,7 +285,9 @@ async def test_get_column_rejects_path_traversal_id() -> None:
 @pytest.mark.asyncio
 async def test_get_operator_rejects_path_traversal_id() -> None:
     async with await _no_request_client() as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         with pytest.raises(InvalidInputError, match="operator_id"):
             await api.get_operator("../projects/42")
 
@@ -277,6 +295,8 @@ async def test_get_operator_rejects_path_traversal_id() -> None:
 @pytest.mark.asyncio
 async def test_get_filter_instance_schema_rejects_path_traversal_id() -> None:
     async with await _no_request_client() as http_client:
-        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxQueryMetadataApi(
+            HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL, origin=BASE_URL
+        )
         with pytest.raises(InvalidInputError, match="schema_id"):
             await api.get_filter_instance_schema("../projects/42")

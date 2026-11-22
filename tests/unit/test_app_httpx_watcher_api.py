@@ -31,7 +31,7 @@ async def test_list_for_work_package_requests_watchers_sub_collection() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_watcher_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client))
+        api = HttpxWatcherApi(HttpxTransport(http_client, redact_server_text=False))
         summaries = await api.list_for_work_package(9)
 
     assert len(summaries) == 1
@@ -46,7 +46,7 @@ async def test_list_for_work_package_missing_embedded_elements_returns_empty_lis
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client))
+        api = HttpxWatcherApi(HttpxTransport(http_client, redact_server_text=False))
         summaries = await api.list_for_work_package(9)
 
     assert summaries == []
@@ -59,7 +59,7 @@ async def test_get_user_requests_single_user() -> None:
         return httpx.Response(200, json=_watcher_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client))
+        api = HttpxWatcherApi(HttpxTransport(http_client, redact_server_text=False))
         watcher = await api.get_user(5)
 
     assert watcher.id == 5
@@ -76,7 +76,7 @@ async def test_add_posts_user_link_and_returns_normalized_watcher() -> None:
         return httpx.Response(201, json=_watcher_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client), api_prefix="/api/v3/")
+        api = HttpxWatcherApi(HttpxTransport(http_client, redact_server_text=False), api_prefix="/api/v3/")
         watcher = await api.add(9, 5)
 
     assert watcher.id == 5
@@ -90,7 +90,7 @@ async def test_remove_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client))
+        api = HttpxWatcherApi(HttpxTransport(http_client, redact_server_text=False))
         await api.remove(9, 5)
 
 

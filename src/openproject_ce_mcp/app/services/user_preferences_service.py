@@ -40,8 +40,10 @@ from ...config import Settings
 from ...models import UserPreferences, UserPreferencesWriteResult
 from ..policies import access, hidden_fields
 from ..ports.user_preferences_api import UserPreferencesApi
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("user_preferences")
 class UserPreferencesService:
     def __init__(self, *, api: UserPreferencesApi, settings: Settings) -> None:
         self._api = api

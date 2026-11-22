@@ -40,7 +40,9 @@ async def _list(*elements: dict, text_limit: int | None = 500):
         return httpx.Response(200, json={"_embedded": {"elements": list(elements)}}, request=request)
 
     async with _client(handler) as http_client:
-        return await HttpxRevisionApi(HttpxTransport(http_client)).list_for_work_package(42, text_limit=text_limit)
+        return await HttpxRevisionApi(HttpxTransport(http_client, redact_server_text=False)).list_for_work_package(
+            42, text_limit=text_limit
+        )
 
 
 @pytest.mark.asyncio

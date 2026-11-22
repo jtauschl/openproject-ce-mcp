@@ -78,6 +78,7 @@ from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
+from ._error_masking import redacted_server_errors
 from ._payload_masking import record_payload, stamped_results
 from ._work_package_target import resolved_target
 from ._write_outcome import _finalize_write, _WriteOutcome
@@ -185,6 +186,7 @@ class _PreparedFile:
 
 
 @stamped_results
+@redacted_server_errors("attachment")
 class AttachmentService:
     def __init__(
         self,

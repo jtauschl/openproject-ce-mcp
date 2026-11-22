@@ -54,7 +54,7 @@ async def test_list_all_requests_the_sprints_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_sprint_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert total == 1
@@ -86,7 +86,7 @@ async def test_list_all_skips_an_element_with_a_missing_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         records, _total = await api.list_all(offset=1, page_size=50)
 
     assert [record.summary.id for record in records] == [2]
@@ -100,7 +100,7 @@ async def test_list_all_accepts_a_numeric_string_id() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         records, _total = await api.list_all(offset=1, page_size=50)
 
     assert [record.summary.id for record in records] == [7]
@@ -112,7 +112,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
@@ -127,7 +127,7 @@ async def test_list_for_project_requests_the_project_scoped_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_sprint_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_for_project(7, offset=1, page_size=50)
 
     assert total == 1
@@ -147,7 +147,7 @@ async def test_list_for_project_returns_records_and_total_at_arbitrary_offset() 
         )
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_for_project(7, offset=2, page_size=20)
 
     assert [r.summary.id for r in records] == [1, 2]
@@ -162,7 +162,7 @@ async def test_get_requests_the_single_sprint_endpoint() -> None:
         return httpx.Response(200, json=_sprint_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -178,7 +178,7 @@ async def test_detail_reuses_every_summary_field_verbatim() -> None:
         return httpx.Response(200, json=_sprint_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     detail = record.detail
@@ -206,7 +206,7 @@ async def test_defining_workspace_link_falls_back_to_embedded_self_link() -> Non
         return httpx.Response(200, json=_sprint_payload(with_link=False, with_embedded=True), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.defining_workspace_link == {"href": "/api/v3/projects/7", "title": "Demo"}
@@ -227,7 +227,7 @@ async def test_no_defining_workspace_at_all_yields_none_link_and_payload() -> No
         return httpx.Response(200, json=_sprint_payload(with_link=False, with_embedded=False), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.defining_workspace_link is None
@@ -247,6 +247,6 @@ async def test_not_found_propagates_unwrapped_from_the_adapter() -> None:
         return httpx.Response(404, json={"message": "Not found"}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client))
+        api = HttpxSprintApi(HttpxTransport(http_client, redact_server_text=False))
         with pytest.raises(NotFoundError, match="OpenProject resource not found."):
             await api.list_all(offset=1, page_size=50)

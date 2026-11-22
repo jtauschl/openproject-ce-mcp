@@ -32,7 +32,7 @@ async def test_get_fetches_by_numeric_ref() -> None:
         return httpx.Response(200, json=_wp_payload(42), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         payload = await api.get("42")
 
     assert payload["id"] == 42
@@ -45,7 +45,7 @@ async def test_get_fetches_by_display_id() -> None:
         return httpx.Response(200, json=_wp_payload(7), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         payload = await api.get("PROJ-123")
 
     assert payload["id"] == 7
@@ -57,7 +57,7 @@ async def test_get_rejects_a_ref_that_is_no_work_package_id_before_any_request()
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(InvalidInputError, match="work_package_id"):
             await api.get("a/b")
 
@@ -69,7 +69,7 @@ async def test_get_by_href_translates_relative_href_to_api_path() -> None:
         return httpx.Response(200, json=_wp_payload(42), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         payload = await api.get_by_href("/api/v3/work_packages/42")
 
     assert payload["id"] == 42
@@ -82,7 +82,7 @@ async def test_get_by_href_translates_absolute_same_origin_href() -> None:
         return httpx.Response(200, json=_wp_payload(42), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         payload = await api.get_by_href(f"{BASE_URL}/api/v3/work_packages/42")
 
     assert payload["id"] == 42
@@ -94,6 +94,6 @@ async def test_get_by_href_rejects_foreign_origin_link_before_any_request() -> N
         raise AssertionError(f"Unexpected request to foreign origin: {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWorkPackageLookupApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         with pytest.raises(OpenProjectServerError, match="unexpected link host"):
             await api.get_by_href("https://evil.example.com/api/v3/work_packages/42")

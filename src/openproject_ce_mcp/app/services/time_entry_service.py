@@ -70,6 +70,7 @@ from ..ports.time_entry_api import TimeEntryApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageRecordResolver, work_package_ref
 from ..resolvers.project_query import fetch_project_page
+from ._error_masking import redacted_server_errors
 from ._payload_masking import record_payload, stamped_results
 from ._work_package_target import check_target
 from ._write_outcome import _finalize_write
@@ -125,6 +126,7 @@ _USER_ALIASES: dict[str, Any] = {"user": None, "user_id": None}
 
 
 @stamped_results
+@redacted_server_errors("time_entry")
 class TimeEntryService:
     def __init__(
         self,

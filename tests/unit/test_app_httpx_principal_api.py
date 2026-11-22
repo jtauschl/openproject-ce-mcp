@@ -58,7 +58,7 @@ async def test_list_principals_skips_an_element_with_a_missing_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxPrincipalApi(HttpxTransport(http_client))
+        api = HttpxPrincipalApi(HttpxTransport(http_client, redact_server_text=False))
         records, _total = await api.list_principals(search=None, offset=1, page_size=50)
 
     assert [record.summary.id for record in records] == [5]
@@ -74,7 +74,7 @@ async def test_list_principals_accepts_a_numeric_string_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxPrincipalApi(HttpxTransport(http_client))
+        api = HttpxPrincipalApi(HttpxTransport(http_client, redact_server_text=False))
         records, _total = await api.list_principals(search=None, offset=1, page_size=50)
 
     assert [record.summary.id for record in records] == [7]
@@ -93,7 +93,9 @@ async def test_list_principals_searches_the_text_literally(search: str, sent: st
         return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        await HttpxPrincipalApi(HttpxTransport(http_client)).list_principals(search=search, offset=1, page_size=10)
+        await HttpxPrincipalApi(HttpxTransport(http_client, redact_server_text=False)).list_principals(
+            search=search, offset=1, page_size=10
+        )
 
     assert json.loads(seen[0]) == [{"name": {"operator": "~", "values": [sent]}}]
 
@@ -105,4 +107,7 @@ async def test_get_user_name_reads_the_name_of_the_user() -> None:
         return httpx.Response(200, json={"id": 4, "name": "Jane Reviewer"}, request=request)
 
     async with _client(handler) as http_client:
-        assert await HttpxPrincipalApi(HttpxTransport(http_client)).get_user_name(4) == "Jane Reviewer"
+        assert (
+            await HttpxPrincipalApi(HttpxTransport(http_client, redact_server_text=False)).get_user_name(4)
+            == "Jane Reviewer"
+        )

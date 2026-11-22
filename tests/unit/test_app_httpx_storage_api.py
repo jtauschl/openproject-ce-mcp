@@ -167,7 +167,7 @@ async def test_list_all_requests_offset_and_page_size_but_server_ignores_them() 
         )
 
     async with _client(handler) as http_client:
-        api = HttpxStorageApi(HttpxTransport(http_client))
+        api = HttpxStorageApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=100)
 
     assert total == 1
@@ -182,7 +182,7 @@ async def test_get_requests_single_storage_path() -> None:
         return httpx.Response(200, json=LIVE_NEXTCLOUD_PAYLOAD, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStorageApi(HttpxTransport(http_client))
+        api = HttpxStorageApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.provider_type == "Nextcloud"
@@ -196,7 +196,7 @@ async def test_commit_create_posts_to_storages() -> None:
         return httpx.Response(201, json=LIVE_NEXTCLOUD_PAYLOAD, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStorageApi(HttpxTransport(http_client))
+        api = HttpxStorageApi(HttpxTransport(http_client, redact_server_text=False))
         detail = await api.commit_create({"name": "New"})
 
     assert detail.id == 1
@@ -210,7 +210,7 @@ async def test_commit_update_patches_single_storage_path() -> None:
         return httpx.Response(200, json=LIVE_NEXTCLOUD_PAYLOAD, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStorageApi(HttpxTransport(http_client))
+        api = HttpxStorageApi(HttpxTransport(http_client, redact_server_text=False))
         detail = await api.commit_update(1, {"name": "Renamed"})
 
     assert detail.id == 1
@@ -224,5 +224,5 @@ async def test_commit_delete_deletes_single_storage_path() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStorageApi(HttpxTransport(http_client))
+        api = HttpxStorageApi(HttpxTransport(http_client, redact_server_text=False))
         await api.commit_delete(1)

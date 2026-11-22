@@ -34,7 +34,7 @@ async def test_get_builds_record_with_normalized_detail_and_raw_project_link() -
         return httpx.Response(200, json=_post_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxPostApi(HttpxTransport(http_client))
+        api = HttpxPostApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(30)
 
     assert record.detail.id == 30
@@ -54,7 +54,7 @@ async def test_get_subject_falls_back_to_placeholder_when_missing() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxPostApi(HttpxTransport(http_client))
+        api = HttpxPostApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(30)
 
     assert record.detail.subject == "Post 30"
@@ -69,7 +69,7 @@ async def test_get_handles_missing_project_link() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxPostApi(HttpxTransport(http_client))
+        api = HttpxPostApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(30)
 
     assert record.detail.project is None

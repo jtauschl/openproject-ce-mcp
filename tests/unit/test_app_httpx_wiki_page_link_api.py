@@ -72,7 +72,7 @@ async def test_list_for_work_package_requests_one_page_with_offset_and_page_size
         )
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageLinkApi(HttpxTransport(http_client))
+        api = HttpxWikiPageLinkApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_for_work_package(42, offset=2, page_size=2)
 
     assert [r.summary.id for r in records] == [3]
@@ -87,7 +87,7 @@ async def test_list_for_work_package_falls_back_to_page_length_when_total_is_mis
         )
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageLinkApi(HttpxTransport(http_client))
+        api = HttpxWikiPageLinkApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_for_work_package(42, offset=1, page_size=50)
 
     assert len(records) == 2
@@ -109,7 +109,7 @@ async def test_create_posts_bulk_elements_shape_with_one_element() -> None:
         return httpx.Response(201, json={"_embedded": {"elements": [_link_payload(9)]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageLinkApi(HttpxTransport(http_client))
+        api = HttpxWikiPageLinkApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.create(42, identifier="Home", provider="internal", author_id=7)
 
     assert record.summary.id == 9
@@ -121,7 +121,7 @@ async def test_create_raises_server_error_on_empty_response_elements() -> None:
         return httpx.Response(201, json={"_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageLinkApi(HttpxTransport(http_client))
+        api = HttpxWikiPageLinkApi(HttpxTransport(http_client, redact_server_text=False))
         with pytest.raises(OpenProjectServerError):
             await api.create(42, identifier="Home", provider="internal", author_id=7)
 
@@ -134,5 +134,5 @@ async def test_delete_requests_the_link_id() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageLinkApi(HttpxTransport(http_client))
+        api = HttpxWikiPageLinkApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(9)

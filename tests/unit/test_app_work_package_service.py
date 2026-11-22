@@ -4856,6 +4856,7 @@ async def test_bulk_update_item_carries_the_422_header_in_its_error(monkeypatch)
                 "message": "Thema muss ausgefüllt werden.",
                 "_embedded": {"details": {"attribute": "subject"}},
             },
+            redact_server_text=False,
         )
 
     monkeypatch.setattr(service, "update", _rejected)

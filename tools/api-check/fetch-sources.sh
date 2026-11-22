@@ -62,6 +62,9 @@ SPARSE_PATHS=(
     "app/workers"      # background jobs whose payload is a job status response (copy_project_job.rb writes its links)
     "/config/routes.rb"
     "/config/initializers/inflections.rb"      # the acronyms (API, OAuth, ...) that decide how a snake_case name is camelized on the wire
+    "app/services"                             # core services: they add errors too (members, users, projects/types)
+    "config/constants"                         # ar_to_api_conversions.rb: the model attribute -> API property names of an error
+    "/config/locales/en.yml"                   # the error message templates (which ones quote a value)
     "modules/*/lib/api/v3"                     # every module's API subtree (Backlogs, Meetings, etc.)
     "modules/*/lib/open_project/*/patches/api" # module patches to core representers (e.g. Backlogs' sprint link on work packages)
     "modules/*/lib/**/engine.rb"               # extend_api_response blocks that add fields to core representers (Costs, Meetings, ...)

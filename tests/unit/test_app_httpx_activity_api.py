@@ -39,7 +39,7 @@ async def test_list_for_work_package_requests_the_activities_sub_collection() ->
         )
 
     async with _client(handler) as http_client:
-        api = HttpxActivityApi(HttpxTransport(http_client))
+        api = HttpxActivityApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_work_package(9)
 
     assert len(records) == 2
@@ -53,7 +53,7 @@ async def test_list_for_work_package_missing_embedded_elements_returns_empty_lis
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxActivityApi(HttpxTransport(http_client))
+        api = HttpxActivityApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_work_package(9)
 
     assert records == []
@@ -71,7 +71,7 @@ async def test_to_summary_is_not_called_until_invoked() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_activity_payload(1)]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxActivityApi(HttpxTransport(http_client))
+        api = HttpxActivityApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_work_package(9)
 
     # No assertion error raised just by fetching -- to_summary was never
@@ -163,7 +163,9 @@ async def test_a_record_passes_the_details_decision_to_the_normalizer() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        (record,) = await HttpxActivityApi(HttpxTransport(http_client)).list_for_work_package(9)
+        (record,) = await HttpxActivityApi(HttpxTransport(http_client, redact_server_text=False)).list_for_work_package(
+            9
+        )
 
     assert record.to_summary(None, details=False, user=None).details is None
     assert record.to_summary(None, details=True, user=None).details is not None

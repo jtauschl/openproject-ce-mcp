@@ -12,8 +12,10 @@ from ...models import BudgetListResult, BudgetSummary
 from ..policies import access, hidden_fields
 from ..ports.budget_api import BudgetApi
 from ..ports.project_ref import ProjectRefResolver
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("budget")
 class BudgetService:
     def __init__(
         self,

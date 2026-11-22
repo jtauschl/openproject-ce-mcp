@@ -69,6 +69,7 @@ from ..policies.grid_policy import (
 from ..policies.scope import PrefixMismatch
 from ..ports.grid_api import GridApi, GridRecord
 from ..ports.project_lookup_api import ProjectLookupApi
+from ._error_masking import redacted_server_errors
 from ._payload_masking import record_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -83,6 +84,7 @@ def _href(link: Any) -> Any:
 
 
 @stamped_results
+@redacted_server_errors("grid")
 class GridService:
     def __init__(
         self,

@@ -49,10 +49,12 @@ Project custom fields (project attributes) follow the same rules as work package
 - `get_project_admin_context` leaves out the definitions of hidden attributes.
 - The preview and result `payload` of every write that shows a form payload (projects, work packages,
   versions, users, time entries and the rest) leave out hidden custom field values the form echoes back, and
-  the static fields too (see "Write previews" below). A validation error on a hidden key keeps the key and its
-  error classes and replaces its message, so a rejected write does not name the hidden field's title or value.
-- Like every read-side hide, this follows the raw key: a pattern written as a friendly name refuses writes by
-  that name but does not redact (see below).
+  the static fields too (see "Write previews" below). The text of a rejected write follows the rule in "Server
+  error texts" below.
+- Like every read-side hide, reads, previews, filters and sorts follow the raw key: a pattern written as a
+  friendly name refuses writes by that name but does not redact there (see below). The text of a rejected
+  work package write is the exception: it also judges a custom field by its name, because the form hands the
+  schema over.
 - A version-valued attribute that points to a version outside `OPENPROJECT_READ_PROJECTS` reads as `null`,
   and `update_project` refuses a write that would replace such a hidden value.
 
@@ -132,8 +134,43 @@ that carries a field `OPENPROJECT_HIDE_<ENTITY>_FIELDS` hides, under its wire na
   change; it leaves out the values of the hidden fields too. When you hide `name` (or `title`, `identifier`), the
   preview of a delete names its target by its id only (see "Write results" below): hiding wins over "a preview
   names its target". The record in `result` is stamped like any read, so a hidden field is absent there as well.
-- The texts of `validation_errors`, of a rejected commit and of a batch item error for a hidden field are not
-  covered yet: the server's message can name the field or quote its value.
+
+## Server error texts
+
+OpenProject answers a rejected write with errors that carry the API attribute they are about
+(`status`, `effectiveDate`, `customField5`) and a message in the language of the token's account, which names
+that attribute or quotes a value (`Status is invalid`). Only the attribute can be judged, so the server's text is
+handled by it, wherever it reaches a caller: the `validation_errors` of a form, the text of a rejected commit or
+delete, the `error` of a failed bulk item, the text of a rejected read.
+
+- **Nothing changes while no hide setting is active.** The texts are exactly what the server sent. (Our own
+  refusal to replace a version of a project names the project by the reference you passed, hide or not.)
+- **While any hide setting is active** (an entity's `OPENPROJECT_HIDE_<ENTITY>_FIELDS` or
+  `OPENPROJECT_HIDE_CUSTOM_FIELDS`), the server's text is not passed on. A rejected write of an entity renders
+  each error again by that entity: an error whose attribute names a hidden field is replaced by `A field hidden
+  by the hide settings is invalid.`, the others keep their message, so the caller still learns the visible reason.
+  The attribute (an API name such as `status` or `customField5`) stays visible in the key of `validation_errors`, which
+  keeps its error classes, and in the header of a 422 text (`Code (attribute): ...`).
+- **What an error names is judged by the attribute.** A known attribute is hidden when the field it is about is
+  hidden (a start or finish date error follows `start_date` and `due_date` both: its message quotes the soonest
+  start that the predecessors allow, their finish or their start). A `base` error is hidden when a field it can describe is
+  hidden (for a work package: status, versions, parent, project, type). A custom field key is judged by the
+  custom field settings, by its name too in a work package write (the form's schema names it); where no name is
+  known (other entities, a delete) a name pattern hides the entry, so it never leaves a title behind. A pattern is
+  a name pattern unless it is exactly a raw key without wildcards (`customField5`); `cf_5` is a name pattern
+  here, unlike in sorts and filters; a `customComment<N>` pattern counts as a raw key and hides no error, as on reads.
+- **An error the policy cannot attribute is hidden while any hide setting is active:** an attribute no table
+  knows, and an error without attribute (a malformed request, a filter error). The cost: with only `user.email`
+  hidden, the text of a rejected filter loses its reason, while an error about a known attribute keeps its own.
+- **A stale `lockVersion`** (`UpdateConflict`) is a constant sentence of the server and stays readable.
+- **A 403 drops its detail** while a hide is active unless the text names an attribute the settings leave visible: a
+  real 403 carries no attribute (the text of a quarantined attachment names its file), so its detail goes and the
+  sentence `OpenProject denied access to this resource.` stays; a refusal for a missing permission is still said.
+- **Limits.** The text of a rejected request that no service renders by an entity (the flat client, resolvers,
+  the `setup` and `doctor` commands) is the generic `OpenProject rejected the request.`; so is the text of a
+  service that has no entity of its own (cost, status, priority and type reads, action and capability reads,
+  the GitHub and GitLab links, `render_text` and the other extended metadata reads, the project admin context). The free text of a failed copy job (`get_job_status`) is not redacted. The
+  refusal to write a hidden custom field names what the caller typed, not the field's title.
 
 ## Write results: identity fields and copies of a hidden value
 

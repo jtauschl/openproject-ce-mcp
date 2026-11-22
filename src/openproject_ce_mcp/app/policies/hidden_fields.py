@@ -44,6 +44,15 @@ def hidden_patterns(entity: str, *, settings: Settings) -> tuple[str, ...]:
     return tuple(combined)
 
 
+def any_hide_active(settings: Settings) -> bool:
+    """True when any hide setting is set: an entity's field list, a legacy list or a custom field pattern.
+    A server error text can name a field of any entity, so this is the one predicate the error redaction uses
+    (the registrar's own `hide_active` knows no custom field pattern and only decides about trimming)."""
+    return bool(settings.hide_custom_fields) or any(
+        hidden_patterns(entity, settings=settings) for entity in HIDE_FIELD_ENV_BY_ENTITY
+    )
+
+
 def field_hidden(entity: str, field_name: str, *, settings: Settings) -> bool:
     patterns = hidden_patterns(entity, settings=settings)
     if not patterns:
@@ -55,7 +64,7 @@ def field_hidden(entity: str, field_name: str, *, settings: Settings) -> bool:
     )
 
 
-def _field_or_coupled_hidden(entity: str, field_name: str, *, settings: Settings) -> bool:
+def field_or_coupled_hidden(entity: str, field_name: str, *, settings: Settings) -> bool:
     for group in COUPLED_FIELDS.get(entity, ()):
         if field_name in group:
             return any(field_hidden(entity, member, settings=settings) for member in group)
@@ -75,7 +84,7 @@ def payload_key_hidden(entity: str, key: str, *, settings: Settings) -> bool:
     carried_by = table.get(key)
     if carried_by is None:
         return key not in NO_FIELD[entity] and bool(hidden_patterns(entity, settings=settings))
-    return any(_field_or_coupled_hidden(entity, name, settings=settings) for name in carried_by)
+    return any(field_or_coupled_hidden(entity, name, settings=settings) for name in carried_by)
 
 
 def hidden_identity_keys(result_class: str, *, action: str | None = None, settings: Settings) -> frozenset[str]:
@@ -90,7 +99,7 @@ def hidden_identity_keys(result_class: str, *, action: str | None = None, settin
     return frozenset(
         member
         for member, owners in table.items()
-        if any(_field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
+        if any(field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
     )
 
 
@@ -104,7 +113,7 @@ def hidden_row_keys(result_class: str, member: str, *, parent_row: bool, setting
         key
         for table in tables
         for key, owners in table.items()
-        if any(_field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
+        if any(field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
     )
 
 
@@ -113,7 +122,7 @@ def hidden_payload_copies(result_class: str, *, settings: Settings) -> frozenset
     return frozenset(
         key
         for key, owners in PAYLOAD_COPIES.get(result_class, {}).items()
-        if any(_field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
+        if any(field_or_coupled_hidden(entity, name, settings=settings) for entity, name in owners)
     )
 
 
@@ -131,6 +140,25 @@ def ensure_field_writable(entity: str, field_name: str, *, settings: Settings) -
 def ensure_field_options_readable(entity: str, field_name: str, *, settings: Settings) -> None:
     if field_hidden(entity, field_name, settings=settings):
         raise _hidden_field_error(entity, field_name, "its allowed values are not available")
+
+
+_CUSTOM_KEY = re.compile(r"(customField|customComment)([1-9]\d*)")
+
+
+def custom_field_key_hidden(key: str, *, entity: str, settings: Settings) -> bool:
+    """True for a `customField<N>` or `customComment<N>` key the settings hide. A comment is part of its
+    field, so it is judged by the field's key: the pairing cannot depend on the field's value being
+    present next to it."""
+    match = _CUSTOM_KEY.fullmatch(key)
+    if match is None:
+        return False
+    kind, field_id = match.groups()
+    if field_hidden(entity, "custom_fields", settings=settings):
+        return True
+    if kind == "customComment" and field_hidden(entity, "custom_comments", settings=settings):
+        return True
+    field_key = f"customField{field_id}"
+    return custom_field_hidden(field_key, field_key, settings=settings)
 
 
 def custom_field_hidden(field_name: str, key: str, *, settings: Settings) -> bool:
@@ -159,13 +187,14 @@ def ensure_custom_field_input_writable(raw_key: str, *, settings: Settings) -> N
         )
 
 
-def ensure_custom_field_writable(field_name: str, key: str, *, settings: Settings) -> None:
-    """Checked AFTER schema resolution, using the schema's own field name plus
-    its resolved key."""
+def ensure_custom_field_writable(field_name: str, key: str, *, settings: Settings, typed: str) -> None:
+    """Checked AFTER schema resolution, using the schema's own field name plus its resolved key. The refusal
+    names what the caller typed (`typed`), never the schema's title: with a name pattern the title is the hidden
+    field's name, which the caller did not pass."""
     if not custom_field_hidden(field_name, key, settings=settings):
         return
     raise InvalidInputError(
-        f"OpenProject custom field '{field_name}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS and cannot be written."
+        f"OpenProject custom field '{typed}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS and cannot be written."
     )
 
 

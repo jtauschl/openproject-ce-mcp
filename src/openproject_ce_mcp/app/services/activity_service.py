@@ -42,8 +42,10 @@ from ..policies import access, activity_policy, hidden_fields
 from ..ports.activity_api import ActivityApi, ActivityRecord
 from ..ports.user_names import UserNames
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("activity")
 class ActivityService:
     def __init__(
         self,

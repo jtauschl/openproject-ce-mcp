@@ -283,6 +283,7 @@ class OpenProjectClient:
         self._instance_configuration_cache: CachedValue[InstanceConfigurationRecord] = CachedValue()
 
         self._http = _build_http_client(settings, transport)
+        self._redact_server_text = _hidden_fields_policy.any_hide_active(settings)
 
         # Every HttpxTransport wraps the SAME httpx.AsyncClient constructed
         # above (one connection pool). The directory looks projects up on a
@@ -290,11 +291,17 @@ class OpenProjectClient:
         # adapter gets the one learning transport, so no response reaches a
         # scope policy before the directory has seen it.
         self._project_directory = ProjectDirectoryService(
-            api=HttpxProjectApi(HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix),
+            api=HttpxProjectApi(
+                HttpxTransport(self._http, redact_server_text=self._redact_server_text),
+                base_url=settings.base_url,
+                api_prefix=self._api_prefix,
+            ),
             settings=settings,
         )
         self._project_id_to_identifier = self._project_directory.positives
-        self._transport = LearningTransport(HttpxTransport(self._http), learner=self._project_directory)
+        self._transport = LearningTransport(
+            HttpxTransport(self._http, redact_server_text=self._redact_server_text), learner=self._project_directory
+        )
         self._project_api: ProjectApi = HttpxProjectApi(
             self._transport, base_url=settings.base_url, api_prefix=self._api_prefix
         )
@@ -1367,7 +1374,7 @@ class OpenProjectClient:
             payload = response.json()
         except ValueError:
             payload = {}
-        _map_status_to_error(response.status_code, payload)
+        _map_status_to_error(response.status_code, payload, redact_server_text=self._redact_server_text)
 
     def _normalize_field_schema(self, key: str, payload: dict[str, Any]) -> WorkPackageFieldSchema:
         allowed_values = payload.get("_embedded", {}).get("allowedValues", [])
@@ -1602,9 +1609,9 @@ async def with_instance_page_limit(
     as they are: the failure shows again on the first real request."""
     http = _build_http_client(settings, transport)
     try:
-        payload = await HttpxTransport(http).get_json(
-            "projects", params={"offset": str(_PROBE_OFFSET), "pageSize": str(settings.max_page_size)}
-        )
+        payload = await HttpxTransport(
+            http, redact_server_text=_hidden_fields_policy.any_hide_active(settings)
+        ).get_json("projects", params={"offset": str(_PROBE_OFFSET), "pageSize": str(settings.max_page_size)})
     except OpenProjectError as exc:
         LOGGER.warning("The maximum API page size of the instance could not be read: %s", exc)
         return settings

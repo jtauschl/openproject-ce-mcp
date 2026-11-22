@@ -48,7 +48,7 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.user_api import UserApi
-from ._custom_field_masking import redacted_validation_errors
+from ._error_masking import redacted_server_errors, redacted_validation_errors
 from ._payload_masking import shown_payload, stamped_results
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -57,6 +57,7 @@ _LOCK_STATE_ALIASES: dict[str, Any] = {"status": None, "locked": None}
 
 
 @stamped_results
+@redacted_server_errors("user")
 class UserService:
     def __init__(self, *, api: UserApi, settings: Settings) -> None:
         self._api = api

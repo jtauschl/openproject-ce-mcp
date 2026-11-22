@@ -40,7 +40,7 @@ async def test_list_page_requests_grids_without_filter_by_default() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_grid_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_page(offset=1, page_size=200, scope_filter=None)
 
     assert total == 1
@@ -61,7 +61,7 @@ async def test_list_page_sends_scope_filter_when_given() -> None:
         return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_page(offset=1, page_size=200, scope_filter="/my/page")
 
     assert records == []
@@ -74,7 +74,7 @@ async def test_list_page_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_page(offset=1, page_size=200, scope_filter=None)
 
     assert records == []
@@ -90,7 +90,7 @@ async def test_list_page_requests_the_given_offset() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_page(offset=2, page_size=200, scope_filter=None)
 
     assert [r.summary.id for r in records] == [3]
@@ -104,7 +104,7 @@ async def test_get_builds_record_with_raw_scope_link() -> None:
         return httpx.Response(200, json=_grid_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -127,7 +127,7 @@ async def test_create_form_returns_payload_and_validation_errors() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         result = await api.create_form({"name": "My Grid", "_links": {"scope": {"href": "/my/page"}}})
 
     assert result.validation_errors == {"name": ValidationFailure("is invalid")}
@@ -143,7 +143,7 @@ async def test_update_form_posts_to_the_grid_scoped_form_endpoint() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         result = await api.update_form(1, {"name": "Renamed"})
 
     assert result.validation_errors == {}
@@ -158,7 +158,7 @@ async def test_commit_create_posts_and_returns_summary() -> None:
         return httpx.Response(201, json=_grid_payload(grid_id=42), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         summary = await api.commit_create({"name": "My Grid", "_links": {"scope": {"href": "/projects/6"}}})
 
     assert summary.id == 42
@@ -172,7 +172,7 @@ async def test_commit_update_patches_and_returns_summary() -> None:
         return httpx.Response(200, json=_grid_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         summary = await api.commit_update(1, {"name": "Renamed"})
 
     assert summary.id == 1
@@ -186,7 +186,7 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(1)
 
 
@@ -198,7 +198,7 @@ async def test_get_handles_missing_scope_link() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGridApi(HttpxTransport(http_client))
+        api = HttpxGridApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.scope_link is None

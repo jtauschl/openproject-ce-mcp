@@ -88,7 +88,7 @@ async def test_list_statuses_requests_statuses_collection() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_status_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_statuses()
 
     assert len(records) == 1
@@ -101,7 +101,7 @@ async def test_list_statuses_missing_embedded_elements_returns_empty_list() -> N
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_statuses()
 
     assert records == []
@@ -114,7 +114,7 @@ async def test_get_status_requests_single_item_endpoint() -> None:
         return httpx.Response(200, json=_status_payload(7), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get_status(7)
 
     assert record.summary.id == 7
@@ -127,7 +127,7 @@ async def test_list_priorities_requests_priorities_collection() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_priority_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_priorities()
 
     assert len(records) == 1
@@ -141,7 +141,7 @@ async def test_list_types_without_project_id_requests_global_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_type_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_types(project_id=None)
 
     assert len(records) == 1
@@ -154,7 +154,7 @@ async def test_list_types_with_project_id_requests_project_scoped_endpoint() -> 
         return httpx.Response(200, json={"_embedded": {"elements": [_type_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_types(project_id=9)
 
     assert len(records) == 1
@@ -171,7 +171,7 @@ async def test_list_statuses_lookup_name_is_the_raw_name_not_the_display_fallbac
         return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": ""}]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_statuses()
 
     assert len(records) == 1
@@ -192,7 +192,7 @@ async def test_list_statuses_skips_an_element_with_a_missing_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_statuses()
 
     assert [record.summary.id for record in records] == [2]
@@ -208,7 +208,7 @@ async def test_list_priorities_skips_an_element_with_a_non_numeric_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_priorities()
 
     assert [record.summary.id for record in records] == [2]
@@ -220,7 +220,7 @@ async def test_list_types_skips_a_non_dict_element() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": ["not-a-dict", _type_payload(2)]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_types(project_id=None)
 
     assert [record.summary.id for record in records] == [2]
@@ -237,7 +237,7 @@ async def test_list_statuses_accepts_a_numeric_string_id() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_statuses()
 
     assert [record.summary.id for record in records] == [7]

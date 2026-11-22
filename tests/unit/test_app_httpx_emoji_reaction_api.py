@@ -37,7 +37,7 @@ async def test_list_for_work_package_requests_activities_emoji_reactions() -> No
         return httpx.Response(200, json={"_embedded": {"elements": [_reaction_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxEmojiReactionApi(HttpxTransport(http_client))
+        api = HttpxEmojiReactionApi(HttpxTransport(http_client, redact_server_text=False))
         summaries = await api.list_for_work_package(9)
 
     assert len(summaries) == 1
@@ -52,7 +52,7 @@ async def test_list_for_work_package_missing_embedded_elements_returns_empty_lis
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxEmojiReactionApi(HttpxTransport(http_client))
+        api = HttpxEmojiReactionApi(HttpxTransport(http_client, redact_server_text=False))
         summaries = await api.list_for_work_package(9)
 
     assert summaries == []
@@ -67,7 +67,7 @@ async def test_get_activity_requests_single_activity() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxEmojiReactionApi(HttpxTransport(http_client))
+        api = HttpxEmojiReactionApi(HttpxTransport(http_client, redact_server_text=False))
         activity = await api.get_activity(1988)
 
     assert activity["_links"]["workPackage"]["href"] == "/api/v3/work_packages/42"
@@ -83,7 +83,7 @@ async def test_toggle_patches_and_returns_normalized_reactions() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_reaction_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxEmojiReactionApi(HttpxTransport(http_client))
+        api = HttpxEmojiReactionApi(HttpxTransport(http_client, redact_server_text=False))
         summaries = await api.toggle(1988, "thumbs_up")
 
     assert len(summaries) == 1

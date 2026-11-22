@@ -103,7 +103,7 @@ async def test_list_page_sends_project_id_filter_when_given() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.list_page(offset=1, limit=10, project_id=6)
 
 
@@ -114,7 +114,7 @@ async def test_get_requests_the_recurring_meeting_id() -> None:
         return httpx.Response(200, json=_recurring_meeting_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(51)
 
     assert record.summary.id == 51
@@ -129,7 +129,7 @@ async def test_record_carries_the_untrimmed_title() -> None:
         return httpx.Response(200, json=_recurring_meeting_payload(title=title), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(51)
 
     assert record.raw_title == title
@@ -144,7 +144,7 @@ async def test_create_posts_to_recurring_meetings() -> None:
         return httpx.Response(201, json=_recurring_meeting_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.create({"title": "Weekly Standup"})
 
     assert record.summary.id == 51
@@ -158,7 +158,7 @@ async def test_update_patches_the_recurring_meeting_id() -> None:
         return httpx.Response(200, json=_recurring_meeting_payload(title="Updated"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.update(51, {"title": "Updated"})
 
     assert record.summary.title == "Updated"
@@ -172,7 +172,7 @@ async def test_delete_requests_the_recurring_meeting_id() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(51)
 
 
@@ -186,7 +186,7 @@ async def test_end_posts_to_the_end_route_and_returns_the_series() -> None:
         return httpx.Response(200, json=_recurring_meeting_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.end(51)
 
     assert record.summary.id == 51
@@ -202,7 +202,7 @@ async def test_list_occurrences_sends_limit_only_for_upcoming_filter() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.list_occurrences(51, filter="upcoming", limit=5)
 
     assert seen_params == {"limit": "5"}
@@ -218,7 +218,7 @@ async def test_list_occurrences_never_sends_limit_for_non_upcoming_filters() -> 
         return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.list_occurrences(51, filter="past", limit=5)
 
     assert "limit" not in seen_params
@@ -257,7 +257,7 @@ async def test_init_occurrence_returns_full_meeting_summary_normalized_via_norma
         )
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         summary = await api.init_occurrence(51, start_time="2026-09-08T09:00:00Z")
 
     assert summary.id == 13
@@ -303,7 +303,7 @@ async def test_init_occurrence_clears_draft_template_state_before_init() -> None
         )
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         summary = await api.init_occurrence(51, start_time="2026-09-08T09:00:00Z")
 
     assert summary.id == 13
@@ -318,5 +318,5 @@ async def test_cancel_occurrence_deletes_by_start_time() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client, redact_server_text=False))
         await api.cancel_occurrence(51, start_time="2026-09-08T09:00:00Z")

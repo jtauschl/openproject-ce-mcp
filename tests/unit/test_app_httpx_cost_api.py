@@ -44,7 +44,7 @@ async def test_get_cost_entry_raw_requests_single_cost_entry() -> None:
         return httpx.Response(200, json=_cost_entry_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCostApi(HttpxTransport(http_client))
+        api = HttpxCostApi(HttpxTransport(http_client, redact_server_text=False))
         raw = await api.get_cost_entry_raw(9)
 
     assert raw["id"] == 9
@@ -78,7 +78,7 @@ async def test_fetch_cost_entries_for_work_package_requests_the_sub_resource_and
         )
 
     async with _client(handler) as http_client:
-        api = HttpxCostApi(HttpxTransport(http_client))
+        api = HttpxCostApi(HttpxTransport(http_client, redact_server_text=False))
         elements = await api.fetch_cost_entries_for_work_package(42)
 
     assert len(elements) == 1
@@ -93,7 +93,7 @@ async def test_fetch_costs_by_type_requests_the_summarized_sub_resource() -> Non
         return httpx.Response(200, json={"total": 1, "count": 1, "_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCostApi(HttpxTransport(http_client))
+        api = HttpxCostApi(HttpxTransport(http_client, redact_server_text=False))
         payload = await api.fetch_costs_by_type(42)
 
     assert payload["count"] == 1
@@ -111,7 +111,7 @@ async def test_get_cost_type_raw_requests_single_cost_type() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxCostApi(HttpxTransport(http_client))
+        api = HttpxCostApi(HttpxTransport(http_client, redact_server_text=False))
         raw = await api.get_cost_type_raw(2)
 
     assert raw["id"] == 2

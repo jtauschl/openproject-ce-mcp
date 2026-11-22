@@ -39,7 +39,7 @@ async def test_fetch_page_requests_relations_with_pagination_params() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_relation_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         payload = await api.fetch_page(offset=1, page_size=20, filters=None)
 
     assert payload["_embedded"]["elements"][0]["id"] == 7
@@ -54,12 +54,12 @@ async def test_fetch_page_sends_filters_when_given() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         await api.fetch_page(offset=1, page_size=20, filters=filters)
 
 
 def test_to_record_builds_lazy_summary_and_raw_links() -> None:
-    api = HttpxRelationApi(HttpxTransport(None))  # transport unused by to_record
+    api = HttpxRelationApi(HttpxTransport(None, redact_server_text=False))  # transport unused by to_record
     record = api.to_record(_relation_payload())
 
     assert record.from_link == {"href": "/api/v3/work_packages/1", "title": "Task A"}
@@ -76,7 +76,7 @@ async def test_get_requests_single_relation() -> None:
         return httpx.Response(200, json=_relation_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(7)
 
     assert record.summary().id == 7
@@ -92,7 +92,7 @@ async def test_create_posts_to_work_package_relations_path() -> None:
         return httpx.Response(201, json=_relation_payload(650), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.create("42", {"type": "blocks"})
 
     assert record.summary().id == 650
@@ -112,7 +112,7 @@ async def test_create_encodes_a_semantic_source_reference_in_the_post_path() -> 
         return httpx.Response(201, json=_relation_payload(99), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         await api.create("PROJ-10", {"type": "blocks"})
 
 
@@ -124,7 +124,7 @@ async def test_create_rejects_a_source_reference_containing_a_traversal_segment(
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         with pytest.raises(InvalidInputError):
             await api.create("../work_packages/1", {"type": "blocks"})
 
@@ -141,7 +141,7 @@ async def test_update_patches_the_relation() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.update(7, {"description": "updated"})
 
     assert record.summary().description == "<user-content>updated</user-content>"
@@ -155,7 +155,7 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRelationApi(HttpxTransport(http_client))
+        api = HttpxRelationApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(7)
 
 

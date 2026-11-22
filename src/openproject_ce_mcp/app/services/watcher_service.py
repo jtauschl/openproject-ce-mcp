@@ -32,11 +32,13 @@ from ...models import WatcherListResult, WatcherSummary, WatcherWriteResult
 from ..policies import access, hidden_fields
 from ..ports.watcher_api import WatcherApi
 from ..ports.work_package_ref import WorkPackageRecordResolver
+from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
 from ._work_package_target import resolved_target
 
 
 @stamped_results
+@redacted_server_errors("watcher")
 class WatcherService:
     def __init__(
         self,

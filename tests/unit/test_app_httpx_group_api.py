@@ -37,7 +37,7 @@ async def test_list_groups_requests_offset_and_page_size() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_group_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_groups(offset=1, page_size=20)
 
     assert total == 1
@@ -61,7 +61,7 @@ async def test_list_groups_falls_back_to_record_count_when_total_missing() -> No
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_groups(offset=1, page_size=20)
 
     assert total == 2
@@ -75,7 +75,7 @@ async def test_get_group_uses_plain_numeric_id() -> None:
         return httpx.Response(200, json=_group_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get_group(3)
 
     assert record.summary.id == 3
@@ -90,7 +90,7 @@ async def test_get_member_ids_extracts_ids_from_links_members() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         ids = await api.get_member_ids(3)
 
     assert ids == {5, 6}
@@ -104,7 +104,7 @@ async def test_get_member_ids_tolerates_missing_or_malformed_links() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         ids = await api.get_member_ids(3)
 
     assert ids == set()
@@ -118,7 +118,7 @@ async def test_commit_create_posts_to_groups_and_returns_summary_not_detail() ->
         return httpx.Response(200, json=_group_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         result = await api.commit_create({"name": "Backend"})
 
     assert result.id == 3
@@ -133,7 +133,7 @@ async def test_commit_update_patches_the_group() -> None:
         return httpx.Response(200, json=_group_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         result = await api.commit_update(3, {"name": "Backend"})
 
     assert result.id == 3
@@ -147,7 +147,7 @@ async def test_commit_delete_sends_delete() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client))
+        api = HttpxGroupApi(HttpxTransport(http_client, redact_server_text=False))
         await api.commit_delete(3)
 
 

@@ -166,7 +166,7 @@ async def test_resolve_status_id_matches_the_raw_name_exactly_via_real_port() ->
         )
 
     http = httpx.AsyncClient(base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler))
-    api = HttpxStatusPriorityTypeApi(HttpxTransport(http))
+    api = HttpxStatusPriorityTypeApi(HttpxTransport(http, redact_server_text=False))
     resolver = _resolver(api)
 
     assert await resolver.resolve_status_id("In   Progress\t") == "1"
@@ -189,7 +189,7 @@ async def test_resolve_status_id_does_not_match_a_blank_name_against_the_synthet
         return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": ""}]}}, request=request)
 
     http = httpx.AsyncClient(base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler))
-    api = HttpxStatusPriorityTypeApi(HttpxTransport(http))
+    api = HttpxStatusPriorityTypeApi(HttpxTransport(http, redact_server_text=False))
     resolver = _resolver(api)
 
     with pytest.raises(InvalidInputError, match="was not found"):

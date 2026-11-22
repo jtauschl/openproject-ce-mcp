@@ -18,8 +18,10 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.revision_api import RevisionApi
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ._error_masking import redacted_server_errors
 
 
+@redacted_server_errors("revision")
 class RevisionService:
     def __init__(
         self,

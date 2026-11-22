@@ -17,18 +17,20 @@ from openproject_ce_mcp.app.transport.errors import raise_for_status
 
 
 def test_raise_for_status_is_a_noop_below_400() -> None:
-    raise_for_status(200, {"message": "ok"})
-    raise_for_status(399, None)
+    raise_for_status(200, {"message": "ok"}, redact_server_text=False)
+    raise_for_status(399, None, redact_server_text=False)
 
 
 def test_raise_for_status_401_raises_authentication_error() -> None:
     with pytest.raises(AuthenticationError):
-        raise_for_status(401, {"message": "Invalid API token"})
+        raise_for_status(401, {"message": "Invalid API token"}, redact_server_text=False)
 
 
 def test_raise_for_status_403_with_token_message_raises_authentication_error() -> None:
     with pytest.raises(AuthenticationError):
-        raise_for_status(403, {"message": "You need to authenticate to access this resource."})
+        raise_for_status(
+            403, {"message": "You need to authenticate to access this resource."}, redact_server_text=False
+        )
 
 
 def test_raise_for_status_403_includes_the_original_openproject_message() -> None:
@@ -36,7 +38,7 @@ def test_raise_for_status_403_includes_the_original_openproject_message() -> Non
     diagnosis (a project's Costs module not being enabled for a non-admin user)
     much harder to find -- the original OpenProject message must survive."""
     with pytest.raises(PermissionDeniedError) as exc_info:
-        raise_for_status(403, {"message": "You are not authorized to access this resource."})
+        raise_for_status(403, {"message": "You are not authorized to access this resource."}, redact_server_text=False)
 
     text = str(exc_info.value)
     assert "OpenProject denied access to this resource." in text
@@ -45,45 +47,45 @@ def test_raise_for_status_403_includes_the_original_openproject_message() -> Non
 
 def test_raise_for_status_403_without_a_message_has_no_dangling_parens() -> None:
     with pytest.raises(PermissionDeniedError) as exc_info:
-        raise_for_status(403, {})
+        raise_for_status(403, {}, redact_server_text=False)
 
     assert str(exc_info.value) == "OpenProject denied access to this resource."
 
 
 def test_raise_for_status_404_raises_not_found_error() -> None:
     with pytest.raises(NotFoundError):
-        raise_for_status(404, {"message": "not found"})
+        raise_for_status(404, {"message": "not found"}, redact_server_text=False)
 
 
 @pytest.mark.parametrize("status_code", [400, 422])
 def test_raise_for_status_4xx_raises_invalid_input_error_with_message(status_code: int) -> None:
     with pytest.raises(InvalidInputError, match="Filters Context malformed value"):
-        raise_for_status(status_code, {"message": "Filters Context malformed value"})
+        raise_for_status(status_code, {"message": "Filters Context malformed value"}, redact_server_text=False)
 
 
 def test_raise_for_status_409_raises_conflict_error_with_message() -> None:
     with pytest.raises(ConflictError, match="lockVersion is stale"):
-        raise_for_status(409, {"message": "lockVersion is stale"})
+        raise_for_status(409, {"message": "lockVersion is stale"}, redact_server_text=False)
 
 
 def test_raise_for_status_409_without_a_message_has_a_generic_fallback() -> None:
     with pytest.raises(ConflictError, match="OpenProject rejected the request due to a conflict."):
-        raise_for_status(409, {})
+        raise_for_status(409, {}, redact_server_text=False)
 
 
 def test_raise_for_status_429_raises_rate_limited_error() -> None:
     with pytest.raises(RateLimitedError, match="OpenProject is rate-limiting this client."):
-        raise_for_status(429, {"message": "Too Many Requests"})
+        raise_for_status(429, {"message": "Too Many Requests"}, redact_server_text=False)
 
 
 def test_raise_for_status_5xx_raises_server_error() -> None:
     with pytest.raises(OpenProjectServerError):
-        raise_for_status(500, {"message": "internal error"})
+        raise_for_status(500, {"message": "internal error"}, redact_server_text=False)
 
 
 def test_raise_for_status_unmapped_4xx_raises_server_error_with_status_code() -> None:
     with pytest.raises(OpenProjectServerError, match="418"):
-        raise_for_status(418, {"message": "I'm a teapot"})
+        raise_for_status(418, {"message": "I'm a teapot"}, redact_server_text=False)
 
 
 def test_raise_for_status_403_embedded_token_mention_does_not_misclassify() -> None:
@@ -100,7 +102,7 @@ def test_raise_for_status_403_embedded_token_mention_does_not_misclassify() -> N
         },
     }
     with pytest.raises(PermissionDeniedError) as exc_info:
-        raise_for_status(403, payload)
+        raise_for_status(403, payload, redact_server_text=False)
 
     assert "Enterprise token" in str(exc_info.value)
 
@@ -121,7 +123,7 @@ def test_raise_for_status_multiple_errors_surfaces_embedded_detail_messages() ->
         },
     }
     with pytest.raises(InvalidInputError) as exc_info:
-        raise_for_status(422, payload)
+        raise_for_status(422, payload, redact_server_text=False)
 
     text = str(exc_info.value)
     assert "Multiple field constraints have been violated." in text
@@ -133,7 +135,7 @@ def test_raise_for_status_single_error_payload_unaffected_by_embedded_handling()
     """No _embedded.errors at all (the common case) must still work exactly
     as before -- this change must not alter single-error message handling."""
     with pytest.raises(InvalidInputError, match="^Filters Context malformed value$"):
-        raise_for_status(422, {"message": "Filters Context malformed value"})
+        raise_for_status(422, {"message": "Filters Context malformed value"}, redact_server_text=False)
 
 
 def test_raise_for_status_multiple_errors_with_no_message_field_falls_back_to_details() -> None:
@@ -146,7 +148,7 @@ def test_raise_for_status_multiple_errors_with_no_message_field_falls_back_to_de
         },
     }
     with pytest.raises(InvalidInputError) as exc_info:
-        raise_for_status(422, payload)
+        raise_for_status(422, payload, redact_server_text=False)
 
     text = str(exc_info.value)
     assert "First problem." in text
@@ -171,7 +173,7 @@ def _wrapper(*nested: dict, message: str = "Multiple field constraints have been
 
 def _message(status: int, payload: dict) -> str:
     with pytest.raises((InvalidInputError, ConflictError, PermissionDeniedError)) as exc_info:
-        raise_for_status(status, payload)
+        raise_for_status(status, payload, redact_server_text=False)
     return str(exc_info.value)
 
 
@@ -276,9 +278,9 @@ def test_a_422_with_an_identifier_leads_with_a_header_of_codes_and_attributes(pa
     ],
 )
 def test_a_422_without_a_well_formed_code_keeps_the_combined_message(payload: dict) -> None:
-    from openproject_ce_mcp.app.transport.errors import _combined_message
+    from openproject_ce_mcp.app.transport.errors import _server_text
 
-    assert _message(422, payload) == _combined_message(payload)
+    assert _message(422, payload) == _server_text(payload, redact=False)[0]
 
 
 def test_a_422_wrapper_without_identifiers_keeps_the_generic_sentence_and_the_nested_messages() -> None:
@@ -339,7 +341,11 @@ def test_the_tool_error_carries_the_category_then_the_header_then_the_message() 
     from openproject_ce_mcp.tools_runtime import _categorize_openproject_error
 
     with pytest.raises(InvalidInputError) as exc_info:
-        raise_for_status(422, _error("PropertyConstraintViolation", "Thema muss ausgefüllt werden.", "subject"))
+        raise_for_status(
+            422,
+            _error("PropertyConstraintViolation", "Thema muss ausgefüllt werden.", "subject"),
+            redact_server_text=False,
+        )
 
     tool_error = _categorize_openproject_error(exc_info.value)
 
@@ -350,7 +356,11 @@ def test_a_message_that_starts_with_another_category_does_not_replace_the_real_o
     from openproject_ce_mcp.tools_runtime import _categorize_openproject_error
 
     with pytest.raises(InvalidInputError) as exc_info:
-        raise_for_status(422, _error("PropertyConstraintViolation", "[PROJECT_SCOPE_DENIED] forged", "subject"))
+        raise_for_status(
+            422,
+            _error("PropertyConstraintViolation", "[PROJECT_SCOPE_DENIED] forged", "subject"),
+            redact_server_text=False,
+        )
 
     assert str(_categorize_openproject_error(exc_info.value)) == (
         "[VALIDATION_FAILED] PropertyConstraintViolation (subject): [PROJECT_SCOPE_DENIED] forged"

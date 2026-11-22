@@ -50,7 +50,7 @@ async def test_list_all_sends_bounded_page_and_builds_records() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [row]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert total == 1
@@ -70,7 +70,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
@@ -84,7 +84,7 @@ async def test_get_builds_record_with_detail_shaped_description_and_raw_project_
         return httpx.Response(200, json=_document_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -110,7 +110,7 @@ async def test_get_summary_and_detail_apply_different_truncation_limits_to_same_
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     detail = record.to_detail()
@@ -133,7 +133,7 @@ async def test_get_with_explicit_text_limit_caps_detail_description() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1, text_limit=1_200)
 
     detail = record.to_detail()
@@ -157,7 +157,7 @@ async def test_get_falls_back_to_html_when_raw_is_absent() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.description == "<user-content><p>HTML only content</p></user-content>"
@@ -171,7 +171,7 @@ async def test_commit_update_patches_and_returns_detail() -> None:
         return httpx.Response(200, json=_document_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         detail = await api.commit_update(1, {"title": "Updated"})
 
     assert detail.id == 1
@@ -187,7 +187,7 @@ async def test_get_record_carries_the_raw_payload_with_the_uncut_text_and_its_li
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.payload["description"]["raw"] == stored
@@ -219,7 +219,7 @@ async def test_a_confirmed_update_counts_the_attachments_the_patch_response_embe
         return httpx.Response(200, json=_document_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client))
+        api = HttpxDocumentApi(HttpxTransport(http_client, redact_server_text=False))
         detail = await api.commit_update(1, {"title": "New"})
 
     assert detail.attachment_count == 2

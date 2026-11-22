@@ -27,7 +27,9 @@ async def test_list_for_project_requests_the_project_scoped_endpoint() -> None:
         return httpx.Response(200, json=_collection({"id": 3, "subject": "Q4 hardware"}), request=request)
 
     async with _client(handler) as http_client:
-        budgets = await HttpxBudgetApi(HttpxTransport(http_client)).list_for_project(6, project_name="Demo Project")
+        budgets = await HttpxBudgetApi(HttpxTransport(http_client, redact_server_text=False)).list_for_project(
+            6, project_name="Demo Project"
+        )
 
     assert [(b.id, b.subject, b.project_id, b.project) for b in budgets] == [(3, "Q4 hardware", 6, "Demo Project")]
 
@@ -38,7 +40,9 @@ async def test_list_for_project_trims_long_text_and_falls_back_to_a_placeholder_
         return httpx.Response(200, json=_collection({"id": 3, "subject": "s" * 400}, {"id": 4}), request=request)
 
     async with _client(handler) as http_client:
-        budgets = await HttpxBudgetApi(HttpxTransport(http_client)).list_for_project(6, project_name="n" * 400)
+        budgets = await HttpxBudgetApi(HttpxTransport(http_client, redact_server_text=False)).list_for_project(
+            6, project_name="n" * 400
+        )
 
     assert len(budgets[0].subject) <= 255
     assert budgets[0].subject.endswith("…")
@@ -52,6 +56,8 @@ async def test_list_for_project_without_embedded_elements_is_empty() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        budgets = await HttpxBudgetApi(HttpxTransport(http_client)).list_for_project(6, project_name=None)
+        budgets = await HttpxBudgetApi(HttpxTransport(http_client, redact_server_text=False)).list_for_project(
+            6, project_name=None
+        )
 
     assert budgets == []

@@ -13,7 +13,7 @@ Verified directly against the code before writing these tests (not assumed):
 the API token becomes an `Authorization: Basic ...` header once, at
 `httpx.AsyncClient` construction time (`client.py`'s Settings-to-client
 wiring) -- it is a default header on the client, never read back out of a
-request or response afterward. `raise_for_status(status_code, payload)`
+request or response afterward. `raise_for_status(status_code, payload, redact_server_text=...)`
 (`app/transport/errors.py`) and its only two call sites
 (`app/transport/httpx_transport.py`) extract nothing but the parsed JSON
 response BODY before mapping it to a typed exception; `response.request`/
@@ -26,7 +26,7 @@ to begin with), so Test 1/Test 3 below prove that absence structurally
 
 The one thing that DOES reach a raised exception verbatim is OpenProject's
 own server-provided `message`/`_embedded.errors[].message` text
-(`_combined_message`) -- Test 2 documents this honestly as current,
+(`_server_text`) while no hide setting is active -- Test 2 documents this honestly as current,
 intentional-by-omission behavior (trusting a self-hosted instance's own
 error text), not something this ticket redacts. See this module's own
 `test_...passes_through_upstream_message_text_verbatim` docstring for why
@@ -48,7 +48,7 @@ def test_raise_for_status_signature_has_no_request_or_header_parameter() -> None
     that change so it gets a deliberate security review, rather than passing
     silently."""
     signature = inspect.signature(raise_for_status)
-    assert list(signature.parameters) == ["status_code", "payload"]
+    assert list(signature.parameters) == ["status_code", "payload", "redact_server_text"]
 
 
 def test_raise_for_status_401_never_echoes_the_response_payload() -> None:
@@ -60,7 +60,7 @@ def test_raise_for_status_401_never_echoes_the_response_payload() -> None:
         "message": "Authorization failed for token 'sk-fake-marker-do-not-treat-as-real'"
     }
     try:
-        raise_for_status(401, payload_with_a_realistic_looking_credential)
+        raise_for_status(401, payload_with_a_realistic_looking_credential, redact_server_text=False)
     except Exception as exc:  # noqa: BLE001 -- asserting on whichever type/message it actually raises
         assert str(exc) == "OpenProject authentication failed."
     else:
@@ -71,12 +71,13 @@ def test_raise_for_status_passes_through_upstream_message_text_verbatim() -> Non
     """Honest documentation of current behavior, not a defect being fixed
     here: OpenProject's own server-provided error text (a MultipleErrors
     HAL payload's `_embedded.errors[].message`) passes through into the
-    raised exception's message completely unredacted. This is an accepted
+    raised exception's message completely unredacted while no hide setting is active
+    (`redact_server_text=False`; a hide setting makes the text generic, tests/unit/test_server_error_texts_*). This is an accepted
     risk boundary (a self-hosted OpenProject instance's own error text is
     already trusted, per this project's documented scope), not a leak of
     anything this MCP itself controls -- if the project ever wants to
     redact/allowlist upstream error text, that is a deliberate product
-    change to `_combined_message`, out of this ticket's test-only scope.
+    change to `_server_text`, out of this ticket's test-only scope.
 
     A synthetic, clearly-fake marker stands in for "OpenProject's own
     response body happened to include something identifying" -- this
@@ -89,7 +90,7 @@ def test_raise_for_status_passes_through_upstream_message_text_verbatim() -> Non
         "_embedded": {"errors": [{"message": f"internal reference {marker} rejected"}]},
     }
     try:
-        raise_for_status(422, payload)
+        raise_for_status(422, payload, redact_server_text=False)
     except Exception as exc:  # noqa: BLE001
         assert marker in str(exc)
     else:

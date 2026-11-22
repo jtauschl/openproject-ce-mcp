@@ -197,7 +197,7 @@ async def test_create_storage_one_drive_rejected_without_enterprise_token(
     raise_for_status previously only read the top-level `message` ("Multiple
     field constraints have been violated."), silently discarding
     `_embedded.errors[]`'s real per-field detail -- fixed the same session
-    (see _combined_message in app/transport/errors.py), so the Enterprise
+    (see _server_text in app/transport/errors.py), so the Enterprise
     text now reliably appears in the raised error's message even when
     other, unrelated validation errors are also present. No `host` is sent
     (OneDrive's own contract requires host to be ABSENT).

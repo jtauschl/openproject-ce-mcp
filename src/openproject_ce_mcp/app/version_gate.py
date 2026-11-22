@@ -41,7 +41,12 @@ async def call_query_version_gated(call: Callable[[], Awaitable[_T]], *, feature
     try:
         return await call()
     except InvalidInputError as exc:
+        hint = f" If this instance is older than OpenProject {floor}, {feature} is the cause: it requires {floor} or newer."
+        inner = exc
+
+        def compose(server_text: str) -> str:
+            return f"{inner.message_for(server_text)}{hint}"
+
         raise InvalidInputError(
-            f"{exc} If this instance is older than OpenProject {floor}, {feature} is the cause: "
-            f"it requires {floor} or newer."
+            f"{exc}{hint}", entries=exc.entries, top=exc.top, compose=compose, rendered=exc.rendered
         ) from exc

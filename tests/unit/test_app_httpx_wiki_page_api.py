@@ -34,7 +34,7 @@ async def test_get_builds_record_with_normalized_detail_and_raw_project_link() -
         return httpx.Response(200, json=_wiki_page_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageApi(HttpxTransport(http_client))
+        api = HttpxWikiPageApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(20)
 
     assert record.detail.id == 20
@@ -56,7 +56,7 @@ async def test_get_title_falls_back_to_placeholder_when_missing() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageApi(HttpxTransport(http_client))
+        api = HttpxWikiPageApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(20)
 
     assert record.detail.title == "Wiki page 20"

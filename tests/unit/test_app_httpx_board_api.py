@@ -54,7 +54,7 @@ async def test_list_all_reads_the_unpaginated_collection_without_paging_paramete
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_board_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_all()
 
     assert len(records) == 1
@@ -73,7 +73,7 @@ async def test_get_builds_record_with_eager_detail_from_summary() -> None:
         return httpx.Response(200, json=_board_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -96,7 +96,7 @@ async def test_summary_and_detail_diverge_only_by_detail_only_fields_not_double_
         return httpx.Response(200, json=_board_payload(long_name=True), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.summary.name == record.detail.name
@@ -119,7 +119,7 @@ async def test_create_form_returns_payload_and_validation_errors() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         result = await api.create_form({"name": "My Board"})
 
     assert result.validation_errors == {"name": ValidationFailure("is invalid")}
@@ -135,7 +135,7 @@ async def test_update_form_posts_to_the_board_scoped_form_endpoint() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         result = await api.update_form(1, {"name": "Renamed"})
 
     assert result.validation_errors == {}
@@ -156,7 +156,7 @@ async def test_commit_create_posts_and_returns_detail() -> None:
         return httpx.Response(201, json=_board_payload(board_id=42), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         detail = await api.commit_create({"name": "My Board"})
 
     assert detail.id == 42
@@ -172,7 +172,7 @@ async def test_commit_update_patches_and_returns_detail() -> None:
         return httpx.Response(200, json=_board_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         detail = await api.commit_update(1, {"name": "Renamed"})
 
     assert detail.id == 1
@@ -188,7 +188,7 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(1)
 
 
@@ -200,7 +200,7 @@ async def test_get_handles_missing_project_link() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxBoardApi(HttpxTransport(http_client))
+        api = HttpxBoardApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(1)
 
     assert record.project_link is None

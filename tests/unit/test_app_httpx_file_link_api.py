@@ -41,7 +41,7 @@ async def test_list_for_work_package_requests_sub_collection_with_pagination_par
         )
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client))
+        api = HttpxFileLinkApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_for_work_package(9, offset=1, page_size=20)
 
     assert total == 1
@@ -60,7 +60,7 @@ async def test_list_for_work_package_missing_embedded_elements_returns_empty_lis
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client))
+        api = HttpxFileLinkApi(HttpxTransport(http_client, redact_server_text=False))
         records, total = await api.list_for_work_package(9, offset=1, page_size=20)
 
     assert records == []
@@ -74,7 +74,7 @@ async def test_get_requests_single_file_link() -> None:
         return httpx.Response(200, json=_file_link_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client))
+        api = HttpxFileLinkApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(5)
 
     assert record.summary.id == 5
@@ -87,7 +87,7 @@ async def test_get_handles_missing_container_link() -> None:
         return httpx.Response(200, json=_file_link_payload(container_href=None), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client))
+        api = HttpxFileLinkApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(5)
 
     assert record.container_link is None
@@ -101,7 +101,7 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client))
+        api = HttpxFileLinkApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(5)
 
 

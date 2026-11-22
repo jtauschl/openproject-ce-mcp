@@ -43,7 +43,7 @@ async def test_fetch_page_requests_reminders_with_pagination_params() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_reminder_payload()]}, "total": 1}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         payload = await api.fetch_page(offset=1, page_size=20)
 
     elements = payload["_embedded"]["elements"]
@@ -61,7 +61,7 @@ async def test_fetch_page_missing_embedded_elements_returns_empty_payload() -> N
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         payload = await api.fetch_page(offset=1, page_size=20)
 
     assert payload.get("_embedded", {}).get("elements", []) == []
@@ -79,7 +79,7 @@ async def test_get_requests_single_reminder() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_reminder_payload()]}, "total": 1}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(7)
 
     assert record.summary().id == 7
@@ -107,7 +107,7 @@ async def test_get_finds_reminder_past_the_first_server_page() -> None:
         raise AssertionError(f"Unexpected offset: {offset}")
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         # Force a small page size by monkeypatching isn't available here --
         # _find_raw hardcodes page_size=100, so simulate exhaustion with a
         # small "total" that still requires a second page: total > page_size.
@@ -133,7 +133,7 @@ async def test_get_remindable_link_reads_raw_link_without_full_normalization() -
         )
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         remindable = await api.get_remindable_link(7)
 
     assert remindable == {"href": "/api/v3/work_packages/1"}
@@ -147,7 +147,7 @@ async def test_get_remindable_link_returns_none_when_missing() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         remindable = await api.get_remindable_link(7)
 
     assert remindable is None
@@ -159,7 +159,7 @@ async def test_get_remindable_link_returns_none_when_reminder_not_found() -> Non
         return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         remindable = await api.get_remindable_link(999)
 
     assert remindable is None
@@ -175,7 +175,7 @@ async def test_create_posts_to_work_package_reminders_and_returns_normalized() -
         return httpx.Response(201, json=_reminder_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.create(42, {"remindAt": "2026-12-01T09:00:00Z", "note": "n"})
 
     assert record.summary().id == 7
@@ -191,7 +191,7 @@ async def test_update_patches_reminder_and_returns_normalized() -> None:
         return httpx.Response(200, json=_reminder_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.update(7, {"note": "updated"})
 
     assert record.summary().id == 7
@@ -205,7 +205,7 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         await api.delete(7)
 
 
@@ -270,7 +270,7 @@ async def test_get_walks_on_while_a_server_that_cut_the_page_size_has_more_pages
         )
 
     async with _client(handler) as http_client:
-        api = HttpxReminderApi(HttpxTransport(http_client))
+        api = HttpxReminderApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(3)
 
     assert record.summary().id == 3
