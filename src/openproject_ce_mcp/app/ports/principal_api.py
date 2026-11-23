@@ -11,10 +11,10 @@ Services depend on (satisfied structurally by the bound method
 
 `lookup_name`: the raw payload's `name`
 field, independent of `summary.name`. `normalize_principal` falls back to a
-synthetic display name (`f"Principal {id}"`) when the raw name is
+synthetic display name (`unnamed("principal")`) when the raw name is
 blank/missing -- correct DISPLAY behavior for list/get MCP tool output, but
 wrong for exact-name RESOLUTION (`PrincipalResolver` must not let a
-caller's literal search for "Principal 7" accidentally match a principal
+caller's literal search for "Unnamed principal" accidentally match a principal
 whose real name was blank). `lookup_name` is never synthesized, so
 `PrincipalResolver` compares against it instead of `summary.name`.
 """

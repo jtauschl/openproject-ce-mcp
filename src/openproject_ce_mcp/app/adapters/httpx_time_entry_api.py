@@ -40,7 +40,7 @@ from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError, NotFoundError, OpenProjectServerError, PermissionDeniedError
 from ..ports.time_entry_api import TimeEntryActivityRecord, TimeEntryFormResult, TimeEntryRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT, link_to_api_path
+from ._text import SUBJECT_LIMIT, link_to_api_path, lookup_name, unnamed
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -109,7 +109,7 @@ def normalize_time_entry_activity_raw(payload: dict[str, Any]) -> TimeEntryActiv
     projects = [_link_title(item) for item in payload.get("_links", {}).get("projects", []) if isinstance(item, dict)]
     return TimeEntryActivitySummary(
         id=activity_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Activity {activity_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("time entry activity"),
         position=payload.get("position"),
         is_default=bool(payload.get("default")),
         projects=[item for item in projects if item],
@@ -126,7 +126,9 @@ class HttpxTimeEntryApi:
         return TimeEntryRecord(summary=lambda: normalize_time_entry_raw(payload, text_limit=text_limit))
 
     def to_activity_record(self, payload: dict[str, Any]) -> TimeEntryActivityRecord:
-        return TimeEntryActivityRecord(summary=normalize_time_entry_activity_raw(payload))
+        return TimeEntryActivityRecord(
+            summary=normalize_time_entry_activity_raw(payload), lookup_name=lookup_name(payload)
+        )
 
     def parse_form_result(self, form: dict[str, Any]) -> TimeEntryFormResult:
         embedded = form.get("_embedded", {})
@@ -214,7 +216,7 @@ class HttpxTimeEntryApi:
         # link a filtered collection instead of embedding it -- mirrors
         # HttpxWorkPackageApi._resolve_linked_allowed_values's identical
         # dereference-if-not-embedded shape for allowedValues.
-        # _activities_from_form (the Service's pure consumer of this dict) stays
+        # _activity_elements_of_form (the Service's pure consumer of this dict) stays
         # unchanged: it only ever reads _embedded.allowedValues, which is now
         # always populated by the time it sees this response. Never mutates the
         # input `form` in place -- returns a new dict, mirroring parse_form.

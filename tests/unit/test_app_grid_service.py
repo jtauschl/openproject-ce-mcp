@@ -50,6 +50,10 @@ def _record(*, scope_link: dict | None = None, project_link: dict | None = None,
 class _Resolved:
     summary: ProjectSummary
 
+    @property
+    def payload(self) -> dict[str, str]:
+        return {"name": self.summary.name}
+
 
 class _FakeProjectLookup:
     """OpenProject's own resolution of a grid scope reference: identifier or id."""
@@ -581,6 +585,36 @@ async def test_a_scope_project_is_matched_by_its_name_and_by_a_former_identifier
     result = await _service(api, settings=_restricted(read=("Demo Project",)), projects=projects).list()
 
     assert [grid.id for grid in result.results] == [1]
+
+
+@dataclasses.dataclass
+class _NamelessResolved:
+    """A project the server sent without a name: the summary shows the label, the payload has no `name`."""
+
+    summary: ProjectSummary
+    payload: dict[str, str] = dataclasses.field(default_factory=dict)
+
+
+class _NamelessProjectLookup(_FakeProjectLookup):
+    async def get(self, project_ref: str, **kwargs: object) -> _NamelessResolved:
+        resolved = await super().get(project_ref)
+        return _NamelessResolved(dataclasses.replace(resolved.summary, name="Unnamed project"))
+
+
+@pytest.mark.parametrize("pattern", ["*project*", "unnamed*"])
+@pytest.mark.asyncio
+async def test_the_label_of_a_nameless_scope_project_does_not_admit_its_grid(pattern: str) -> None:
+    api = _FakeGridApi([_record(grid_id=1, scope="/projects/nm")])
+
+    nameless = await _service(
+        api, settings=_restricted(read=(pattern,)), projects=_NamelessProjectLookup([(6, "nm", "")])
+    ).list()
+    named = await _service(
+        api, settings=_restricted(read=("*project*",)), projects=_FakeProjectLookup([(6, "nm", "My project")])
+    ).list()
+
+    assert [grid.id for grid in nameless.results] == []
+    assert [grid.id for grid in named.results] == [1], "the control: the pattern admits a project that has a name"
 
 
 @pytest.mark.parametrize("error", [NotFoundError("gone"), PermissionDeniedError("hidden")])

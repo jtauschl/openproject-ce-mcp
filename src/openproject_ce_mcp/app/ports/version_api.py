@@ -41,9 +41,9 @@ class VersionRecord:
 
     `lookup_name` carries the raw payload's `name` field, independent of
     `summary.name`. `normalize_version` falls back to a synthetic display name
-    (`f"Version {id}"`) when the raw name is blank/missing -- correct DISPLAY
+    (`unnamed("version")`) when the raw name is blank/missing -- correct DISPLAY
     behavior, but wrong for exact-name RESOLUTION (`VersionResolver` must not
-    let a caller's literal search for "Version 7" accidentally match a version
+    let a caller's literal search for "Unnamed version" accidentally match a version
     whose real name was blank). `lookup_name` is never synthesized, so
     `VersionResolver` compares against it instead of `summary.name`.
     """

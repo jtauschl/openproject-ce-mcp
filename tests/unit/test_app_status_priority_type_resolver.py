@@ -178,10 +178,10 @@ async def test_resolve_status_id_matches_the_raw_name_exactly_via_real_port() ->
 @pytest.mark.asyncio
 async def test_resolve_status_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
     """Regression test:
-    normalize_status falls back to a synthetic display name ("Status 7")
+    normalize_status falls back to a synthetic display name ("Unnamed status")
     when the raw name is blank -- correct DISPLAY behavior, but resolution
     must use lookup_name (the raw, un-synthesized name, "" here) so a
-    caller's literal search for "Status 7" never accidentally matches a
+    caller's literal search for "Unnamed status" never accidentally matches a
     status whose real name was blank, matching the flat original's raw
     comparison against "" exactly."""
 
@@ -193,7 +193,7 @@ async def test_resolve_status_id_does_not_match_a_blank_name_against_the_synthet
     resolver = _resolver(api)
 
     with pytest.raises(InvalidInputError, match="was not found"):
-        await resolver.resolve_status_id("Status 7")
+        await resolver.resolve_status_id("Unnamed status")
     await http.aclose()
 
 

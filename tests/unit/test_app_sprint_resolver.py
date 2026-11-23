@@ -146,14 +146,14 @@ async def test_resolve_id_raises_when_ambiguous() -> None:
 async def test_resolve_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
     """Matching uses SprintRecord.lookup_name (the raw, never-synthesized
     name), not summary.name, which falls back to a synthetic display name
-    ("Sprint 9") when the raw name is blank -- see app/ports/sprint_api.py's
+    ("Unnamed sprint") when the raw name is blank -- see app/ports/sprint_api.py's
     SprintRecord docstring."""
-    api = _FakeSprintApi(pages=[([_record(9, "Sprint 9", lookup_name="")], 1)])
+    api = _FakeSprintApi(pages=[([_record(9, "Unnamed sprint", lookup_name="")], 1)])
     resolver = SprintResolver(
         api=api, resolve_project_ref=_resolve_project_ref, settings=make_settings(), project_id_to_identifier={}
     )
     with pytest.raises(InvalidInputError, match="was not found in project"):
-        await resolver.resolve_id("Sprint 9", project="demo")
+        await resolver.resolve_id("Unnamed sprint", project="demo")
 
 
 @pytest.mark.asyncio

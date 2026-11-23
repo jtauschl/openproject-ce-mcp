@@ -64,7 +64,7 @@ from ..policies.grid_policy import (
     needs_resolution,
     parse_grid_scope,
 )
-from ..policies.scope import PrefixMismatch, prefix_mismatch_error
+from ..policies.scope import PrefixMismatch, prefix_mismatch_error, project_payload_name
 from ..ports.grid_api import GridApi, GridRecord
 from ..ports.project_lookup_api import ProjectLookupApi
 from ._error_masking import redacted_server_errors
@@ -121,7 +121,7 @@ class GridService:
                     cache[ref] = exc
                     return
             summary = record.summary
-            cache[ref] = ResolvedProject(summary.id, summary.identifier or ref, summary.name)
+            cache[ref] = ResolvedProject(summary.id, summary.identifier or ref, project_payload_name(record.payload))
 
         await asyncio.gather(*(resolve_one(ref) for ref in dict.fromkeys(refs) if ref not in cache))
 

@@ -27,7 +27,7 @@ from typing import Any
 from ...config import Settings
 from ...models import ProjectSummary, SortCriterion
 from ..policies import project_policy
-from ..policies.scope import payload_allowed
+from ..policies.scope import payload_allowed, project_payload_name
 from ..ports.project_api import FORMATTABLE_LIMIT, ProjectApi, ProjectRecord
 
 
@@ -104,6 +104,23 @@ async def fetch_project_records(
     return results, total, next_offset, truncated
 
 
+async def fetch_named_project_page(
+    *,
+    api: ProjectApi,
+    settings: Settings,
+    search: str | None,
+    offset: int,
+    limit: int,
+    text_limit: int | None = FORMATTABLE_LIMIT,
+) -> tuple[list[tuple[ProjectSummary, str | None]], int, int | None, bool]:
+    """The page as identity-grade summaries, each with the name the server sent (`None` when it sent none), for
+    the callers that match a project by name: the display label of a nameless project must never match."""
+    records, total, next_offset, truncated = await fetch_project_records(
+        api=api, settings=settings, search=search, offset=offset, limit=limit, text_limit=text_limit
+    )
+    return [(record.summary, project_payload_name(record.payload)) for record in records], total, next_offset, truncated
+
+
 async def fetch_project_page(
     *,
     api: ProjectApi,
@@ -115,7 +132,7 @@ async def fetch_project_page(
 ) -> tuple[list[ProjectSummary], int, int | None, bool]:
     """The same page as identity-grade summaries, for the callers that resolve a project name or walk the
     projects without showing them: custom field values are never part of these."""
-    records, total, next_offset, truncated = await fetch_project_records(
+    named, total, next_offset, truncated = await fetch_named_project_page(
         api=api, settings=settings, search=search, offset=offset, limit=limit, text_limit=text_limit
     )
-    return [record.summary for record in records], total, next_offset, truncated
+    return [summary for summary, _ in named], total, next_offset, truncated

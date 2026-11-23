@@ -36,6 +36,7 @@ from ...models import (
 )
 from ..pagination import page_is_last
 from ..ports.project_api import (
+    ParentProjectCandidate,
     ProjectCopyFormResult,
     ProjectFormResult,
     ProjectPage,
@@ -55,7 +56,7 @@ from ._custom_fields import (
 )
 from ._filters import escape_like
 from ._linked_options import read_linked_options
-from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT, link_to_api_path
+from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT, link_to_api_path, unnamed
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -88,7 +89,7 @@ def normalize_project(payload: dict[str, Any], *, text_limit: int | None = FORMA
     )
     return ProjectSummary(
         id=int(payload["id"]),
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {payload['id']}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("project"),
         identifier=identifier,
         active=payload.get("active"),
         description=_delimit_user_content(description),
@@ -247,7 +248,7 @@ def normalize_project_phase_definition(payload: dict[str, Any]) -> ProjectPhaseD
     phase_id = int(payload["id"])
     return ProjectPhaseDefinition(
         id=phase_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Phase {phase_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("project phase definition"),
         start_gate=_trim_text(payload.get("startGateName"), limit=SUBJECT_LIMIT),
         finish_gate=_trim_text(payload.get("finishGateName"), limit=SUBJECT_LIMIT),
         created_at=payload.get("createdAt"),
@@ -264,7 +265,7 @@ def normalize_project_phase(payload: dict[str, Any]) -> ProjectPhase:
         name=(
             _trim_text(payload.get("name"), limit=SUBJECT_LIMIT)
             or _link_title(phase_definition_link)
-            or f"Project phase {phase_id}"
+            or unnamed("project phase")
         ),
         project_id=_id_from_href(links.get("project", {}).get("href")),
         project=_link_title(links.get("project")),
@@ -429,7 +430,9 @@ class HttpxProjectApi:
             resolved[key] = {**field, "_embedded": {**(field.get("_embedded") or {}), "allowedValues": elements}}
         return resolved
 
-    async def list_available_parent_projects(self, project_id: int, *, schema: dict[str, Any]) -> Sequence[ProjectRef]:
+    async def list_available_parent_projects(
+        self, project_id: int, *, schema: dict[str, Any]
+    ) -> Sequence[ParentProjectCandidate]:
         parent_field = schema.get("parent")
         if not isinstance(parent_field, dict):
             return []
@@ -440,15 +443,14 @@ class HttpxProjectApi:
         # Note: caller-side allowlist filtering (Fail closed: a parent-project
         # candidate outside READ_PROJECTS must not leak here) happens in the
         # Service, not this adapter -- the adapter is a dumb HTTP translator.
-        return [
-            ProjectRef(
-                id=int(item["id"]),
-                identifier=item.get("identifier"),
-                name=_trim_text(item.get("name"), limit=SUBJECT_LIMIT) or f"Project {item['id']}",
-            )
-            for item in elements
-            if isinstance(item, dict)
-        ]
+        candidates = []
+        for item in elements:
+            if not isinstance(item, dict):
+                continue
+            name = _trim_text(item.get("name"), limit=SUBJECT_LIMIT)
+            ref = ProjectRef(id=int(item["id"]), identifier=item.get("identifier"), name=name or unnamed("project"))
+            candidates.append(ParentProjectCandidate(ref=ref, scope_name=item.get("name")))
+        return candidates
 
     async def get_configuration(self, project_id: int) -> dict[str, Any]:
         return await self._transport.get_json(f"projects/{project_id}/configuration")

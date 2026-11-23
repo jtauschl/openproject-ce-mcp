@@ -13,6 +13,7 @@ from openproject_ce_mcp.app.adapters.httpx_project_api import (
 )
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.project_api import (
+    ParentProjectCandidate,
     ProjectCopyFormResult,
     ProjectFormResult,
     ProjectPage,
@@ -80,7 +81,7 @@ class _FakeProjectApi:
         # does NOT match self.schema to prove a consumer uses the ProjectSchemaResult
         # it was handed rather than re-normalizing self.schema itself.
         self.fields: tuple | None = None
-        self.parent_projects: list[ProjectRef] = []
+        self.parent_projects: list[ParentProjectCandidate] = []
         self.phase_definitions: list[ProjectPhaseDefinition] = []
         self.phase_record: ProjectPhaseRecord | None = None
         self.validation_errors: dict[str, str] = {}
@@ -88,6 +89,7 @@ class _FakeProjectApi:
         # What the real forms add to the echoed payload: the whole project, attributes included.
         self.form_echo: dict = {}
         self.schema_reads: list[dict] = []
+        self.schema_drafts: list[dict] = []
         self.commit_create_calls: list[dict] = []
         self.commit_update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
@@ -130,6 +132,7 @@ class _FakeProjectApi:
 
     async def get_schema(self, *, project_id, draft_payload, **kwargs) -> ProjectSchemaResult:
         self.schema_reads.append(kwargs)
+        self.schema_drafts.append(draft_payload)
         if self.fields is not None:
             fields = self.fields
         else:
@@ -404,7 +407,7 @@ async def test_stamp_zeroes_hidden_status_explanation_metadata() -> None:
 @pytest.mark.asyncio
 async def test_get_admin_context_includes_writable_fields_and_parent_projects() -> None:
     api = _FakeProjectApi()
-    api.parent_projects = [ProjectRef(id=1, identifier="root", name="Root")]
+    api.parent_projects = [ParentProjectCandidate(ProjectRef(id=1, identifier="root", name="Root"), scope_name="Root")]
     service = _admin_service(api)
 
     context = await service.get_admin_context("demo")
@@ -424,8 +427,8 @@ async def test_get_admin_context_filters_parent_projects_by_read_allowlist() -> 
     candidate is dropped entirely, not just its full detail."""
     api = _FakeProjectApi()
     api.parent_projects = [
-        ProjectRef(id=1, identifier="root", name="Root"),
-        ProjectRef(id=2, identifier="secret", name="Secret"),
+        ParentProjectCandidate(ProjectRef(id=1, identifier="root", name="Root"), scope_name="Root"),
+        ParentProjectCandidate(ProjectRef(id=2, identifier="secret", name="Secret"), scope_name="Secret"),
     ]
     settings = dataclasses.replace(make_settings(), read_projects=("demo", "root"))
     service = _admin_service(api, settings=settings)
@@ -433,6 +436,37 @@ async def test_get_admin_context_filters_parent_projects_by_read_allowlist() -> 
     context = await service.get_admin_context("demo")
 
     assert [ref.identifier for ref in context.available_parent_projects] == ["root"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pattern", ["*project*", "unnamed*"])
+async def test_a_parent_candidate_without_a_name_is_not_admitted_by_the_label_it_is_shown_under(pattern: str) -> None:
+    """The scope reads the name the server sent: the label `Unnamed project` is no candidate of a pattern. The control
+    is a candidate that has a name, which the same pattern admits."""
+    api = _FakeProjectApi()
+    api.parent_projects = [
+        ParentProjectCandidate(ProjectRef(id=3, identifier="nm", name="Unnamed project"), scope_name=None),
+        ParentProjectCandidate(ProjectRef(id=4, identifier="named", name="My project"), scope_name="My project"),
+    ]
+    settings = dataclasses.replace(make_settings(), read_projects=("demo", "*project*", pattern))
+    service = _admin_service(api, settings=settings)
+
+    context = await service.get_admin_context("demo")
+
+    assert [ref.identifier for ref in context.available_parent_projects] == ["named"]
+
+
+@pytest.mark.asyncio
+async def test_the_schema_draft_carries_the_name_the_server_sent_and_none_for_a_nameless_project() -> None:
+    named = _FakeProjectApi()
+    await _admin_service(named).get_admin_context("demo")
+    nameless_record = _record()
+    nameless_summary = dataclasses.replace(nameless_record.summary, name="Unnamed project")
+    nameless = _FakeProjectApi(records=[project_record(nameless_summary, payload=_payload(name=""))])
+    await _admin_service(nameless).get_admin_context("demo")
+
+    assert named.schema_drafts == [{"name": "Demo Project"}]
+    assert nameless.schema_drafts == [{}]
 
 
 @pytest.mark.asyncio
@@ -444,7 +478,7 @@ async def test_get_admin_context_masks_hidden_fields_on_parent_project_candidate
     instead of ProjectSummary. The allowlist filter (previous test) and
     field-level masking (this test) are independent controls."""
     api = _FakeProjectApi()
-    api.parent_projects = [ProjectRef(id=1, identifier="root", name="Root")]
+    api.parent_projects = [ParentProjectCandidate(ProjectRef(id=1, identifier="root", name="Root"), scope_name="Root")]
     settings = dataclasses.replace(make_settings(), hidden_fields={"project": ("name",)})
     service = _admin_service(api, settings=settings)
 

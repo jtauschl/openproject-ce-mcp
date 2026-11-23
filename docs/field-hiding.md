@@ -219,9 +219,14 @@ tool is about belongs to that record's entity.
   the project `id`, `title` the `name`). The row of the parent also follows `parent_id` and `parent_display_id`
   (project: `parent_id`, `parent_name`). A row with no
   value left is dropped; the data of the record is not edited.
-- **Not covered yet:** the fallback titles built from an id when the server sends no name (`Attachment 5`, `File
-  link 5`, `Notification 5`) repeat a hidden `id`; the server error text of a failed batch item is judged with the other server
-  error texts.
+- **A record the server sent without a name** is shown as `Unnamed <kind>` (`Unnamed status`, `Unnamed file link`), never
+  under a text built from its id, so hiding `id` leaves nothing of the id behind. The label is display only: roles,
+  time entry activities and projects are resolved by the name the server sent, a project allowlist reads that name
+  too, and a `search` filter matches the text shown.
+  The allowlist now reads the trimmed name in every path (a pattern written against irregular whitespace or a name
+  over 255 characters matches as it does for a project the server returned in a list).
+- **Not covered:** the filter values of a saved board that the server names by no title or name are shown as the
+  reference it sent, which can hold the id of a hidden record.
 
 ## Help text `attribute_caption` and `caption`
 

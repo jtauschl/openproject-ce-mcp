@@ -58,6 +58,9 @@ class _FakeProjectApi:
         self.in_flight = 0
         self.max_in_flight = 0
 
+    def _make(self, project_id: int, identifier: str, name: str, active: bool = True) -> ProjectRecord:
+        return _record(project_id, identifier, name, active)
+
     async def _hold(self, page: int | None = None) -> None:
         if self.gate is not None and (page is None or not self.held_pages or page in self.held_pages):
             await self.gate.wait()
@@ -87,7 +90,7 @@ class _FakeProjectApi:
         start = (server_offset - 1) * server_page_size
         chunk = matching[start : start + server_page_size]
         return ProjectPage(
-            records=[_record(*project) for project in chunk],
+            records=[self._make(*project) for project in chunk],
             server_total=len(matching),
             exhausted=start + server_page_size >= len(matching),
         )
@@ -104,7 +107,7 @@ class _FakeProjectApi:
             raise self.get_errors[project_ref]
         for project in self.projects:
             if str(project[0]) == project_ref:
-                return _record(*project)
+                return self._make(*project)
         raise NotFoundError("not found")
 
 
@@ -1067,3 +1070,82 @@ async def test_a_response_linking_several_known_projects_reads_them_in_one_reque
     assert api.listed_ids == [[7, 8, 9]]
     assert api.get_calls == []
     assert directory.positives == {7: "demo-a", 8: "demo-b", 9: "demo-c"}
+
+
+class _NamelessProjectApi(_FakeProjectApi):
+    """A server that sent no name: the record shows the label, and its payload has no `name`."""
+
+    def _make(self, project_id: int, identifier: str, name: str, active: bool = True) -> ProjectRecord:
+        summary = ProjectSummary(
+            id=project_id, name="Unnamed project", identifier=identifier, active=active, description=None
+        )
+        return project_record(summary, payload={"id": project_id, "identifier": identifier})
+
+
+# The label of a nameless project must not be a scope candidate. `*project*` and `unnamed*` would admit it; the
+# identifier holds neither word, or the pattern would admit the project for the wrong reason.
+NAMELESS_PATTERNS = (
+    pytest.param(("*project*",), id="a pattern that matches the label"),
+    pytest.param(("unnamed*",), id="a pattern that names the label"),
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pattern", NAMELESS_PATTERNS)
+async def test_the_label_of_a_nameless_project_is_no_candidate_of_the_directory_scan(pattern: tuple[str, ...]) -> None:
+    api = _NamelessProjectApi([(7, "nm", "")])
+    directory = _directory(api, settings=_base_settings(read_projects=pattern, write_projects=()))
+
+    await directory.refresh()
+
+    assert directory.positives == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pattern", NAMELESS_PATTERNS)
+async def test_the_label_of_a_nameless_project_is_no_candidate_of_a_single_lookup(pattern: tuple[str, ...]) -> None:
+    api = _NamelessProjectApi([(7, "nm", "")])
+    directory = _directory(api, settings=_base_settings(read_projects=pattern, write_projects=()))
+
+    await _learn(directory, _work_package_in(7))
+
+    assert api.get_calls == ["7"]
+    assert directory.positives == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pattern", NAMELESS_PATTERNS)
+async def test_a_project_representation_without_a_name_is_no_candidate_by_name(pattern: tuple[str, ...]) -> None:
+    api = _FakeProjectApi()
+    directory = _directory(api, settings=_base_settings(read_projects=pattern, write_projects=()))
+    representation = _representation(7, "nm", "x")
+    del representation["name"]
+
+    await _learn(directory, {"_type": "Collection", "_embedded": {"elements": [representation]}})
+
+    assert directory.positives == {}
+
+
+@pytest.mark.asyncio
+async def test_a_named_project_is_a_candidate_by_name_in_all_three_paths() -> None:
+    """The control of the three tests above: the pattern does admit a project that has a name."""
+    settings = _base_settings(read_projects=("*project*",), write_projects=())
+    scanned = _directory(_FakeProjectApi([(7, "nm", "My project")]), settings=settings)
+    await scanned.refresh()
+    fetched = _directory(_FakeProjectApi([(7, "nm", "My project")]), settings=settings)
+    await _learn(fetched, _work_package_in(7))
+    shown = _directory(_FakeProjectApi(), settings=settings)
+    await _learn(shown, {"_type": "Collection", "_embedded": {"elements": [_representation(7, "nm", "My project")]}})
+
+    assert scanned.positives == fetched.positives == shown.positives == {7: "nm"}
+
+
+@pytest.mark.asyncio
+async def test_a_name_is_trimmed_the_same_way_in_a_learned_representation_as_in_the_scan() -> None:
+    settings = _base_settings(read_projects=("my-project",), write_projects=())
+    learned = _directory(_FakeProjectApi(), settings=settings)
+    await _learn(learned, {"_type": "Collection", "_embedded": {"elements": [_representation(7, "nm", "My  project")]}})
+    scanned = _directory(_FakeProjectApi([(7, "nm", "My  project")]), settings=settings)
+    await scanned.refresh()
+
+    assert learned.positives == scanned.positives == {7: "nm"}

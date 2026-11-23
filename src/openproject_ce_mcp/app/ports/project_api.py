@@ -34,6 +34,16 @@ FORMATTABLE_LIMIT = 1_200
 
 
 @dataclass(frozen=True)
+class ParentProjectCandidate:
+    """A project a parent may be picked from. `ref` is the picklist entry a caller sees; `scope_name` is the name as the
+    server sent it (`None` when it sent none), which the scope check reads and trims like every project payload:
+    never the display label of `ref.name`."""
+
+    ref: ProjectRef
+    scope_name: object
+
+
+@dataclass(frozen=True)
 class ProjectRecord:
     """One project as read from the API.
 
@@ -131,7 +141,7 @@ class ProjectApi(Protocol):
     ) -> ProjectSchemaResult: ...
     async def list_available_parent_projects(
         self, project_id: int, *, schema: dict[str, Any]
-    ) -> Sequence[ProjectRef]: ...
+    ) -> Sequence[ParentProjectCandidate]: ...
     async def get_configuration(self, project_id: int) -> dict[str, Any]: ...
     async def list_phase_definitions(self) -> Sequence[ProjectPhaseDefinition]: ...
     async def get_phase_definition(self, phase_definition_id: int) -> ProjectPhaseDefinition: ...

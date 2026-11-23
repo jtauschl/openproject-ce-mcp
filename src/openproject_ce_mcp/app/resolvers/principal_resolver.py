@@ -16,8 +16,8 @@ of a numeric id.
 
 Name comparison uses `PrincipalRecord.lookup_name` (the raw, never-synthesized
 name), not `summary.name`: `normalize_principal` falls back to a synthetic
-display name (`f"Principal {id}"`) when the raw name is blank/missing, which
-could otherwise make a caller's literal search for "Principal 7" accidentally
+display name (`unnamed("principal")`) when the raw name is blank/missing, which
+could otherwise make a caller's literal search for "Unnamed principal" accidentally
 match a principal whose real name was blank. See `app/ports/principal_api.py`'s
 module docstring for the full rationale.
 """

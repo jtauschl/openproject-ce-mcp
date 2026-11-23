@@ -73,7 +73,7 @@ from ._custom_fields import (
     links_references,
 )
 from ._linked_options import read_linked_options
-from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT, link_to_api_path
+from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT, link_to_api_path, unnamed
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -160,7 +160,7 @@ def normalize_work_package_summary(
     return WorkPackageSummary(
         id=int(payload["id"]),
         display_id=payload.get("displayId"),
-        subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
+        subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or unnamed("work package"),
         type=_link_title(links.get("type")),
         status=_link_title(links.get("status")),
         priority=_link_title(links.get("priority")),

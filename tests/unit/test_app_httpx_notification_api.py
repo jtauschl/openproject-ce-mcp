@@ -245,7 +245,7 @@ def test_normalize_notification_falls_back_to_subject_when_missing() -> None:
 
     summary = normalize_notification(payload)
 
-    assert summary.subject == "Notification 7"
+    assert summary.subject == "Unnamed notification"
 
 
 @pytest.mark.asyncio

@@ -84,7 +84,7 @@ async def test_list_for_project_falls_back_to_placeholder_name_when_missing() ->
         api = HttpxCategoryApi(HttpxTransport(http_client, redact_server_text=False))
         records = await api.list_for_project(6, project_name=None)
 
-    assert records[0].summary.name == "Category 1"
+    assert records[0].summary.name == "Unnamed category"
     assert records[0].summary.project is None
 
 

@@ -36,7 +36,6 @@ from ...models import (
     ProjectPhase,
     ProjectPhaseDefinition,
     ProjectPhaseDefinitionListResult,
-    ProjectRef,
     ProjectSummary,
     ProjectWriteResult,
     ResolvedParentProject,
@@ -49,8 +48,8 @@ from ..pagination import clamp_limit
 from ..policies import access, hidden_fields, project_query_policy
 from ..policies import project_policy as project_policy_module
 from ..policies import scope as scope_policy
-from ..policies.scope import ensure_project_link_allowed, payload_allowed
-from ..ports.project_api import ProjectApi, ProjectRecord
+from ..policies.scope import ensure_project_link_allowed, payload_allowed, project_payload_name
+from ..ports.project_api import ParentProjectCandidate, ProjectApi, ProjectRecord
 from ..ports.scoped_reference import ScopedReferencesAllowedBulkCheck
 from ..resolvers.project_query import fetch_project_records
 from ..resolvers.project_resolver import ProjectResolver
@@ -752,17 +751,20 @@ class ProjectAdminService:
         project = _stamp_project(
             scoped, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
-        schema_result = await self._api.get_schema(project_id=project.id, draft_payload={"name": project.name})
+        raw_name = project_payload_name(record.payload)
+        schema_result = await self._api.get_schema(
+            project_id=project.id, draft_payload={} if raw_name is None else {"name": raw_name}
+        )
         schema = schema_result.schema
         fields = schema_result.fields
         status_field = next((field for field in fields if field.key == "status"), None)
         available_statuses = status_field.allowed_values if status_field else []
         parent_candidates = await self._api.list_available_parent_projects(project.id, schema=schema)
 
-        def _parent_ref_allowed(ref: ProjectRef) -> bool:
+        def _parent_allowed(candidate: ParentProjectCandidate) -> bool:
             return payload_allowed(
                 lambda: project_policy_module.ensure_project_read_allowed(
-                    {"id": ref.id, "identifier": ref.identifier, "name": ref.name},
+                    {"id": candidate.ref.id, "identifier": candidate.ref.identifier, "name": candidate.scope_name},
                     settings=self._settings,
                 )
             )
@@ -776,9 +778,11 @@ class ProjectAdminService:
         # keeps OPENPROJECT_HIDE_PROJECT_FIELDS=name/identifier honored here,
         # not just on get_project/list_projects.
         available_parent_projects = [
-            _stamp_project(ref, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier)
-            for ref in parent_candidates
-            if _parent_ref_allowed(ref)
+            _stamp_project(
+                candidate.ref, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+            )
+            for candidate in parent_candidates
+            if _parent_allowed(candidate)
         ]
         # Non-writable/internal schema entries (id, timestamps, lockVersion, ...)
         # aren't useful to an agent discovering what it can set here.

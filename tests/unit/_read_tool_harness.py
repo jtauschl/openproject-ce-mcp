@@ -294,3 +294,35 @@ def sentinel_serve(request: httpx.Request) -> httpx.Response:
         headers={"content-type": "application/json"},
         request=request,
     )
+
+
+# The names a nameless record lacks: the adapters fall back to a label for every one of them. A link's title is
+# the title of another record, not of this one, so only the record's own members go.
+_NAME_KEYS = frozenset({"name", "title", "subject", "fileName"})
+
+
+def _without_names(node: Any) -> Any:
+    if isinstance(node, list):
+        return [_without_names(entry) for entry in node]
+    if not isinstance(node, dict):
+        return node
+    own = "_type" in node and "href" not in node
+    out = {key: _without_names(value) for key, value in node.items() if not (own and key in _NAME_KEYS)}
+    origin = out.get("originData")
+    if isinstance(origin, dict):
+        out["originData"] = {key: value for key, value in origin.items() if key != "name"}
+    return out
+
+
+def nameless_sentinel_serve(request: httpx.Request) -> httpx.Response:
+    """`sentinel_serve` where no record carries a name, title, subject or file name: every adapter falls back."""
+    response = sentinel_serve(request)
+    if "recurring_meetings" in request.url.path:
+        # Their adapter reads `payload["title"]` without a fallback: a server always sends it.
+        return response
+    return httpx.Response(
+        response.status_code,
+        content=json.dumps(_without_names(json.loads(response.content))),
+        headers={"content-type": "application/json"},
+        request=request,
+    )

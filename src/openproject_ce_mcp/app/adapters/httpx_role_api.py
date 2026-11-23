@@ -10,7 +10,7 @@ from typing import Any
 from ...models import RoleSummary
 from ..ports.role_api import RoleRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, lookup_name, unnamed
 from ._text import trim_text as _trim_text
 
 
@@ -23,7 +23,7 @@ def normalize_role(payload: dict[str, Any]) -> RoleSummary:
     role_id = int(payload["id"])
     return RoleSummary(
         id=role_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Role {role_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("role"),
     )
 
 
@@ -41,6 +41,10 @@ class HttpxRoleApi:
         # RoleService.list_roles for the client-side slicing this requires.
         payload = await self._transport.get_json("roles", params={"offset": str(offset), "pageSize": str(page_size)})
         elements = payload.get("_embedded", {}).get("elements", [])
-        records = [RoleRecord(summary=normalize_role(item)) for item in elements if isinstance(item, dict)]
+        records = [
+            RoleRecord(summary=normalize_role(item), lookup_name=lookup_name(item))
+            for item in elements
+            if isinstance(item, dict)
+        ]
         total = int(payload.get("total", len(records)))
         return records, total

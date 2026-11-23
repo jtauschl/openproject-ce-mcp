@@ -26,7 +26,7 @@ from typing import Any
 from ...models import WikiPageDetail
 from ..ports.wiki_page_api import WikiPageRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
@@ -42,7 +42,7 @@ def normalize_wiki_page(payload: dict[str, Any]) -> WikiPageDetail:
     links = payload.get("_links", {})
     return WikiPageDetail(
         id=int(payload["id"]),
-        title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Wiki page {payload['id']}",
+        title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or unnamed("wiki page"),
         project_id=_id_from_href(links.get("project", {}).get("href")),
         project=_link_title(links.get("project")),
     )

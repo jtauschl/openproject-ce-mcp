@@ -29,7 +29,7 @@ from ...models import BoardDetail, BoardFilter, BoardSummary
 from ..link_titles import KEPT_FILTER_KEYS, without_titles
 from ..ports.board_api import BoardFormResult, BoardRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_validation_errors
@@ -101,7 +101,7 @@ def normalize_board(payload: dict[str, Any]) -> BoardSummary:
         filters = []
     return BoardSummary(
         id=int(payload["id"]),
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Board {payload['id']}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("board"),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
         project=_link_title(project_link),
         public=bool(payload.get("public")),

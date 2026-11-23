@@ -241,6 +241,12 @@ def project_record_candidates(project_id: int | None, identifier: str | None, na
     }
 
 
+def project_payload_name(payload: Mapping[str, Any]) -> str | None:
+    """The name a project payload carries, as every scope input reads it: trimmed, and absent when the server sent
+    none. Never the display label of a nameless project."""
+    return _trim_text(payload.get("name"), limit=SUBJECT_LIMIT)
+
+
 def project_payload_candidates(payload: Mapping[str, Any]) -> set[str]:
     """Candidates of a project payload OpenProject returned.
 
@@ -250,7 +256,7 @@ def project_payload_candidates(payload: Mapping[str, Any]) -> set[str]:
     return project_record_candidates(
         payload.get("id"),
         _trim_text(payload.get("identifier"), limit=SUBJECT_LIMIT),
-        _trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
+        project_payload_name(payload),
     )
 
 

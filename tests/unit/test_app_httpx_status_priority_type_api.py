@@ -201,7 +201,7 @@ async def test_list_statuses_lookup_name_is_the_raw_name_not_the_display_fallbac
         records = await api.list_statuses()
 
     assert len(records) == 1
-    assert records[0].summary.name == "Status 7"
+    assert records[0].summary.name == "Unnamed status"
     assert records[0].lookup_name == ""
 
 

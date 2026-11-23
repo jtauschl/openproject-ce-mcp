@@ -104,7 +104,7 @@ async def _resolve_principal_ref(principal_ref: str) -> str:
 
 class _FakeRoleApi:
     def __init__(self, records: list[RoleRecord] | None = None) -> None:
-        self._records = records or [RoleRecord(summary=RoleSummary(id=1, name="Member"))]
+        self._records = records or [RoleRecord(summary=RoleSummary(id=1, name="Member"), lookup_name="Member")]
         self.list_calls: list[tuple[int, int]] = []
 
     async def list_roles(self, *, offset: int, page_size: int) -> tuple[list[RoleRecord], int]:
@@ -402,8 +402,8 @@ async def test_create_role_not_found_raises() -> None:
 async def test_create_role_ambiguous_raises() -> None:
     role_api = _FakeRoleApi(
         records=[
-            RoleRecord(summary=RoleSummary(id=1, name="Member")),
-            RoleRecord(summary=RoleSummary(id=2, name="Member")),
+            RoleRecord(summary=RoleSummary(id=1, name="Member"), lookup_name="Member"),
+            RoleRecord(summary=RoleSummary(id=2, name="Member"), lookup_name="Member"),
         ]
     )
     api = _FakeMembershipApi()
@@ -429,8 +429,8 @@ async def test_create_role_lookup_calls_role_api_once_not_page_walking() -> None
     """
     role_api = _FakeRoleApi(
         records=[
-            RoleRecord(summary=RoleSummary(id=1, name="Reader")),
-            RoleRecord(summary=RoleSummary(id=2, name="Member")),
+            RoleRecord(summary=RoleSummary(id=1, name="Reader"), lookup_name="Reader"),
+            RoleRecord(summary=RoleSummary(id=2, name="Member"), lookup_name="Member"),
         ]
     )
     settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=1)
@@ -451,7 +451,7 @@ async def test_create_role_lookup_uses_max_results_not_max_page_size() -> None:
     ignores this value's exact size anyway but a stale max_page_size-sized
     request would (incorrectly, per the fix above) look like a page walk
     is needed."""
-    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=1, name="Member"))])
+    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=1, name="Member"), lookup_name="Member")])
     settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=20, max_results=100)
     api = _FakeMembershipApi()
     service = _service(api, settings=settings, role_api=role_api)
@@ -482,7 +482,7 @@ async def test_create_with_numeric_role_id_skips_the_role_list_fetch() -> None:
 async def test_create_with_mixed_numeric_and_named_roles_still_fetches_once() -> None:
     """A mix of numeric and by-name refs must still trigger exactly one
     role-list fetch (for the by-name ref), not skip it entirely."""
-    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=2, name="Member"))])
+    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=2, name="Member"), lookup_name="Member")])
     api = _FakeMembershipApi()
     service = _service(api, role_api=role_api)
 
@@ -588,10 +588,22 @@ async def test_delete_commits_and_stamps_result_when_confirmed() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name", ["²", "٣"])
 async def test_create_reads_a_non_ascii_digit_role_as_a_name(name: str) -> None:
-    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=4, name=name))])
+    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=4, name=name), lookup_name=name)])
     api = _FakeMembershipApi()
     service = _service(api, role_api=role_api)
 
     await service.create(project="demo", principal="me", roles=[name], confirm=False)
 
     assert api.create_form_calls[-1]["_links"]["roles"] == [{"href": "/api/v3/roles/4"}]
+
+
+@pytest.mark.asyncio
+async def test_the_label_of_a_nameless_role_resolves_nothing() -> None:
+    nameless = RoleRecord(summary=RoleSummary(id=4, name="Unnamed role"), lookup_name="")
+    role_api = _FakeRoleApi(
+        records=[nameless, RoleRecord(summary=RoleSummary(id=5, name="Member"), lookup_name="Member")]
+    )
+    service = _service(_FakeMembershipApi(), role_api=role_api)
+
+    with pytest.raises(InvalidInputError, match="was not found"):
+        await service.create(project="demo", principal="me", roles=["Unnamed role"], confirm=False)

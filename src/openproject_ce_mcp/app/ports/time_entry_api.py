@@ -62,7 +62,11 @@ class TimeEntryRecord:
 
 @dataclass(frozen=True)
 class TimeEntryActivityRecord:
+    """`lookup_name` is the raw payload `name`, never synthesized: an activity is resolved by it, not by the display
+    label of `summary.name`."""
+
     summary: TimeEntryActivitySummary
+    lookup_name: str
 
 
 @dataclass(frozen=True)

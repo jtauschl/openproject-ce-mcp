@@ -35,7 +35,7 @@ from typing import Any
 from ...models import StorageDetail, StorageSummary
 from ..ports.storage_api import StorageRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import trim_text as _trim_text
 
 _AUTHORIZATION_STATE_MAP = {
@@ -86,7 +86,7 @@ def normalize_storage(payload: dict[str, Any]) -> StorageSummary:
     host = origin_link.get("href") if isinstance(origin_link, dict) else None
     return StorageSummary(
         id=int(payload["id"]),
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Storage {payload.get('id')}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("storage"),
         provider_type=provider_type,
         host=host,
         configured=bool(payload.get("configured", False)),

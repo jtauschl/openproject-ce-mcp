@@ -15,7 +15,7 @@ from typing import Any
 from ...models import NewsDetail, NewsSummary
 from ..ports.news_api import NewsRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -43,7 +43,7 @@ def normalize_news(payload: dict[str, Any], *, text_limit: int | None = SUBJECT_
     description, truncated, length = _extract_formattable_text_with_meta(payload.get("description"), limit=text_limit)
     return NewsSummary(
         id=int(payload["id"]),
-        title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"News {payload['id']}",
+        title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or unnamed("news"),
         summary=_trim_text(payload.get("summary"), limit=SUBJECT_LIMIT),
         description=_delimit_user_content(description),
         project_id=_id_from_href(links.get("project", {}).get("href")),

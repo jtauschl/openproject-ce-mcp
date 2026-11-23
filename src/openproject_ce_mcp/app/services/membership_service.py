@@ -276,9 +276,7 @@ class MembershipService:
             if is_numeric_ref(normalized):
                 hrefs.append(_api_href(f"roles/{normalized}", api_prefix=self._api_prefix))
                 continue
-            matches = [
-                record for record in available_roles if (record.summary.name or "").casefold() == normalized.casefold()
-            ]
+            matches = [record for record in available_roles if record.lookup_name.casefold() == normalized.casefold()]
             if not matches:
                 raise InvalidInputError(f"OpenProject role '{normalized}' was not found.")
             if len(matches) > 1:

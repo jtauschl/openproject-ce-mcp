@@ -21,16 +21,26 @@ import dataclasses
 import inspect
 import json
 import re
+import typing
 from collections.abc import Iterator
 from typing import Any
 
 import httpx
 import pytest
 from _client_test_helpers import _base_settings, serving_projects
-from _read_tool_harness import FOREIGN, OVERRIDES, READABLE, SENTINEL_BASE, arguments, sentinel_serve
+from _read_tool_harness import (
+    FOREIGN,
+    OVERRIDES,
+    READABLE,
+    SENTINEL_BASE,
+    arguments,
+    nameless_sentinel_serve,
+    sentinel_serve,
+)
 from _tools_test_helpers import FakeContext
 
 from openproject_ce_mcp import tools, tools_runtime
+from openproject_ce_mcp.app.adapters._text import NamelessKind
 from openproject_ce_mcp.app.policies.identity_fields import READ_IDENTITY_FIELDS
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import HIDE_FIELD_ENV_BY_ENTITY, TOOL_GROUPS
@@ -55,14 +65,6 @@ COINCIDENCE: dict[tuple[str, str, str], str] = {
 # class -> why no entity owns its fields: the rows are the option lists of a context, governed by its `available_*`.
 ROW_CLASSES_OF_THEIR_PARENT: dict[str, str] = {
     "OptionValue": "a row of an `available_*` list of the work package context; hiding a type's id is not hiding it",
-}
-# (tool, class, field) -> the ticket that fixes the copy: a text fallback `f"X {id}"` that knows no settings.
-TITLE_FALLBACK = "OPM-893"
-KNOWN_LIMIT: dict[tuple[str, str, str], str] = {
-    ("get_attachment", "AttachmentSummary", "id"): TITLE_FALLBACK,
-    ("list_work_package_attachments", "AttachmentSummary", "id"): TITLE_FALLBACK,
-    ("list_notifications", "NotificationSummary", "id"): TITLE_FALLBACK,
-    ("list_work_package_file_links", "FileLinkSummary", "id"): TITLE_FALLBACK,
 }
 # Tools whose run shows no record field with a tracked value: the scan checks nothing for them, so they are listed.
 _STRING_IDS = "its ids are strings, which the fake gives no sentinel: the `url` copies are judged by the table scan"
@@ -96,13 +98,18 @@ def _settings(hidden: dict[str, tuple[str, ...]] | None = None):
     return dataclasses.replace(settings, hidden_fields=hidden or {})
 
 
-async def _run(name: str, hidden: dict[str, tuple[str, ...]] | None) -> tuple[Any, str] | str:
+async def _run(
+    name: str, hidden: dict[str, tuple[str, ...]] | None, *, nameless: bool = False
+) -> tuple[Any, str] | str:
     """The result object and the text a caller sees, or the refusal as a string."""
     function = tools_runtime._TOOL_FUNCTIONS[name]
     client = OpenProjectClient(
         _settings(hidden),
         transport=httpx.MockTransport(
-            serving_projects(sentinel_serve, [(READABLE, "demo", "Demo"), (FOREIGN, "foreign", "Foreign")])
+            serving_projects(
+                nameless_sentinel_serve if nameless else sentinel_serve,
+                [(READABLE, "demo", "Demo"), (FOREIGN, "foreign", "Foreign")],
+            )
         ),
     )
     await client.initialize()
@@ -164,21 +171,21 @@ def _hiding(cls: str, field: str) -> dict[str, tuple[str, ...]]:
 
 
 async def _scan(
-    name: str, used: set[tuple[str, str, str]] | None = None
+    name: str, used: set[tuple[str, str, str]] | None = None, *, nameless: bool = False
 ) -> tuple[int, list[tuple[str, str, Any]], str | None]:
     """(tracked pairs, leaks, the refusal of the visible run)."""
-    baseline = await _run(name, None)
+    baseline = await _run(name, None, nameless=nameless)
     if isinstance(baseline, str):
         return 0, [], baseline
     body, _ = baseline
     pairs = sorted({(cls, field, value) for cls, field, value in _fields(body)}, key=repr)
     leaks: list[tuple[str, str, Any]] = []
     for cls, field, value in pairs:
-        hidden = await _run(name, _hiding(cls, field))
+        hidden = await _run(name, _hiding(cls, field), nameless=nameless)
         if isinstance(hidden, str) or not _present(hidden[1], value):
             continue
         key = (name, cls, field)
-        if cls in ROW_CLASSES_OF_THEIR_PARENT or key in COINCIDENCE or key in KNOWN_LIMIT:
+        if cls in ROW_CLASSES_OF_THEIR_PARENT or key in COINCIDENCE:
             if used is not None:
                 used.add(key)
         else:
@@ -201,6 +208,36 @@ async def test_a_hidden_value_appears_nowhere_in_the_read_result(name: str) -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("name", READ_TOOLS)
+async def test_a_hidden_value_appears_nowhere_in_the_read_result_of_nameless_records(name: str) -> None:
+    """The same scan where the server names no record: the adapters build a label, which must not repeat an id."""
+    if name not in tools_runtime._TOOL_FUNCTIONS:
+        pytest.skip("not registered")
+    pairs, leaks, refusal = await _scan(name, nameless=True)
+    if name in NO_RECORD:
+        pytest.skip(NO_RECORD[name])
+
+    assert refusal is None, refusal
+    assert leaks == []
+
+
+@pytest.mark.asyncio
+async def test_every_label_of_a_nameless_record_is_shown_by_some_tool() -> None:
+    """The nameless scan proves nothing about a kind whose label no tool shows: a kind has to be reached.
+
+    Stated boundary: a project label is shown, but the fake's project ids stay below `SENTINEL_BASE`, so the
+    id of a project is judged by `test_nameless_labels.py`, not here."""
+    shown: set[str] = set()
+    for name in READ_TOOLS:
+        if name in tools_runtime._TOOL_FUNCTIONS:
+            baseline = await _run(name, None, nameless=True)
+            if not isinstance(baseline, str):
+                shown |= {kind for kind in typing.get_args(NamelessKind) if f'"Unnamed {kind}"' in baseline[1]}
+
+    assert set(typing.get_args(NamelessKind)) - shown == set()
+
+
+@pytest.mark.asyncio
 async def test_no_exemption_is_stale() -> None:
     """A row that exempts nothing any more hides the next leak under its key; it has to go."""
     used: set[tuple[str, str, str]] = set()
@@ -208,7 +245,7 @@ async def test_no_exemption_is_stale() -> None:
         if name in tools_runtime._TOOL_FUNCTIONS and name not in NO_RECORD:
             await _scan(name, used)
 
-    assert (set(COINCIDENCE) | set(KNOWN_LIMIT)) - used == set()
+    assert set(COINCIDENCE) - used == set()
     assert {cls for _, cls, _ in used} >= set(ROW_CLASSES_OF_THEIR_PARENT)
 
 

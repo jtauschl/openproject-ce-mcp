@@ -27,17 +27,18 @@ from functools import partial
 from typing import Any, NamedTuple
 
 from ...config import Settings
-from ...models import ProjectSummary
 from ..call_scope import current_tool_call
 from ..errors import NotFoundError, OpenProjectError
 from ..policies.scope import (
     LinkedProject,
     parse_project_href,
     project_link_candidates,
+    project_payload_name,
     project_record_candidates,
     scope_allows_all,
     scope_matches_candidates,
 )
+from ..ports.project_api import ProjectRecord
 from ..ports.project_lookup_api import ProjectLookupApi
 
 LOGGER = logging.getLogger(__name__)
@@ -200,7 +201,7 @@ class ProjectDirectoryService:
                 ids=ids,
                 ancestor_id=ancestor_id,
             )
-            projects.extend(project for record in page.records if (project := _from_summary(record.summary)))
+            projects.extend(project for record in page.records if (project := _from_record(record)))
             if page.exhausted or not page.records:
                 return projects
             offset += 1
@@ -348,7 +349,7 @@ class ProjectDirectoryService:
             )
             self._forget(project_id, as_of=started)
             return
-        project = _from_summary(record.summary)
+        project = _from_record(record)
         if project is None:
             self._forget(project_id, as_of=started)
             return
@@ -381,8 +382,7 @@ class ProjectDirectoryService:
         self_link = links.get("self") if isinstance(links, dict) else None
         if not isinstance(self_link, dict) or self._project_id_from_href(self_link.get("href")) != project_id:
             return None
-        name = node.get("name")
-        return _Project(project_id, identifier, name if isinstance(name, str) else None, node.get("active") is False)
+        return _Project(project_id, identifier, project_payload_name(node), node.get("active") is False)
 
     def _project_id_from_href(self, href: Any) -> int | None:
         # Learning runs on every response; a link under another root path is
@@ -403,10 +403,11 @@ class _Project(NamedTuple):
     archived: bool
 
 
-def _from_summary(summary: ProjectSummary) -> _Project | None:
+def _from_record(record: ProjectRecord) -> _Project | None:
+    summary = record.summary
     if not summary.identifier:
         return None
-    return _Project(summary.id, summary.identifier, summary.name, summary.active is False)
+    return _Project(summary.id, summary.identifier, project_payload_name(record.payload), summary.active is False)
 
 
 def _restricted(scope: tuple[str, ...]) -> bool:

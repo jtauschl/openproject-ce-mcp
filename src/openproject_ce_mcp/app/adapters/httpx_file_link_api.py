@@ -16,7 +16,7 @@ from typing import Any
 from ...models import FileLinkSummary
 from ..ports.file_link_api import FileLinkRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
@@ -36,7 +36,7 @@ def normalize_file_link(payload: dict[str, Any]) -> FileLinkSummary:
     return FileLinkSummary(
         id=file_link_id,
         # FileLinkRepresenter has no top-level `title` property, only `originData.name`.
-        title=_trim_text(payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT) or f"File link {file_link_id}",
+        title=_trim_text(payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT) or unnamed("file link"),
         storage_id=storage_id,
         storage_name=storage_name,
         created_at=payload.get("createdAt"),

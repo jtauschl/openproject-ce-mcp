@@ -16,9 +16,13 @@ def _role_summary(role_id: int = 8, name: str = "Project admin") -> RoleSummary:
     return RoleSummary(id=role_id, name=name)
 
 
+def _record(summary: RoleSummary) -> RoleRecord:
+    return RoleRecord(summary=summary, lookup_name=summary.name)
+
+
 class _FakeRoleApi:
     def __init__(self, *, records: list[RoleRecord] | None = None, total: int | None = None) -> None:
-        self._records = records if records is not None else [RoleRecord(summary=_role_summary())]
+        self._records = records if records is not None else [_record(_role_summary())]
         self._total = total if total is not None else len(self._records)
         self.list_roles_calls: list[tuple[int, int]] = []
 
@@ -104,7 +108,7 @@ async def test_list_roles_paginates_client_side_when_server_ignores_pagination()
     larger, server-claimed total the client can't actually retrieve) -- the bug
     was trusting a `total` figure disconnected from what was actually fetched.
     """
-    records = [RoleRecord(summary=_role_summary(role_id=i, name=f"Role {i}")) for i in range(12)]
+    records = [_record(_role_summary(role_id=i, name=f"Role {i}")) for i in range(12)]
     api = _FakeRoleApi(records=records, total=12)
     service = _service(api)
 
@@ -121,7 +125,7 @@ async def test_list_roles_paginates_client_side_when_server_ignores_pagination()
 
 @pytest.mark.asyncio
 async def test_list_roles_not_truncated_on_last_page() -> None:
-    records = [RoleRecord(summary=_role_summary())]
+    records = [_record(_role_summary())]
     api = _FakeRoleApi(records=records, total=1)
     service = _service(api)
 

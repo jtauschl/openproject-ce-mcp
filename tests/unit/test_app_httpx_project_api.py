@@ -267,7 +267,7 @@ async def test_list_available_parent_projects_accepts_relative_link() -> None:
         api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         refs = await api.list_available_parent_projects(6, schema=schema)
 
-    assert refs[0].id == 1
+    assert refs[0].ref.id == 1
 
 
 @pytest.mark.asyncio
@@ -439,8 +439,8 @@ async def test_list_available_parent_projects_reads_every_page_and_keeps_the_of_
         api = HttpxProjectApi(HttpxTransport(http_client, redact_server_text=False), base_url=BASE_URL)
         refs = await api.list_available_parent_projects(6, schema={"parent": {"_links": {}}})
 
-    assert [ref.id for ref in refs] == list(range(1, 46))
-    assert [ref.identifier for ref in refs][:2] == ["p1", "p2"]
+    assert [ref.ref.id for ref in refs] == list(range(1, 46))
+    assert [ref.ref.identifier for ref in refs][:2] == ["p1", "p2"]
     assert [query["of"] for query in seen_queries] == ["6", "6"]
     assert [query["offset"] for query in seen_queries] == ["1", "2"]
 

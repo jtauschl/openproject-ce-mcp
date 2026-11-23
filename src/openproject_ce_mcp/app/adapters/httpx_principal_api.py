@@ -13,7 +13,7 @@ from ...models import PrincipalSummary
 from ..ports.principal_api import PrincipalRecord
 from ..transport.protocol import Transport
 from ._filters import escape_like
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, lookup_name, unnamed
 from ._text import has_usable_id as _has_usable_id
 from ._text import trim_text as _trim_text
 
@@ -35,7 +35,7 @@ def normalize_principal(payload: dict[str, Any]) -> PrincipalSummary:
     return PrincipalSummary(
         id=principal_id,
         type=principal_type,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Principal {principal_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("principal"),
         email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
     )
 
@@ -66,7 +66,7 @@ class HttpxPrincipalApi:
         records = [
             PrincipalRecord(
                 summary=normalize_principal(item),
-                lookup_name=str(item.get("name", "")),
+                lookup_name=lookup_name(item),
             )
             for item in elements
             if _has_usable_id(item)

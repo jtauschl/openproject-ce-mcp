@@ -15,7 +15,7 @@ from typing import Any
 from ...models import ViewDetail, ViewSummary
 from ..ports.view_api import ViewRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
@@ -35,7 +35,7 @@ def normalize_view(payload: dict[str, Any]) -> ViewSummary:
     return ViewSummary(
         id=view_id,
         type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"View {view_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("view"),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
         project=_link_title(project_link),
         query_id=_id_from_href(query_link.get("href")) if isinstance(query_link, dict) else None,

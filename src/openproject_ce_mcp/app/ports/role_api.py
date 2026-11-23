@@ -23,7 +23,11 @@ from ...models import RoleSummary
 
 @dataclass(frozen=True)
 class RoleRecord:
+    """`lookup_name` is the raw payload `name`, never synthesized: `RoleService` resolves a role by it, not by the
+    display label of `summary.name`."""
+
     summary: RoleSummary
+    lookup_name: str
 
 
 class RoleApi(Protocol):

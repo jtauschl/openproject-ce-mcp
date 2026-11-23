@@ -372,3 +372,31 @@ async def test_an_ambiguous_project_message_names_list_projects_only_when_it_is_
 
     assert ("list_projects(search='Duplicate')" in str(raised.value)) is _list_projects_is_registered(settings)
     assert ("list_projects" in str(raised.value)) is _list_projects_is_registered(settings)
+
+
+def _nameless_record(project_id: int, *, identifier: str) -> ProjectRecord:
+    """The server sent no name: the summary shows the label, the payload has none."""
+    summary = _summary(project_id, "Unnamed project", identifier=identifier)
+    return project_record(summary, payload={"id": project_id, "identifier": identifier, "_type": "Project"})
+
+
+@pytest.mark.asyncio
+async def test_the_label_of_a_nameless_project_is_never_an_exact_name_match() -> None:
+    """The label is display only: typing it must not make the nameless project win over a project whose name contains
+    it, which an exact match would (the same rule as `lookup_name` of the other resolvers)."""
+    resolver = _resolver([_nameless_record(1, identifier="nm"), _record(2, "Unnamed project 2", identifier="two")])
+
+    with pytest.raises(InvalidInputError, match="ambiguous"):
+        await resolver.resolve("Unnamed project")
+
+
+@pytest.mark.asyncio
+async def test_a_project_with_that_name_is_an_exact_match() -> None:
+    """The control: the same search, where the project has the name, resolves it."""
+    resolver = _resolver(
+        [_record(1, "Unnamed project", identifier="nm"), _record(2, "Unnamed project 2", identifier="two")]
+    )
+
+    payload = await resolver.resolve("Unnamed project")
+
+    assert payload["id"] == 1

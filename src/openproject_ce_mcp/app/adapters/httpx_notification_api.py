@@ -25,7 +25,7 @@ from ...models import NotificationSummary
 from ..pagination import page_is_last
 from ..ports.notification_api import NotificationPage, NotificationRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
@@ -59,7 +59,7 @@ def normalize_notification(payload: dict[str, Any]) -> NotificationSummary:
     reason = _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
     return NotificationSummary(
         id=notification_id,
-        subject=_link_title(resource_link) or f"Notification {notification_id}",
+        subject=_link_title(resource_link) or unnamed("notification"),
         reason=reason,
         read=bool(payload.get("readIAN")),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
