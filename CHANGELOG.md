@@ -116,6 +116,10 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 ## [0.4.6] - Unreleased
 
+### Added
+
+- `update_work_package` and `bulk_update_work_packages` accept `none` to clear `start_date` and `due_date`.
+
 ### Changed
 
 - **Breaking:** help text `attribute_caption` is now the attribute label (null on 16.x before) and the stored caption is the new `caption`; add `caption` to hide lists naming `attribute_caption`.
@@ -134,7 +138,7 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 - `delete_user_working_hours` leaves out hidden fields in the schedule its preview and result show.
 - Write results no longer repeat a hidden field's value in identity fields, `target`, `payload` copies of ids or messages.
 - Hiding an attachment's `title` or `file_name` hides both: the title of an upload is its file name.
-- `create_work_package`, `create_subtask` and `bulk_create_work_packages` no longer write the dates and the duration that OpenProject copies from an automatically scheduled parent into a child that does not name them. A parent whose start comes only from a predecessor and that has no other dated child loses its span.
+- `create_work_package`, `create_subtask` and `bulk_create_work_packages` no longer copy a scheduled parent's dates into a child that names none ([details](docs/tools.md)).
 - Read results no longer repeat a hidden field's value outside its record (batch `id`, costs, attachments, `url`s, project copies, `ancestors` rows); batch items gain `index`.
 - Records the server sends without a name are labelled `Unnamed <kind>`, no longer with a text built from their id, which repeated a hidden `id`.
 - Server error texts, `validation_errors`, rejected commits and bulk items no longer name a field hidden by `OPENPROJECT_HIDE_*`; a name pattern now redacts work package errors.

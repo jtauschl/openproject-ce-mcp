@@ -53,10 +53,10 @@ make an operation impossible. **The registered MCP tools are the authority.**
 
 ## Clearing an assigned field
 
-On the work-package and project update tools (and bulk items),
+On the update tools (and bulk items),
 pass `"none"` to clear a field: work-package `assignee`, `responsible`, `version`,
 `sprint`, `parent`, `category`, `project_phase`, `estimated_time`, `remaining_time`,
-`duration`, and project `parent`. A `description` is cleared with `""`, as is a project's
+`duration`, `start_date`, `due_date`, and project `parent`. A `description` is cleared with `""`, as is a project's
 `status_explanation`. Omitting a field leaves it unchanged. Required fields cannot be
 cleared.
 

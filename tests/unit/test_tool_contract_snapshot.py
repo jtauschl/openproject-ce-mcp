@@ -478,7 +478,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "bulk_update_work_packages": {
-        "description_hash": "f8b5a55cd28d59b9930e58a85982231e949f2653cc86fdb41a6643fd607215e6",
+        "description_hash": "c84fc0311282ba5e27b91be16b902fbd42e15169af66851e840d67c755fac50e",
         "input_schema": {
             "$defs": {
                 "BulkUpdateWorkPackageItem": {
@@ -7936,7 +7936,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "update_work_package": {
-        "description_hash": "0fcf88938db92df9ff41275ad7c8ed27a0693e54e04e2a31175ea66e051927ca",
+        "description_hash": "f7663f8e81dae1c0bfa273bfe0462e3959885877b4e75e62ed559cf81e8a2761",
         "input_schema": {
             "$defs": {
                 "TextReplace": {

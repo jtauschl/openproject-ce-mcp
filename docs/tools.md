@@ -82,14 +82,24 @@ names the closest allowed one, for example `id (did you mean work_package_id?)`,
 and the call is still not sent. No hint is given where several arguments could
 be meant.
 
-Clearing a field: on `update_work_package` and `update_project`, pass the string
-`"none"` to unassign a nullable association instead of changing it —
-work-package `assignee`, `responsible`, `version`, `sprint`, `parent`,
-`category`, `project_phase`, and project `parent`. Omitting a field leaves it
+Clearing a field: on `update_work_package`, the items of `bulk_update_work_packages`
+and `update_project`, pass the string `"none"` to clear a nullable field instead of
+changing it — work-package `assignee`, `responsible`, `version`, `sprint`, `parent`,
+`category`, `project_phase`, `estimated_time`, `remaining_time`, `duration`,
+`start_date`, `due_date`, and project `parent`. Omitting a field leaves it
 unchanged; `"none"` clears it. Required fields (type, status, subject, project)
 cannot be cleared. `target_versions` is the one exception to the `"none"`
 convention: it's a list, so it already disambiguates unchanged (omit it) from
 cleared (pass `[]`) without needing a sentinel string.
+
+Clearing `start_date` and `due_date`: the create tools do not take `"none"` (a new work package has nothing to
+clear). On a manually scheduled work package both dates are cleared; clearing both leaves `duration`, clearing one
+date drops it. A work package that OpenProject schedules itself keeps its date and the update still succeeds: the
+preview of a parent with dated children carries no date, that of a work package that follows a predecessor shows the
+derived date, and only the stored result shows whether a date was cleared. On a milestone a single date cannot be
+cleared (OpenProject refuses it and the preview is not ready).
+`update_work_package` reports the successful `PATCH`, not that a date was cleared; a confirmed bulk item is lean,
+so pass `select=["result.start_date", "result.due_date"]` or read the work package again.
 
 Editing a long text: these tools take `<field>_append` (a new paragraph after the
 stored text) and `<field>_replace` (`{"old": ..., "new": ...}`, where `old` names

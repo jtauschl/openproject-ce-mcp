@@ -72,6 +72,7 @@ from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
     BATCH_READ_ITEM_WRAPPER_FIELDS,
     BULK_ITEM_WRAPPER_FIELDS,
+    _clearable,
     _clearable_duration,
     _clearable_ref,
     _require_at_least_one,
@@ -808,8 +809,12 @@ def _validate_work_package_update_fields(
         "parent": _clearable_ref(
             parent, functools.partial(_validate_work_package_ref, field_name=parent_field_name), sentinel=CLEAR_PARENT
         ),
-        "start_date": _validate_optional_date(start_date, field_name=f"{field_prefix}start_date"),
-        "due_date": _validate_optional_date(due_date, field_name=f"{field_prefix}due_date"),
+        "start_date": _clearable(
+            start_date, lambda v: _validate_optional_date(v, field_name=f"{field_prefix}start_date"), sentinel=CLEAR
+        ),
+        "due_date": _clearable(
+            due_date, lambda v: _validate_optional_date(v, field_name=f"{field_prefix}due_date"), sentinel=CLEAR
+        ),
         "estimated_time": _clearable_duration(
             estimated_time, field_name=f"{field_prefix}estimated_time", sentinel=CLEAR
         ),
@@ -870,6 +875,10 @@ async def update_work_package(
     package holds such an assignment in a project OPENPROJECT_READ_PROJECTS does not cover, because the
     change would remove it.
     estimated_time and remaining_time accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours). A day in a duration string is 24 hours, so write 'PT8H' for a working day. duration counts whole days (e.g., 'P1D', 'P2W'); OpenProject rejects less than one day. Omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.
+    start_date and due_date also take 'none' to clear. On a manually scheduled work package clearing one date drops the duration,
+    clearing both keeps it. A work package scheduled automatically keeps its date and the update still succeeds: the preview of a
+    parent with dated children carries no date, that of one following a predecessor shows the derived date. A confirmed update
+    reports the successful PATCH; only the stored result shows whether a date was cleared.
     Setting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you
     don't supply them explicitly and OpenProject's schema reports those fields as writable (on instances
     using status-based progress calculation, OpenProject already derives them itself and this is skipped).
@@ -1145,10 +1154,12 @@ async def bulk_update_work_packages(
     `parent`, an alias for the same field, matching `update_work_package`'s naming; do not specify
     both on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,
     `remaining_time` (ISO8601 duration strings, e.g. 'PT8H' or 'PT1H30M'), `duration` (whole days, e.g. 'P1D'; pass 'none' to clear
-    one of these), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean; a refused
+    one of these or `start_date` or `due_date`), `percentage_done` (integer 0-100), `expect_display_id` (the display id you mean; a refused
     item is reported in its `error`), `expect_parent_display_id` (the parent you mean, same rules). Pass 'none'
     to `version`, `sprint`, `project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to
-    clear that field on the item, same as `update_work_package`. An item containing any other key is
+    clear that field on the item, same as `update_work_package`, whose note on cleared dates holds here too (the preview
+    shows what is sent, success reports the PATCH, only the stored `result` shows whether a date was cleared; a confirmed
+    item is lean, so pass `select=["result.start_date", "result.due_date"]` or read the work package again). An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
     Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
     when that item doesn't supply them explicitly and OpenProject's schema reports those fields as
