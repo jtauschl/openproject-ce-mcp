@@ -186,7 +186,16 @@ hiding a project's name does not change another entity's result, as on reads.
 - **Ids are fields.** `work_package_id`, `meeting_id` and the like leave the result when the `id` (for a work
   package reference also the `display_id`) or the named association field is hidden, in every copy: the `id`, the
   meeting, agenda item and occurrence references and the file name and size of an upload in a preview `payload` too.
-  A hidden `id` leaves a delete preview without the id; the record in `result` and the message still describe it.
+  A hidden `id` leaves a delete preview without the id; the record in `result` (where the preview has one) and the
+  message still describe it. The preview of a board, grid, meeting, agenda item, outcome, section, recurring meeting,
+  membership, project or version has no `result`: its `payload` lists the fields of the record that are not hidden,
+  each as a field of its own, so with `id` hidden it keeps the others (the name, the title, the identifier, or the
+  principal and roles of a membership).
+- **Every member that names a work package hides with the same two fields.** A numeric reference of a file link or a
+  watcher (`work_package_id`) goes when the work package `id` or `display_id` is hidden. With `display_id` alone
+  hidden the number would stay in `target.id` anyway; one owner for every work package reference keeps the rule
+  uniform, and in classic identifier mode the number is all the instance reports as `displayId`. The cost is a member
+  hidden that a narrower rule could keep.
 - **A relation names its ends by direction.** OpenProject stores `precedes` as `follows` with the ends swapped, so
   on a create hiding `from_id` or `to_id` hides every member that names an end of the relation: the ids, the work
   package `target` and `related_target` and the destination link in the `payload`; hiding a caption of an end

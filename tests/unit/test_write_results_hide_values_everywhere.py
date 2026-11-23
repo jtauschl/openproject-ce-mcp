@@ -10,7 +10,15 @@ preview), the field is hidden alone in every entity, the tool runs again (previe
 not occur outside `result` any more, neither as a leaf nor inside a message text. A value that is the same fact as a
 field that is not hidden (the title of an attachment is its file name) sits in `COINCIDENCE` with that reason. The
 visible baseline (the same value outside `result` in the run without any hide setting) is counted, so a fake that
-stops echoing a value cannot turn the scan into a pass without a copy to hide.
+stops echoing a value cannot turn the scan into a pass without a copy to hide; the floor is per (tool, state).
+
+Stated boundary: ids below 10 are tracked at id-named paths and in hrefs, not in free text; `_tracked` follows no
+booleans, dicts or lists and no string shorter than 3 characters; results are serialized without `select` (the
+`select` path is tested for one field on two tools); a confirmed bulk item is lean, so only `display_id` and `status`
+are hide-tested in that state; a record class whose name maps to no hide entity yields no record target; a field whose
+hide setting refuses the tool is a named skip, not a pass (`SKIPPED_RUNS`); a fake that never echoes a value gives no
+probe (`NO_COPIES`). A record built by a model constructor, or a stamp lost in a helper, is outside this scan and
+covered by the payload scan and the delete matrix.
 """
 
 from __future__ import annotations
@@ -37,41 +45,149 @@ from openproject_ce_mcp.tools_runtime import _TOOL_FUNCTIONS
 
 ENTITIES = sorted(HIDE_FIELD_ENV_BY_ENTITY)
 ERRORS: list[tuple[str, bool, str]] = []
+# (tool, field, confirm) of every hidden run that gave nothing to compare: the hide refused the tool, or the hidden
+# run lacks the unit the plain run had. A skip is a blind spot, so each one is listed in `SKIPPED_RUNS`.
+SKIPS: dict[tuple[str, str, bool], str] = {}
+# (tool, field, confirm) -> the hide setting of that skipped run.
+SKIPPED_HIDES: dict[tuple[str, str, bool], dict[str, tuple[str, ...]]] = {}
+LACKS_UNIT = "the hidden run lacks the unit the plain run had"
+# The refusal a tool raises when the hide setting hides a field the call needs.
+REFUSAL = re.compile(
+    r"ToolInputError: \[VALIDATION_FAILED\] OpenProject field '(?P<field>[^']+)' is hidden by "
+    r"OPENPROJECT_HIDE_[A-Z_]+ and cannot be written\."
+)
+# (tool, confirm, hide) -> the failure of a hidden run, for the kind of a skip
+HIDDEN_FAILURES: dict[tuple[str, bool, str], str] = {}
 MIN_BASELINE_COPIES = 120
 # (tool, confirm) -> the contract case fake does not serve that state.
 BASELINE_FAILS: set[tuple[str, bool]] = set()
-# Tools with no value to look for: the result carries no record and no member that repeats a field.
-NO_COPIES: dict[str, str] = {
-    "update_my_preferences": "the preview carries only what the caller passed; the confirmed result is the record",
+# (tool, confirm) -> why that state has no value to look for. A tool may have copies in one state and none in the other,
+# so the floor is per state. The reasons are structural: these create previews have no record and no id yet (their payload
+# is the caller's own input), and the preferences are one record without members that repeat a field.
+_CREATE_PREVIEW = "the preview has no record and no id yet, and its payload holds only the caller's own input"
+NO_COPIES: dict[tuple[str, bool], str] = {
+    ("create_board", False): _CREATE_PREVIEW,
+    ("create_group", False): _CREATE_PREVIEW,
+    ("create_project", False): _CREATE_PREVIEW,
+    ("create_storage", False): _CREATE_PREVIEW,
+    ("create_user", False): _CREATE_PREVIEW,
+    ("create_user_non_working_time", False): _CREATE_PREVIEW,
+    ("create_user_working_hours", False): _CREATE_PREVIEW,
+    ("create_work_package_reminder", False): _CREATE_PREVIEW,
+    ("update_my_preferences", False): "the preferences are one record: the preview carries only what the caller passed",
+    ("update_my_preferences", True): "the result is the record itself: no member repeats a field outside it",
+}
+
+# (tool, confirm) -> the fields whose hidden run gave nothing to compare. Every row is a refusal by the hide setting: the
+# hidden field is an input of the call, or the write policy needs it, so the tool stops before any request. That is a
+# blind spot of the scan for that field in that state, not a leak; the test requires every skip to be that refusal for
+# the field that was hidden, and a new skip or one that goes away fails the table. A skip of the other kind (the hidden
+# run answers but lacks the unit the plain run had, `LACKS_UNIT`) fails the test until it has a kind of its own.
+SKIPPED_RUNS: dict[tuple[str, bool], tuple[str, ...]] = {
+    ("add_work_package_comment", True): ("comment",),
+    ("copy_project", False): ("source_project",),
+    ("copy_project", True): ("source_project",),
+    ("create_board", True): ("name", "project"),
+    ("create_container_attachment", False): ("payload.fileName",),
+    ("create_container_attachment", True): ("file_name", "title"),
+    ("create_grid", False): ("scope",),
+    ("create_grid", True): ("scope",),
+    ("create_group", True): ("name",),
+    ("create_meeting", False): ("project",),
+    ("create_meeting", True): ("project", "title"),
+    ("create_meeting_agenda_item", True): ("title",),
+    ("create_meeting_outcome", True): ("kind",),
+    ("create_meeting_section", True): ("title",),
+    ("create_membership", False): ("project",),
+    ("create_membership", True): ("principal_name", "project", "project_name"),
+    ("create_news", True): ("title",),
+    ("create_project", True): ("identifier", "name", "project"),
+    ("create_recurring_meeting", False): ("payload._links.project", "project"),
+    ("create_recurring_meeting", True): ("frequency", "project", "start_time", "title"),
+    ("create_storage", True): ("host", "name", "provider_type"),
+    ("create_subtask", True): ("subject", "type"),
+    ("create_time_entry", True): ("activity", "hours", "spent_on"),
+    ("create_time_entry_until", True): ("activity", "hours", "spent_on"),
+    ("create_user", True): ("login",),
+    ("create_user_non_working_time", True): ("end_date", "start_date"),
+    ("create_user_working_hours", True): ("valid_from",),
+    ("create_version", False): ("project",),
+    ("create_version", True): ("defining_project", "name", "project"),
+    ("create_work_package", True): ("subject", "type"),
+    ("create_work_package_attachment", False): ("payload.description", "payload.fileName"),
+    ("create_work_package_attachment", True): ("file_name", "title"),
+    ("create_work_package_relation", True): ("type",),
+    ("create_work_package_reminder", True): ("remind_at",),
+    ("create_work_package_wiki_link", True): ("identifier", "provider"),
+    ("update_board", True): ("name",),
+    ("update_document", True): ("title",),
+    ("update_group", True): ("name",),
+    ("update_meeting", True): ("title",),
+    ("update_meeting_agenda_item", True): ("title",),
+    ("update_meeting_outcome", True): ("kind",),
+    ("update_meeting_section", True): ("title",),
+    ("update_my_preferences", True): ("time_zone",),
+    ("update_news", True): ("title",),
+    ("update_project", False): ("project",),
+    ("update_project", True): ("name", "project"),
+    ("update_recurring_meeting", True): ("title",),
+    ("update_relation", True): ("description",),
+    ("update_reminder", True): ("note",),
+    ("update_storage", False): ("name",),
+    ("update_storage", True): ("name",),
+    ("update_time_entry", True): ("comment",),
+    ("update_time_entry_until", True): ("hours",),
+    ("update_user", True): ("email",),
+    ("update_user_non_working_time", True): ("end_date",),
+    ("update_version", True): ("name",),
+    ("update_work_package", True): ("subject",),
+    ("update_work_package_comment", True): ("comment",),
 }
 
 # (tool, leaf path, field) -> why the value is the same fact as a field that stays visible.
 _OWN_PROJECT = "the work package's own project, owned by the work package settings, not the time entry's"
 _TEXT_WITH_NUMBER = "the fake's subject text contains the number as a word of its own"
 _OWN_ID = "`id` is a field of its own: hiding the display id hides the display reference only"
-COINCIDENCE: dict[tuple[str, str, str], str] = {
-    ("create_time_entry", ".target.project", "project"): _OWN_PROJECT,
-    ("create_time_entry_until", ".target.project", "project"): _OWN_PROJECT,
-    ("delete_relation", ".payload.from_id", "work_package_id"): "the other end of the relation, a field of its own",
-    ("delete_work_package", ".payload.id", "work_package_id"): _OWN_ID,
-    ("delete_work_package", ".target.id", "work_package_id"): _OWN_ID,
-    ("set_work_package_watcher", ".target.id", "work_package_id"): _OWN_ID,
-    ("update_work_package", ".target.id", "work_package_id"): _OWN_ID,
-    ("add_work_package_comment", ".target.id", "work_package_id"): _OWN_ID,
-    ("bulk_update_work_packages", ".target.id", "work_package_id"): _OWN_ID,
-    ("bulk_update_work_packages", ".payload.subject", "work_package_id"): _TEXT_WITH_NUMBER,
-    ("bulk_update_work_packages", ".target.subject", "work_package_id"): _TEXT_WITH_NUMBER,
-    (
-        "create_work_package_attachment",
-        ".message",
-        "status",
-    ): "the message says what the tool did, not the stored status",
-    ("create_container_attachment", ".message", "status"): "the message says what the tool did, not the stored status",
-    ("update_storage", ".message", "provider_type"): "static advice about Nextcloud storages, not the record's value",
+_MESSAGE = "the message says what the tool did, not the stored status"
+# A row exempts one path for one field and one set of leaf values: another text at that path is a leak again.
+COINCIDENCE: dict[tuple[str, str, str], tuple[str, frozenset[Any]]] = {
+    ("create_time_entry", ".target.project", "project"): (_OWN_PROJECT, frozenset({"Demo"})),
+    ("create_time_entry_until", ".target.project", "project"): (_OWN_PROJECT, frozenset({"Demo"})),
+    ("delete_relation", ".payload.from_id", "work_package_id"): (
+        "the other end of the relation, a field of its own",
+        frozenset({42}),
+    ),
+    ("delete_work_package", ".payload.id", "work_package_id"): (_OWN_ID, frozenset({42})),
+    ("delete_work_package", ".target.id", "work_package_id"): (_OWN_ID, frozenset({42})),
+    ("set_work_package_watcher", ".target.id", "work_package_id"): (_OWN_ID, frozenset({42})),
+    ("update_work_package", ".target.id", "work_package_id"): (_OWN_ID, frozenset({42})),
+    ("add_work_package_comment", ".target.id", "work_package_id"): (_OWN_ID, frozenset({42})),
+    ("bulk_update_work_packages", ".target.id", "work_package_id"): (_OWN_ID, frozenset({10})),
+    ("bulk_update_work_packages", ".payload.subject", "work_package_id"): (_TEXT_WITH_NUMBER, frozenset({"New 10"})),
+    ("bulk_update_work_packages", ".target.subject", "work_package_id"): (
+        _TEXT_WITH_NUMBER,
+        frozenset({"New 10", "Old 10"}),
+    ),
+    ("create_work_package_attachment", ".message", "status"): (
+        _MESSAGE,
+        frozenset({"Attachment uploaded successfully."}),
+    ),
+    ("create_container_attachment", ".message", "status"): (_MESSAGE, frozenset({"Attachment uploaded successfully."})),
+    ("update_storage", ".message", "provider_type"): (
+        "static advice about Nextcloud storages, not the record's value",
+        frozenset(
+            {
+                "OpenProject is ready to attempt updating the storage. Changing `host` on a Nextcloud storage re-runs "
+                "OpenProject's live host-reachability/setup-completeness probe at confirm=true (no pre-validation endpoint "
+                "exists to check this earlier). Ask for confirmation, then call again with confirm=true."
+            }
+        ),
+    ),
 }
 
 
 def _is_id_name(name: str) -> bool:
+    name = name.removesuffix("[]")
     return name == "id" or name.endswith(("_id", "Id", ".id", "_ids"))
 
 
@@ -102,9 +218,13 @@ def _outside_result(output: dict[str, Any]) -> dict[str, Any]:
 
 def _holds(path: str, leaf: Any, value: Any) -> bool:
     if isinstance(value, int) and not isinstance(value, bool) and isinstance(leaf, str):
-        return (abs(value) >= 10 or _is_id_name(path.rsplit(".", 1)[-1])) and bool(
-            re.search(rf"(?<![\d]){abs(value)}(?![\d])", leaf)
-        )
+        number = abs(value)
+        if number >= 10 or _is_id_name(path.rsplit(".", 1)[-1]):
+            # An id may come back zero-padded (`00077`); a digit on either side is another number.
+            return re.search(rf"(?<!\d)0*{number}(?!\d)", leaf) is not None
+        # A small number at a path that is no id is a count or a flag; in a text only a path segment (`/7`, `/7/`, `/7?`)
+        # counts as an id. A text like `3/7` matches too: a false positive costs a listed row, a miss costs a leak.
+        return re.search(rf"/0*{number}(?:$|[/?#])", leaf) is not None
     if isinstance(value, int) and abs(value) < 10 and not _is_id_name(path.rsplit(".", 1)[-1]):
         return False
     if leaf == value:
@@ -138,6 +258,8 @@ async def _run(
     except Exception as exc:  # noqa: BLE001 -- a hidden field can stop a write; the run has no output to scan
         if hidden is None:
             ERRORS.append((tool, confirm, f"{type(exc).__name__}: {exc}"[:120]))
+        else:
+            HIDDEN_FAILURES[(tool, confirm, repr(sorted(hidden.items())))] = f"{type(exc).__name__}: {exc}"
         return None
     finally:
         await client.aclose()
@@ -200,8 +322,8 @@ def _dig(output: Any, route: tuple[Any, ...]) -> Any:
 
 async def _scan(
     tool: str, tmp_path: pathlib.Path, used: set[tuple[str, str, str]] | None = None
-) -> tuple[int, list[tuple[bool, str, Any, str]]]:
-    copies = 0
+) -> tuple[dict[bool, int], list[tuple[bool, str, Any, str]]]:
+    copies = {False: 0, True: 0}
     leaks: list[tuple[bool, str, Any, str]] = []
     for confirm in (False, True):
         plain_run = await _run(tool, None, confirm, tmp_path)
@@ -211,13 +333,19 @@ async def _scan(
             for label, value, hide, kind in _targets(unit_raw, unit_plain):
                 hidden_run = await _run(tool, hide, confirm, tmp_path)
                 unit_hidden = None
-                if hidden_run is not None and isinstance(hidden_run[1], dict):
+                if hidden_run is None or not isinstance(hidden_run[1], dict):
+                    failure = HIDDEN_FAILURES.get((tool, confirm, repr(sorted(hide.items()))), "no output")
+                    SKIPS[(tool, label, confirm)] = failure
+                    SKIPPED_HIDES[(tool, label, confirm)] = hide
+                else:
                     try:
                         unit_hidden = _dig(hidden_run[1], route)
                     except (KeyError, IndexError):
                         unit_hidden = {}
+                        SKIPS[(tool, label, confirm)] = LACKS_UNIT
+                        SKIPPED_HIDES[(tool, label, confirm)] = hide
                 if kind == "payload":
-                    copies += 1
+                    copies[confirm] += 1
                     if (
                         isinstance(unit_hidden, dict)
                         and _at(unit_hidden.get("payload"), value) is not None
@@ -225,7 +353,9 @@ async def _scan(
                     ):
                         leaks.append((confirm, label, value, "payload key stays"))
                     continue
-                copies += sum(1 for path, leaf in _leaves(_outside_result(unit_plain)) if _holds(path, leaf, value))
+                copies[confirm] += sum(
+                    1 for path, leaf in _leaves(_outside_result(unit_plain)) if _holds(path, leaf, value)
+                )
                 if not isinstance(unit_hidden, dict):
                     continue
                 shown_record = unit_hidden.get("result")
@@ -234,7 +364,7 @@ async def _scan(
                 for path, leaf in _leaves(_outside_result(unit_hidden)):
                     if not _holds(path, leaf, value):
                         continue
-                    if (tool, path, label) in COINCIDENCE:
+                    if (tool, path, label) in COINCIDENCE and leaf in COINCIDENCE[(tool, path, label)][1]:
                         if used is not None:
                             used.add((tool, path, label))
                     else:
@@ -251,17 +381,40 @@ async def test_a_hidden_value_appears_nowhere_in_the_result(tool: str, tmp_path:
 
 
 @pytest.mark.asyncio
-async def test_every_tool_has_a_visible_copy_to_hide_or_says_why_not(tmp_path: pathlib.Path) -> None:
-    empty = []
+async def test_every_tool_has_a_visible_copy_to_hide_in_each_state_or_says_why_not(tmp_path: pathlib.Path) -> None:
+    empty: set[tuple[str, bool]] = set()
     total = 0
     for tool in sorted(WRITE_TOOL_CASES):
         copies, _ = await _scan(tool, tmp_path)
-        total += copies
-        if copies == 0:
-            empty.append(tool)
+        total += sum(copies.values())
+        empty |= {(tool, confirm) for confirm, count in copies.items() if count == 0}
 
-    assert set(empty) == set(NO_COPIES), "a tool lost its copies, or a listed tool has some now"
+    assert empty == set(NO_COPIES), "a state lost its copies, or a listed state has some now"
+    assert all(NO_COPIES.values())
     assert total >= MIN_BASELINE_COPIES
+
+
+@pytest.mark.asyncio
+async def test_every_skipped_run_is_a_refusal_by_the_hide_setting_and_listed(tmp_path: pathlib.Path) -> None:
+    """A hidden run that gave nothing to compare is a blind spot of the scan. Each one must be the tool refusing the
+    hidden field (its message names that field and the hide setting), and the (tool, state) -> fields table must match
+    what the runs skip."""
+    SKIPS.clear()
+    SKIPPED_HIDES.clear()
+    for tool in sorted(WRITE_TOOL_CASES):
+        await _scan(tool, tmp_path)
+
+    not_refusals = []
+    for key, why in SKIPS.items():
+        refusal = REFUSAL.fullmatch(why)
+        hidden_fields = {field for fields in SKIPPED_HIDES[key].values() for field in fields}
+        if refusal is None or refusal["field"] not in hidden_fields:
+            not_refusals.append((key, why))
+    assert not_refusals == []
+    grouped: dict[tuple[str, bool], set[str]] = {}
+    for tool, label, confirm in SKIPS:
+        grouped.setdefault((tool, confirm), set()).add(label)
+    assert {key: tuple(sorted(labels)) for key, labels in grouped.items()} == SKIPPED_RUNS
 
 
 @pytest.mark.asyncio
@@ -365,3 +518,43 @@ async def test_select_over_a_batch_keeps_the_hidden_members_out(
     hidden_results = [item["result"] for item in hidden_shown["items"] if item.get("result")]
     assert hidden_results and all(result["state"] == state for result in hidden_results)
     assert all("project" not in result for result in hidden_results)
+
+
+@pytest.mark.parametrize(
+    ("path", "leaf", "value", "found"),
+    [
+        (".payload._links.version.href", "/api/v3/versions/7", 7, True),
+        (".payload._links.version.href", "/api/v3/versions/7/", 7, True),
+        (".payload._links.version.href", "/api/v3/versions/7?x=1", 7, True),
+        (".payload._links.version.href", "/api/v3/versions/70", 7, False),
+        (".message", "Updated 7 items", 7, False),
+        (".work_package_id", "00077", 77, True),
+        (".work_package_id", "0077 and more", 77, True),
+        (".work_package_id", "770", 77, False),
+        (".work_package_id", "177", 77, False),
+        (".payload.subject", "Task 12", 12, True),
+    ],
+    ids=[
+        "small id at the end of a link",
+        "small id before a slash",
+        "small id before a query",
+        "a longer number is another id",
+        "a small number in a text is no id",
+        "zero-padded id",
+        "zero-padded id in a text",
+        "an id followed by a digit",
+        "an id preceded by a digit",
+        "a two-digit number in a text",
+    ],
+)
+def test_a_value_is_found_where_an_id_can_come_back(path: str, leaf: str, value: int, found: bool) -> None:
+    assert _holds(path, leaf, value) is found
+
+
+@pytest.mark.parametrize("name", ["work_package_ids[]", "work_package_ids", "id", "meeting_id", "x.id"])
+def test_a_list_of_ids_is_an_id_path_with_or_without_the_list_suffix(name: str) -> None:
+    assert _is_id_name(name)
+
+
+def test_a_name_that_is_no_id_stays_no_id_path() -> None:
+    assert not _is_id_name("subject[]")

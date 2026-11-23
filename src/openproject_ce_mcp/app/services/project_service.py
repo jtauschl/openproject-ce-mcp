@@ -659,7 +659,7 @@ class ProjectService:
             )
         if links:
             payload["_links"] = links
-        return _ProjectWritePayload(payload, parent_target)
+        return _ProjectWritePayload(payload=payload, parent_target=parent_target)
 
     def _resolve_status_href(self, schema: dict[str, Any], raw_value: str) -> str:
         field = schema.get("status")
