@@ -5,6 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
+from openproject_ce_mcp.app.adapters._text import lookup_name
 from openproject_ce_mcp.app.adapters.httpx_time_entry_api import normalize_time_entry_activity_raw
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.form_result import ValidationFailure
@@ -90,7 +91,7 @@ class _FakeTimeEntryApi:
         return TimeEntryRecord(summary=lambda: payload["__summary__"])
 
     def to_activity_record(self, payload: dict) -> TimeEntryActivityRecord:
-        return TimeEntryActivityRecord(summary=payload["__summary__"])
+        return TimeEntryActivityRecord(summary=payload["__summary__"], lookup_name=payload["__summary__"].name)
 
     def project_link_title_and_id(self, link):
         if not isinstance(link, dict):
@@ -933,7 +934,39 @@ async def test_an_unknown_activity_name_without_any_allowed_activity_has_no_list
 
 class _RealActivityNormalizerApi(_FakeTimeEntryApi):
     def to_activity_record(self, payload: dict) -> TimeEntryActivityRecord:
-        return TimeEntryActivityRecord(summary=normalize_time_entry_activity_raw(payload))
+        return TimeEntryActivityRecord(
+            summary=normalize_time_entry_activity_raw(payload), lookup_name=lookup_name(payload)
+        )
+
+
+class _NamelessActivityApi(_RealActivityNormalizerApi):
+    """Activity 5 has no name, activity 6 is `Development`, in the form and in the global collection alike."""
+
+    ELEMENTS = [{"id": 5}, {"id": 6, "name": "Development"}]
+
+    def __init__(self) -> None:
+        super().__init__(fetch_activities_result={"_embedded": {"elements": self.ELEMENTS}})
+
+    async def fetch_activities_for_entity(self, *, project_id: int, work_package_id: int | None) -> dict:
+        self.fetch_activities_for_entity_calls.append((project_id, work_package_id))
+        return {"_embedded": {"schema": {"activity": {"_embedded": {"allowedValues": self.ELEMENTS}}}}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("project_id", [None, 1], ids=["global collection", "project form"])
+async def test_the_label_of_a_nameless_activity_resolves_nothing(project_id: int | None) -> None:
+    service = _service(api=_NamelessActivityApi())
+
+    with pytest.raises(InvalidInputError, match="was not found"):
+        await service._resolve_activity_id("Unnamed time entry activity", project_id=project_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("project_id", [None, 1], ids=["global collection", "project form"])
+async def test_an_activity_with_a_name_still_resolves_by_it(project_id: int | None) -> None:
+    service = _service(api=_NamelessActivityApi())
+
+    assert await service._resolve_activity_id("development", project_id=project_id) == "6"
 
 
 def _activity_with_projects(*projects: tuple[str, str]) -> dict:
@@ -985,7 +1018,9 @@ async def test_activities_read_from_a_project_form_name_only_covered_projects_to
     form = {"_embedded": {"schema": {"activity": {"_embedded": {"allowedValues": [activity]}}}}}
     service = _service(api=api, settings=dataclasses.replace(make_settings(), read_projects=("demo",)))
 
-    assert [a.projects for a in service._activities_from_form(form)] == [["Demo Project"]]
+    assert [a.projects for a in service._normalize_activity_elements(service._activity_elements_of_form(form))] == [
+        ["Demo Project"]
+    ]
 
 
 @pytest.mark.asyncio

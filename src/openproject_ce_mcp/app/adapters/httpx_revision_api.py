@@ -27,7 +27,7 @@ def normalize_revision(payload: dict[str, Any], *, text_limit: int | None) -> Re
     revision_id = int(payload["id"])
     summary = RevisionSummary(
         id=revision_id,
-        identifier=_trim_text(payload.get("identifier"), limit=SUBJECT_LIMIT) or str(revision_id),
+        identifier=_trim_text(payload.get("identifier"), limit=SUBJECT_LIMIT),
         formatted_identifier=_trim_text(payload.get("formattedIdentifier"), limit=SUBJECT_LIMIT),
         author_name=_delimit_user_content(_trim_text(payload.get("authorName"), limit=SUBJECT_LIMIT)),
         message=_delimit_user_content(message),

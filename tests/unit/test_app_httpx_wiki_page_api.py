@@ -59,4 +59,4 @@ async def test_get_title_falls_back_to_placeholder_when_missing() -> None:
         api = HttpxWikiPageApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(20)
 
-    assert record.detail.title == "Wiki page 20"
+    assert record.detail.title == "Unnamed wiki page"

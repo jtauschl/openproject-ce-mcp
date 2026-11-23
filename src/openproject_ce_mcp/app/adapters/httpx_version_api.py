@@ -16,7 +16,7 @@ from typing import Any
 from ...models import VersionDetail, VersionSummary
 from ..ports.version_api import VersionFormResult, VersionPage, VersionRecord, summary_to_detail
 from ..transport.protocol import Transport
-from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
+from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT, lookup_name, unnamed
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import has_usable_id as _has_usable_id
@@ -41,7 +41,7 @@ def normalize_version(payload: dict[str, Any], *, text_limit: int | None = FORMA
     )
     return VersionSummary(
         id=int(payload["id"]),
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Version {payload['id']}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("version"),
         status=payload.get("status"),
         sharing=payload.get("sharing"),
         start_date=payload.get("startDate"),
@@ -67,7 +67,7 @@ class HttpxVersionApi:
         return VersionRecord(
             summary=normalize_version(payload, text_limit=text_limit),
             defining_project_link=payload.get("_links", {}).get("definingProject"),
-            lookup_name=str(payload.get("name", "")),
+            lookup_name=lookup_name(payload),
             payload=payload,
         )
 

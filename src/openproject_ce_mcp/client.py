@@ -11,6 +11,7 @@ import httpx
 from pydantic import SecretStr
 
 from . import __version__
+from .app.adapters._text import unnamed
 from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
 from .app.adapters.httpx_activity_api import HttpxActivityApi
 from .app.adapters.httpx_attachment_api import HttpxAttachmentApi
@@ -1288,7 +1289,7 @@ class OpenProjectClient:
             "project_work_package_context",
             ProjectWorkPackageContext(
                 project_id=project_id,
-                project_name=_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {project_id}",
+                project_name=_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("project"),
                 project_identifier=project_payload.get("identifier"),
                 selected_type_id=selected_type_id,
                 selected_type_name=selected_type_name,

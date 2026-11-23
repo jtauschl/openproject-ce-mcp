@@ -53,7 +53,7 @@ from ..policies import scope as scope_policy
 from ..policies.scope import ensure_project_link_allowed, payload_allowed
 from ..ports.project_api import ProjectApi, ProjectRecord
 from ..ports.scoped_reference import ScopedReferencesAllowedBulkCheck
-from ..resolvers.project_query import fetch_project_records
+from ..resolvers.project_query import fetch_project_records, project_payload_name
 from ..resolvers.project_resolver import ProjectResolver
 from ..resource_href import ResourceLinks
 from ..version_gate import call_query_version_gated, call_version_gated
@@ -775,7 +775,10 @@ class ProjectAdminService:
         project = _stamp_project(
             scoped, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
-        schema_result = await self._api.get_schema(project_id=project.id, draft_payload={"name": project.name})
+        raw_name = project_payload_name(record.payload)
+        schema_result = await self._api.get_schema(
+            project_id=project.id, draft_payload={} if raw_name is None else {"name": raw_name}
+        )
         schema = schema_result.schema
         fields = schema_result.fields
         status_field = next((field for field in fields if field.key == "status"), None)

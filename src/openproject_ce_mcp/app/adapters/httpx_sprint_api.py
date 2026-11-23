@@ -22,7 +22,7 @@ from typing import Any
 from ...models import SprintDetail, SprintSummary
 from ..ports.sprint_api import SprintRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, lookup_name, unnamed
 from ._text import has_usable_id as _has_usable_id
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
@@ -58,7 +58,7 @@ def normalize_sprint(payload: dict[str, Any]) -> SprintSummary:
     sprint_id = int(payload["id"])
     return SprintSummary(
         id=sprint_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Sprint {sprint_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("sprint"),
         status=_link_title(status_link),
         start_date=payload.get("startDate"),
         finish_date=payload.get("finishDate"),
@@ -105,7 +105,7 @@ class HttpxSprintApi:
             detail=summary_to_detail(summary),
             defining_workspace_link=_defining_workspace_link(payload),
             defining_workspace_payload=embedded if isinstance(embedded, dict) else None,
-            lookup_name=str(payload.get("name", "")),
+            lookup_name=lookup_name(payload),
         )
 
     async def list_all(self, *, offset: int, page_size: int) -> tuple[list[SprintRecord], int]:

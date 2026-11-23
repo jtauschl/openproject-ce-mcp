@@ -57,7 +57,7 @@ async def test_get_subject_falls_back_to_placeholder_when_missing() -> None:
         api = HttpxPostApi(HttpxTransport(http_client, redact_server_text=False))
         record = await api.get(30)
 
-    assert record.detail.subject == "Post 30"
+    assert record.detail.subject == "Unnamed post"
 
 
 @pytest.mark.asyncio

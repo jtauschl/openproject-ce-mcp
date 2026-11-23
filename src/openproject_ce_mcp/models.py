@@ -917,7 +917,7 @@ class BudgetListResult(CollectionResult):
 @dataclass
 class RevisionSummary:
     id: int
-    identifier: str
+    identifier: str | None
     formatted_identifier: str | None
     author_name: str | None
     message: str | None

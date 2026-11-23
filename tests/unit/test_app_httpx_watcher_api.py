@@ -100,7 +100,7 @@ def test_normalize_watcher_falls_back_to_generated_name_when_missing() -> None:
 
     summary = normalize_watcher(payload)
 
-    assert summary.name == "User 5"
+    assert summary.name == "Unnamed user"
 
 
 def test_normalize_watcher_handles_missing_login() -> None:

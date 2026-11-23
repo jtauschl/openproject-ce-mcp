@@ -15,8 +15,8 @@ becomes `None` and the loop never terminates.
 
 Name comparison uses `SprintRecord.lookup_name` (the raw, never-synthesized
 name), not `summary.name`: `normalize_sprint` falls back to a synthetic
-display name (`f"Sprint {id}"`) when the raw name is blank/missing, which
-could otherwise make a caller's literal search for "Sprint 7" accidentally
+display name (`unnamed("sprint")`) when the raw name is blank/missing, which
+could otherwise make a caller's literal search for "Unnamed sprint" accidentally
 match a sprint whose real name was blank. See `app/ports/sprint_api.py`'s
 `SprintRecord` docstring for the full rationale.
 """

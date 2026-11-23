@@ -17,7 +17,7 @@ from typing import Any
 from ...models import BacklogBucketDetail, BacklogBucketSummary
 from ..ports.backlog_bucket_api import BacklogBucketRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, lookup_name, unnamed
 from ._text import has_usable_id as _has_usable_id
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
@@ -56,7 +56,7 @@ def normalize_backlog_bucket(payload: dict[str, Any]) -> BacklogBucketSummary:
     bucket_id = int(payload["id"])
     return BacklogBucketSummary(
         id=bucket_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Backlog Bucket {bucket_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("backlog bucket"),
         defining_workspace_id=_id_from_href(workspace_link.get("href")) if isinstance(workspace_link, dict) else None,
         defining_workspace=_link_title(workspace_link),
         created_at=payload.get("createdAt"),
@@ -93,7 +93,7 @@ class HttpxBacklogBucketApi:
             detail=summary_to_detail(summary),
             defining_workspace_link=_defining_workspace_link(payload),
             defining_workspace_payload=embedded if isinstance(embedded, dict) else None,
-            lookup_name=str(payload.get("name", "")),
+            lookup_name=lookup_name(payload),
         )
 
     async def list_all(self, *, offset: int, page_size: int) -> tuple[list[BacklogBucketRecord], int]:

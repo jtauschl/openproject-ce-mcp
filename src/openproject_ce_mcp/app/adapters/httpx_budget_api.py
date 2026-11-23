@@ -6,7 +6,7 @@ from typing import Any
 
 from ...models import BudgetSummary
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import trim_text as _trim_text
 
 
@@ -14,7 +14,7 @@ def normalize_budget(payload: dict[str, Any], *, project_id: int, project_name: 
     budget_id = int(payload["id"])
     return BudgetSummary(
         id=budget_id,
-        subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Budget {budget_id}",
+        subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or unnamed("budget"),
         project_id=project_id,
         project=project_name,
     )

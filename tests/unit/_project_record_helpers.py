@@ -21,7 +21,7 @@ def project_record(
     return ProjectRecord(
         summary=summary,
         references=references or {},
-        payload=payload if payload is not None else {},
+        payload=payload if payload is not None else {"name": summary.name},
         summary_factory=lambda visible: summary,
         detail_factory=lambda visible: shown,
     )

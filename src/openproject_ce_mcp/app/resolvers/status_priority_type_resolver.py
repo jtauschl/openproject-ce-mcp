@@ -10,9 +10,9 @@ which both raise on an ambiguous match. This asymmetry is intentional; do
 not "fix" it by adding an ambiguity check that changes existing behavior.
 
 Name comparison uses each Record's `lookup_name` field, NOT `summary.name`:
-`summary.name` falls back to a synthetic display name (`f"Status {id}"`)
+`summary.name` falls back to a synthetic display name (`unnamed("status")`)
 when the raw name is blank/missing, so matching against it could make a
-caller's literal search for "Status 7" accidentally match a status whose
+caller's literal search for "Unnamed status" accidentally match a status whose
 real name was blank. `lookup_name` is the raw name, never synthesized --
 see `app/ports/status_priority_type_api.py`'s module docstring for the
 full `lookup_name`-vs-`summary.name` rationale, and

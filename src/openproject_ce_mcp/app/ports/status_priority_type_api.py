@@ -13,12 +13,12 @@ plain single-item fetch through the same normalizer as list rows; it has no tool
 and exists for work-package writes that close a work package.
 
 Each Record also carries `lookup_name`: the raw payload's `name` field
-(`str(payload.get("name", ""))`), independent of `summary.name`. The two
+(`lookup_name(payload)`, `app/adapters/_text.py`), independent of `summary.name`. The two
 differ deliberately: `summary.name` falls back to a synthetic display name
-(`f"Status {id}"`) when the raw name is blank/missing, so list/get MCP tool
+(`unnamed("status")`) when the raw name is blank/missing, so list/get MCP tool
 output never shows an empty display name -- correct DISPLAY behavior, but
 wrong for exact-name RESOLUTION (a caller searching for the literal string
-"Status 7" should not accidentally match a status whose real name was blank,
+"Unnamed status" should not accidentally match a status whose real name was blank,
 the way matching against `summary.name` would allow). `lookup_name` is
 never synthesized, so resolvers compare against it, not `summary.name`.
 """

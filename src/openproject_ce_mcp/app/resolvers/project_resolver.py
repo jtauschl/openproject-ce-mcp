@@ -2,7 +2,7 @@
 
 Resolves a project reference (numeric id, exact identifier, or -- as a fallback --
 display name) to a resolved raw HAL payload. Depends on `ProjectApi` +
-`fetch_project_page` (both at or below its own layer) -- never on
+`fetch_named_project_page` (both at or below its own layer) -- never on
 `ProjectService`.
 
 Unlike VersionResolver, this resolver does not consume a `ProjectRefResolver` port
@@ -34,7 +34,7 @@ from ..errors import InvalidInputError, NotFoundError
 from ..policies import project_policy
 from ..ports.project_api import FORMATTABLE_LIMIT, ProjectApi, ProjectRecord
 from ..ports.project_resolution import ProjectResolutionContext
-from .project_query import fetch_project_page
+from .project_query import fetch_named_project_page
 
 _PROJECT_NAME_SEARCH_MAX_PAGES = 5
 
@@ -99,20 +99,21 @@ class ProjectResolver:
         exhausted = False
         offset = 1
         for _ in range(_PROJECT_NAME_SEARCH_MAX_PAGES):
-            page_results, _total, next_offset, truncated = await fetch_project_page(
+            page_results, _total, next_offset, truncated = await fetch_named_project_page(
                 api=self._api,
                 settings=self._settings,
                 search=normalized,
                 offset=offset,
                 limit=page_size,
             )
-            for project in page_results:
+            for project, raw_name in page_results:
                 identifier_cf = (project.identifier or "").casefold()
                 if identifier_cf == normalized_cf:
                     # Identifiers are unique — an exact identifier match, wherever it turns up in the
                     # search results, always wins immediately over any name/substring match.
                     return await self._resolve_record_uncached(str(project.id), write=write, text_limit=text_limit)
-                name_cf = (project.name or "").casefold()
+                # The raw name: a nameless project must not match the label it is shown under.
+                name_cf = (raw_name or "").casefold()
                 if name_cf == normalized_cf:
                     exact_name_matches.append(project)
                 else:

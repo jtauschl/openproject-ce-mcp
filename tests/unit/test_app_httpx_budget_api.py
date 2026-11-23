@@ -47,7 +47,7 @@ async def test_list_for_project_trims_long_text_and_falls_back_to_a_placeholder_
     assert len(budgets[0].subject) <= 255
     assert budgets[0].subject.endswith("…")
     assert budgets[0].project is not None and len(budgets[0].project) <= 255
-    assert budgets[1].subject == "Budget 4"
+    assert budgets[1].subject == "Unnamed budget"
 
 
 @pytest.mark.asyncio

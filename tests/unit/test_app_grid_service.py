@@ -54,6 +54,10 @@ def _record(*, scope_link: dict | None = None, project_link: dict | None = None,
 class _Resolved:
     summary: ProjectSummary
 
+    @property
+    def payload(self) -> dict[str, str]:
+        return {"name": self.summary.name}
+
 
 class _FakeProjectLookup:
     """OpenProject's own resolution of a grid scope reference: identifier or id."""

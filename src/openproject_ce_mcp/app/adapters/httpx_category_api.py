@@ -18,7 +18,7 @@ from typing import Any
 from ...models import CategorySummary
 from ..ports.category_api import CategoryRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
@@ -41,7 +41,7 @@ def normalize_category(payload: dict[str, Any], *, project_id: int | None, proje
     default_assignee_link = links.get("defaultAssignee")
     return CategorySummary(
         id=category_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Category {category_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("category"),
         project_id=project_id,
         project=project_name,
         default_assignee_id=_id_from_href(

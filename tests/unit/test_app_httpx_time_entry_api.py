@@ -238,7 +238,7 @@ async def test_fetch_activities_for_entity_dereferences_linked_allowed_values() 
     link a filtered collection instead of embedding it -- same shape as the
     User-typed work package field bug. The linked collection must be
     dereferenced into _embedded.allowedValues so the Service's pure
-    _activities_from_form (which only ever reads that key) keeps working."""
+    _activity_elements_of_form (which only ever reads that key) keeps working."""
     requested_paths = []
 
     async def handler(request: httpx.Request) -> httpx.Response:

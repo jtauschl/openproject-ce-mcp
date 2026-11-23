@@ -13,7 +13,7 @@ below; a structural test keeps a second copy from reappearing.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote, urljoin, urlparse, urlsplit
 
 from ...user_content import delimit_user_content as delimit_user_content
@@ -37,6 +37,51 @@ from ..origin import has_control_character, has_dot_segment, origin_from_url, st
 # FORMATTABLE_LIMIT is purely this project's own token-budget choice.
 SUBJECT_LIMIT = 255
 FORMATTABLE_LIMIT = 1_200
+
+
+NamelessKind = Literal[
+    "attachment",
+    "backlog bucket",
+    "board",
+    "budget",
+    "category",
+    "document",
+    "file link",
+    "news",
+    "notification",
+    "post",
+    "principal",
+    "priority",
+    "project",
+    "project phase",
+    "project phase definition",
+    "role",
+    "sprint",
+    "status",
+    "storage",
+    "time entry activity",
+    "type",
+    "user",
+    "version",
+    "view",
+    "wiki page",
+    "work package",
+]
+
+
+def lookup_name(payload: dict[str, Any]) -> str:
+    """The raw name a payload carries, `""` when it has none: never the display label, and never the text `None` of
+    a JSON null. A resolver matches a caller's text against it."""
+    name = payload.get("name")
+    return name if isinstance(name, str) else ""
+
+
+def unnamed(kind: NamelessKind) -> str:
+    """The label of a record the server sent without a name, title or subject.
+
+    A constant, never built from the record's id: the hide stamp drops the `id` member but does not edit a text, so
+    a label that carries the id would repeat a hidden id."""
+    return f"Unnamed {kind}"
 
 
 def reject_path_traversal_segments(value: str, *, field_name: str) -> str:

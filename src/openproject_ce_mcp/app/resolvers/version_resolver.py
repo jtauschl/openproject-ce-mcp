@@ -6,8 +6,8 @@ concrete numeric-id string. Depends on `VersionApi` + `fetch_visible_version_rec
 
 Name comparison uses `VersionRecord.lookup_name` (the raw, never-synthesized
 name), not `summary.name`: `normalize_version` falls back to a synthetic
-display name (`f"Version {id}"`) when the raw name is blank/missing, which
-could otherwise make a caller's literal search for "Version 7" accidentally
+display name (`unnamed("version")`) when the raw name is blank/missing, which
+could otherwise make a caller's literal search for "Unnamed version" accidentally
 match a version whose real name was blank. See `app/ports/version_api.py`'s
 `VersionRecord` docstring for the full rationale. This resolver depends on
 `fetch_visible_version_records` (not the summary-projecting `fetch_version_page`

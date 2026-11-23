@@ -23,7 +23,7 @@ from typing import Any
 from ...models import DocumentDetail, DocumentSummary
 from ..ports.document_api import DocumentRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
@@ -52,7 +52,7 @@ def normalize_document(payload: dict[str, Any], *, text_limit: int | None = SUBJ
     description, truncated, length = _extract_formattable_text_with_meta(payload.get("description"), limit=text_limit)
     return DocumentSummary(
         id=int(payload["id"]),
-        title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Document {payload['id']}",
+        title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or unnamed("document"),
         project_id=_id_from_href(links.get("project", {}).get("href")),
         project=_link_title(links.get("project")),
         description=_delimit_user_content(description),

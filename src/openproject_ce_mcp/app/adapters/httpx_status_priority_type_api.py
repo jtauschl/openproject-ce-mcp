@@ -23,7 +23,7 @@ from typing import Any
 from ...models import PrioritySummary, StatusSummary, TypeSummary
 from ..ports.status_priority_type_api import PriorityRecord, StatusRecord, TypeRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, lookup_name, unnamed
 from ._text import has_usable_id as _has_usable_id
 from ._text import trim_text as _trim_text
 
@@ -32,7 +32,7 @@ def normalize_status(payload: dict[str, Any]) -> StatusSummary:
     status_id = int(payload["id"])
     return StatusSummary(
         id=status_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Status {status_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("status"),
         is_default=bool(payload.get("isDefault")),
         is_closed=bool(payload.get("isClosed")),
         color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
@@ -47,7 +47,7 @@ def normalize_priority(payload: dict[str, Any]) -> PrioritySummary:
     priority_id = int(payload["id"])
     return PrioritySummary(
         id=priority_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Priority {priority_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("priority"),
         is_default=bool(payload.get("isDefault")),
         is_active=bool(payload.get("isActive")),
         color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
@@ -59,7 +59,7 @@ def normalize_type(payload: dict[str, Any]) -> TypeSummary:
     type_id = int(payload["id"])
     return TypeSummary(
         id=type_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Type {type_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("type"),
         color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
         position=payload.get("position"),
         is_default=bool(payload.get("isDefault")),
@@ -67,16 +67,6 @@ def normalize_type(payload: dict[str, Any]) -> TypeSummary:
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
     )
-
-
-def _lookup_name(payload: dict[str, Any]) -> str:
-    """The raw, never-synthesized name used for exact-name resolution.
-
-    Deliberately NOT `_trim_text(...) or f"X {id}"` -- that fallback is
-    display-only behavior (see module docstring). A blank/missing raw name
-    must never accidentally match a caller's literal-string search.
-    """
-    return str(payload.get("name", ""))
 
 
 class HttpxStatusPriorityTypeApi:
@@ -87,20 +77,20 @@ class HttpxStatusPriorityTypeApi:
         payload = await self._transport.get_json("statuses")
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            StatusRecord(summary=normalize_status(item), lookup_name=_lookup_name(item))
+            StatusRecord(summary=normalize_status(item), lookup_name=lookup_name(item))
             for item in elements
             if _has_usable_id(item)
         ]
 
     async def get_status(self, status_id: int) -> StatusRecord:
         payload = await self._transport.get_json(f"statuses/{status_id}")
-        return StatusRecord(summary=normalize_status(payload), lookup_name=_lookup_name(payload))
+        return StatusRecord(summary=normalize_status(payload), lookup_name=lookup_name(payload))
 
     async def list_priorities(self) -> list[PriorityRecord]:
         payload = await self._transport.get_json("priorities")
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            PriorityRecord(summary=normalize_priority(item), lookup_name=_lookup_name(item))
+            PriorityRecord(summary=normalize_priority(item), lookup_name=lookup_name(item))
             for item in elements
             if _has_usable_id(item)
         ]
@@ -110,7 +100,7 @@ class HttpxStatusPriorityTypeApi:
         payload = await self._transport.get_json(path)
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            TypeRecord(summary=normalize_type(item), lookup_name=_lookup_name(item))
+            TypeRecord(summary=normalize_type(item), lookup_name=lookup_name(item))
             for item in elements
             if _has_usable_id(item)
         ]

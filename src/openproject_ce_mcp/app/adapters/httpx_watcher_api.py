@@ -11,7 +11,7 @@ from typing import Any
 from ...models import WatcherSummary
 from ..api_href import api_href as _api_href
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import trim_text as _trim_text
 
 
@@ -24,7 +24,7 @@ def normalize_watcher(payload: dict[str, Any]) -> WatcherSummary:
     watcher_id = int(payload["id"])
     return WatcherSummary(
         id=watcher_id,
-        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"User {watcher_id}",
+        name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or unnamed("user"),
         login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
     )
 

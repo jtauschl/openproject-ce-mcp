@@ -28,7 +28,7 @@ from typing import Any
 from ...models import AttachmentSummary
 from ..ports.attachment_api import AttachmentContent, AttachmentRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
@@ -82,7 +82,7 @@ def normalize_attachment(payload: dict[str, Any], *, base_url: str, origin: str)
     return AttachmentSummary(
         id=int(payload["id"]),
         # AttachmentRepresenter has no `title` property, only `file_name`.
-        title=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT) or f"Attachment {payload['id']}",
+        title=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT) or unnamed("attachment"),
         file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
         file_size_bytes=payload.get("fileSize"),
         description=_delimit_user_content(_extract_formattable_text(payload.get("description"))),

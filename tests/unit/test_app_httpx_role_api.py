@@ -65,7 +65,8 @@ async def test_list_roles_falls_back_to_a_placeholder_name_when_missing() -> Non
         api = HttpxRoleApi(HttpxTransport(http_client, redact_server_text=False))
         records, _total = await api.list_roles(offset=1, page_size=20)
 
-    assert records[0].summary.name == "Role 3"
+    assert records[0].summary.name == "Unnamed role"
+    assert records[0].lookup_name == ""
 
 
 @pytest.mark.asyncio

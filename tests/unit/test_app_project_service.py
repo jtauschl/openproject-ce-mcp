@@ -89,6 +89,7 @@ class _FakeProjectApi:
         # What the real forms add to the echoed payload: the whole project, attributes included.
         self.form_echo: dict = {}
         self.schema_reads: list[dict] = []
+        self.schema_drafts: list[dict] = []
         self.commit_create_calls: list[dict] = []
         self.commit_update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
@@ -131,6 +132,7 @@ class _FakeProjectApi:
 
     async def get_schema(self, *, project_id, draft_payload, **kwargs) -> ProjectSchemaResult:
         self.schema_reads.append(kwargs)
+        self.schema_drafts.append(draft_payload)
         if self.fields is not None:
             fields = self.fields
         else:
@@ -434,6 +436,19 @@ async def test_get_admin_context_filters_parent_projects_by_read_allowlist() -> 
     context = await service.get_admin_context("demo")
 
     assert [ref.identifier for ref in context.available_parent_projects] == ["root"]
+
+
+@pytest.mark.asyncio
+async def test_the_schema_draft_carries_the_name_the_server_sent_and_none_for_a_nameless_project() -> None:
+    named = _FakeProjectApi()
+    await _admin_service(named).get_admin_context("demo")
+    nameless_record = _record()
+    nameless_summary = dataclasses.replace(nameless_record.summary, name="Unnamed project")
+    nameless = _FakeProjectApi(records=[project_record(nameless_summary, payload=_payload(name=""))])
+    await _admin_service(nameless).get_admin_context("demo")
+
+    assert named.schema_drafts == [{"name": "Demo Project"}]
+    assert nameless.schema_drafts == [{}]
 
 
 @pytest.mark.asyncio

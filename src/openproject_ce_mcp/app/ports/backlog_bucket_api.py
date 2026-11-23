@@ -39,7 +39,7 @@ class BacklogBucketRecord:
 
     `lookup_name` carries the raw payload's `name` field, independent of
     `summary.name`. `normalize_backlog_bucket` falls back to a synthetic
-    display name (`f"Backlog Bucket {id}"`) when the raw name is
+    display name (`unnamed("backlog bucket")`) when the raw name is
     blank/missing -- correct DISPLAY behavior, but this domain has no
     name-based resolver today, so `lookup_name` exists only for parity with
     SprintRecord's shape (kept in case a resolver is added later).

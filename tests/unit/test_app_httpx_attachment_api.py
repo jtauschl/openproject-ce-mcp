@@ -180,7 +180,7 @@ def test_normalize_attachment_title_falls_back_to_placeholder_when_file_name_mis
 
     summary = normalize_attachment(payload, base_url=BASE_URL, origin=BASE_URL)
 
-    assert summary.title == "Attachment 5"
+    assert summary.title == "Unnamed attachment"
 
 
 @pytest.mark.parametrize(

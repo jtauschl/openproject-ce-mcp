@@ -119,7 +119,7 @@ def test_normalize_file_link_falls_back_to_generated_title_when_origin_data_miss
 
     summary = normalize_file_link(payload)
 
-    assert summary.title == "File link 5"
+    assert summary.title == "Unnamed file link"
 
 
 def test_normalize_file_link_trims_long_title() -> None:

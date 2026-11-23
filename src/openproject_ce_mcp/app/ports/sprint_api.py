@@ -37,9 +37,9 @@ class SprintRecord:
 
     `lookup_name` carries the raw payload's `name` field, independent of
     `summary.name`. `normalize_sprint` falls back to a synthetic display name
-    (`f"Sprint {id}"`) when the raw name is blank/missing -- correct DISPLAY
+    (`unnamed("sprint")`) when the raw name is blank/missing -- correct DISPLAY
     behavior, but wrong for exact-name RESOLUTION (`SprintResolver` must not
-    let a caller's literal search for "Sprint 7" accidentally match a sprint
+    let a caller's literal search for "Unnamed sprint" accidentally match a sprint
     whose real name was blank). `lookup_name` is never synthesized, so
     `SprintResolver` compares against it instead of `summary.name`.
     """

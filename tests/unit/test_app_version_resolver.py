@@ -145,13 +145,13 @@ async def test_resolve_by_name_without_project_not_found_raises() -> None:
 async def test_resolve_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
     """Matching uses VersionRecord.lookup_name (the raw, never-synthesized
     name), not summary.name, which falls back to a synthetic display name
-    ("Version 9") when the raw name is blank -- see app/ports/version_api.py's
+    ("Unnamed version") when the raw name is blank -- see app/ports/version_api.py's
     VersionRecord docstring."""
-    records = [_record(9, "Version 9", lookup_name="")]
+    records = [_record(9, "Unnamed version", lookup_name="")]
     resolver = _resolver(records)
 
     with pytest.raises(InvalidInputError, match="was not found in project"):
-        await resolver.resolve_id("Version 9", project="demo")
+        await resolver.resolve_id("Unnamed version", project="demo")
 
 
 @pytest.mark.asyncio

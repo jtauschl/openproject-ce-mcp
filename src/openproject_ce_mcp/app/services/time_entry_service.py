@@ -188,20 +188,26 @@ class TimeEntryService:
             item = {**item, "_links": {**links, "projects": covered}}
         return self._stamp_activity(self._api.to_activity_record(item).summary)
 
-    def _activities_from_form(self, form: dict[str, Any]) -> list[TimeEntryActivitySummary]:
+    @staticmethod
+    def _activity_elements_of_form(form: dict[str, Any]) -> list[Any]:
         schema = form.get("_embedded", {}).get("schema", {})
         activity_field = schema.get("activity", {})
-        allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
-        return self._normalize_activity_elements(allowed)
+        return activity_field.get("_embedded", {}).get("allowedValues", [])
 
     async def list_activities(self) -> TimeEntryActivityListResult:
+        elements = await self._activity_elements()
+        results = self._normalize_activity_elements(elements)
+        return TimeEntryActivityListResult(count=len(results), results=results)
+
+    async def _activity_elements(self) -> list[Any]:
+        """The raw activity payloads: the global collection when it lists any, else the allowed values of the first
+        project form that does."""
         access.ensure_read_enabled("work_package", settings=self._settings)
         payload = await self._api.fetch_activities()
         if payload is not None:
             elements = payload.get("_embedded", {}).get("elements", [])
-            results = self._normalize_activity_elements(elements)
-            if results:
-                return TimeEntryActivityListResult(count=len(results), results=results)
+            if any(isinstance(item, dict) for item in elements):
+                return elements
 
         try:
             offset = 1
@@ -218,14 +224,14 @@ class TimeEntryService:
                         form = await self._api.fetch_activities_for_entity(project_id=project.id, work_package_id=None)
                     except _FALLBACK_ERRORS:
                         continue
-                    results = self._activities_from_form(form)
-                    if results:
-                        return TimeEntryActivityListResult(count=len(results), results=results)
+                    elements = self._activity_elements_of_form(form)
+                    if any(isinstance(item, dict) for item in elements):
+                        return elements
                 if next_offset is None:
-                    return TimeEntryActivityListResult(count=0, results=[])
+                    return []
                 offset = next_offset
         except _FALLBACK_ERRORS:
-            return TimeEntryActivityListResult(count=0, results=[])
+            return []
 
     async def list_all(
         self,
@@ -467,10 +473,17 @@ class TimeEntryService:
             return activity_ref
         if project_id is not None:
             form = await self._api.fetch_activities_for_entity(project_id=project_id, work_package_id=work_package_id)
-            activities = self._activities_from_form(form)
+            elements = self._activity_elements_of_form(form)
         else:
-            activities = (await self.list_activities()).results
-        matches = [item for item in activities if (item.name or "").casefold() == activity_ref.casefold()]
+            elements = await self._activity_elements()
+        # Matched by the raw name: the display label of a nameless activity must never match.
+        activities = self._normalize_activity_elements(elements)
+        raw_names = [self._api.to_activity_record(item).lookup_name for item in elements if isinstance(item, dict)]
+        matches = [
+            item
+            for item, raw_name in zip(activities, raw_names, strict=True)
+            if raw_name.casefold() == activity_ref.casefold()
+        ]
         if not matches:
             raise InvalidInputError(
                 f"OpenProject time entry activity '{activity_ref}' was not found."

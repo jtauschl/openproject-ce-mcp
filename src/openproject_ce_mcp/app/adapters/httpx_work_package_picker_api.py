@@ -11,7 +11,7 @@ from typing import Any
 
 from ...models import PrincipalSummary, RelationCandidateSummary, WatcherSummary
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import SUBJECT_LIMIT, unnamed
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
 from .httpx_principal_api import normalize_principal
@@ -24,7 +24,7 @@ def normalize_relation_candidate(payload: dict[str, Any]) -> RelationCandidateSu
     return RelationCandidateSummary(
         id=int(payload["id"]),
         display_id=payload.get("displayId"),
-        subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
+        subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or unnamed("work package"),
         type=_link_title(links.get("type")),
         status=_link_title(links.get("status")),
         project=_link_title(links.get("project")),
