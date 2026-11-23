@@ -4102,3 +4102,65 @@ async def test_a_form_with_a_version_field_keeps_the_version_link() -> None:
     assert committed["version"] == _VERSION_LINK
     assert "targetVersions" not in committed
     assert len(api.validate_create_calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("field", "key"), [("start_date", "startDate"), ("due_date", "dueDate")])
+async def test_update_clears_a_date_in_the_form_request_and_in_the_commit(field: str, key: str) -> None:
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR
+
+    service, api = _service()
+
+    result = await service.update(work_package_id=6, **{field: CLEAR}, subject="Renamed", confirm=True)
+
+    assert result.state == "confirmed"
+    assert api.validate_update_calls[0][1][key] is None and key in api.validate_update_calls[0][1]
+    assert api.commit_update_calls[0][1][key] is None
+    assert api.commit_update_calls[0][1]["subject"] == "Renamed"
+    other = "dueDate" if key == "startDate" else "startDate"
+    assert other not in api.commit_update_calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_update_with_both_dates_cleared_previews_both_nulls() -> None:
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR
+
+    service, api = _service()
+
+    result = await service.update(work_package_id=6, start_date=CLEAR, due_date=CLEAR, confirm=False)
+
+    assert result.state == "preview"
+    assert result.payload["startDate"] is None and result.payload["dueDate"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("field", "hidden"), [("start_date", "start_date"), ("due_date", "due_date")])
+async def test_update_refuses_to_clear_a_hidden_date_before_any_form_call(field: str, hidden: str) -> None:
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR
+
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": (hidden,)})
+    service, api = _service(settings=settings)
+
+    with pytest.raises(InvalidInputError, match=f"'{hidden}' is hidden"):
+        await service.update(work_package_id=6, **{field: CLEAR}, confirm=False)
+
+    assert api.validate_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_preview_of_a_clear_the_form_does_not_apply_keeps_the_date_visible() -> None:
+    """The commit is the form's echo, so a date the server keeps (a work package that follows a predecessor) stays in
+    the preview payload: the caller sees what will be sent, whatever it asked for."""
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR
+
+    class _KeepsTheDate(_FakeWorkPackageApi):
+        async def validate_update(self, work_package_ref: str, payload: dict) -> dict:
+            form = await super().validate_update(work_package_ref, payload)
+            form["_embedded"]["payload"] = {**payload, "startDate": "2026-12-14"}
+            return form
+
+    service, _ = _service(_KeepsTheDate())
+
+    result = await service.update(work_package_id=6, start_date=CLEAR, confirm=False)
+
+    assert result.payload["startDate"] == "2026-12-14"

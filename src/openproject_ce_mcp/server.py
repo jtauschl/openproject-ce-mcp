@@ -70,9 +70,8 @@ if it does not, it is not.
 On `update_work_package`, the items of `bulk_update_work_packages` and `update_project`,
 pass `"none"` to clear a field: work-package `assignee`,
 `responsible`, `version`, `sprint`, `parent`, `category`, `project_phase`,
-`estimated_time`, `remaining_time`, `duration`, and project `parent`. A `description` is cleared with `""`, as is a
-project's `status_explanation`. Omitting a field leaves it unchanged. Required fields
-(type, status, subject, project) cannot be cleared.
+`estimated_time`, `remaining_time`, `duration`, `start_date`, `due_date`, and project `parent`. A `description` is cleared with `""`, as is a
+project's `status_explanation`. Omitting a field leaves it unchanged. Required fields cannot be cleared.
 
 ## Some tool groups are opt-in
 

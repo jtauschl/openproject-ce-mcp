@@ -197,8 +197,8 @@ CLEAR_VERSION = object()
 
 # Generic "clear this field" sentinel, shared by both nullable HAL-link fields
 # (assignee, responsible, category, project_phase, sprint) and plain scalar
-# fields (estimated_time, remaining_time, duration -- cleared via <field>:
-# null directly in the payload). Distinguishes "clear this field" from "leave
+# fields (estimated_time, remaining_time, duration, start_date, due_date --
+# cleared via <field>: null directly in the payload). Distinguishes "clear this field" from "leave
 # unchanged" (None). parent/version keep their own dedicated sentinels above
 # instead of sharing this one, for historical reasons.
 CLEAR = object()
@@ -1397,8 +1397,8 @@ class WorkPackageService:
         category: Any = None,
         custom_fields: dict[str, Any] | None = None,
         parent_work_package_id: Any = None,
-        start_date: str | None = None,
-        due_date: str | None = None,
+        start_date: Any = None,
+        due_date: Any = None,
         estimated_time: Any = None,
         remaining_time: Any = None,
         duration: Any = None,
@@ -1423,10 +1423,16 @@ class WorkPackageService:
         if description is not None:
             hidden_fields.ensure_field_writable("work_package", "description", settings=self._settings)
             payload["description"] = {"format": "markdown", "raw": description}
-        if start_date is not None:
+        if start_date is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "start_date", settings=self._settings)
+            payload["startDate"] = None
+        elif start_date is not None:
             hidden_fields.ensure_field_writable("work_package", "start_date", settings=self._settings)
             payload["startDate"] = start_date
-        if due_date is not None:
+        if due_date is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "due_date", settings=self._settings)
+            payload["dueDate"] = None
+        elif due_date is not None:
             hidden_fields.ensure_field_writable("work_package", "due_date", settings=self._settings)
             payload["dueDate"] = due_date
         if estimated_time is CLEAR:
@@ -1974,8 +1980,8 @@ class WorkPackageService:
         category: Any = None,
         custom_fields: dict[str, Any] | None = None,
         parent_work_package_id: Any = None,
-        start_date: str | None = None,
-        due_date: str | None = None,
+        start_date: Any = None,
+        due_date: Any = None,
         estimated_time: Any = None,
         remaining_time: Any = None,
         duration: Any = None,

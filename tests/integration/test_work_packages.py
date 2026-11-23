@@ -11,7 +11,7 @@ import pytest
 
 from openproject_ce_mcp import tools
 from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION
-from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
+from openproject_ce_mcp.client import CLEAR, InvalidInputError, OpenProjectClient, PermissionDeniedError
 from openproject_ce_mcp.models import SortCriterion
 from openproject_ce_mcp.work_package_columns import COLUMN_FLOORS, GROUPABLE_FIELDS, SORTABLE_FIELDS
 
@@ -79,6 +79,74 @@ async def test_list_my_open_work_packages(client: OpenProjectClient, test_projec
     assert result is not None
     assert result.count > 0
     assert any(wp.id == created.work_package_id for wp in result.results)
+
+
+async def test_update_clears_the_dates_of_a_manual_work_package_and_a_scheduled_one_keeps_its_start(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    async def manual(label: str) -> int:
+        created = await client.work_package.create(
+            project=test_project,
+            type="Task",
+            subject=f"{_SUBJECT} clear {label}",
+            start_date="2026-12-07",
+            due_date="2026-12-11",
+            duration="P5D",
+            confirm=True,
+        )
+        assert created.ready, created.validation_errors
+        wp_ids.append(created.work_package_id)
+        return created.work_package_id
+
+    both, start_only, due_only = await manual("both"), await manual("start"), await manual("due")
+    # Both dates through the tool entry (`"none"` becomes the sentinel there), the single dates through the client.
+    through_tool = await tools.update_work_package(
+        _FakeContext(client), str(both), start_date="none", due_date="none", confirm=True
+    )
+    assert through_tool.ready and through_tool.state == "confirmed", through_tool.validation_errors
+    for wp_id, dates in ((start_only, {"start_date": CLEAR}), (due_only, {"due_date": CLEAR})):
+        cleared = await client.work_package.update(work_package_id=wp_id, **dates, confirm=True)
+        assert cleared.ready and cleared.state == "confirmed", cleared.validation_errors
+
+    stored = {wp_id: await client.work_package.get(wp_id) for wp_id in (both, start_only, due_only)}
+    assert (stored[both].start_date, stored[both].due_date, stored[both].duration) == (None, None, "P5D")
+    assert (stored[start_only].start_date, stored[start_only].due_date, stored[start_only].duration) == (
+        None,
+        "2026-12-11",
+        None,
+    )
+    assert (stored[due_only].start_date, stored[due_only].due_date, stored[due_only].duration) == (
+        "2026-12-07",
+        None,
+        None,
+    )
+
+    predecessor = await manual("predecessor")
+    follower = await client.work_package.create(
+        project=test_project, type="Task", subject=f"{_SUBJECT} clear follower", confirm=True
+    )
+    assert follower.ready, follower.validation_errors
+    wp_ids.append(follower.work_package_id)
+    related = await client._http.post(
+        f"work_packages/{predecessor}/relations",
+        json={"type": "precedes", "_links": {"to": {"href": f"/api/v3/work_packages/{follower.work_package_id}"}}},
+    )
+    assert related.status_code in (200, 201), related.text
+    lock_version = (await client._http.get(f"work_packages/{follower.work_package_id}")).json()["lockVersion"]
+    scheduled = await client._http.patch(
+        f"work_packages/{follower.work_package_id}", json={"lockVersion": lock_version, "scheduleManually": False}
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    derived = (await client.work_package.get(follower.work_package_id)).start_date
+    assert derived is not None
+
+    preview = await client.work_package.update(
+        work_package_id=follower.work_package_id, start_date=CLEAR, confirm=False
+    )
+    assert preview.payload["startDate"] == derived
+    ignored = await client.work_package.update(work_package_id=follower.work_package_id, start_date=CLEAR, confirm=True)
+    assert ignored.ready and ignored.state == "confirmed"
+    assert (await client.work_package.get(follower.work_package_id)).start_date == derived
 
 
 async def test_create_get_update_delete_work_package(

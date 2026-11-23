@@ -312,6 +312,18 @@ def test_server_instructions_name_every_field_the_update_validator_clears() -> N
     assert '`description` is cleared with `""`' in section.replace("\n", " ")
 
 
+def test_the_tools_doc_names_every_field_the_update_validator_clears() -> None:
+    """The clearing paragraph of `docs/tools.md` equals the validator, like the server instructions above. Boundary:
+    this keeps the documentation equal to the validator; it does not find a nullable field the validator never wraps."""
+    text = (ROOT / "docs" / "tools.md").read_text().replace("\n", " ")
+    paragraph = re.search(r"Clearing a field: (.*?) Omitting a field leaves it unchanged", text, re.DOTALL)
+    assert paragraph
+    named = re.search(r"work-package (.*?), and project `parent`", paragraph.group(1), re.DOTALL)
+    assert named
+    assert set(re.findall(r"`([^`]+)`", named.group(1))) == _clearable_work_package_fields()
+    assert "`bulk_update_work_packages`" in paragraph.group(1)
+
+
 @pytest.mark.parametrize("field", sorted(_clearable_work_package_fields()))
 def test_none_clears_every_field_the_server_instructions_name(field: str) -> None:
     parameters = inspect.signature(work_package_tools._validate_work_package_update_fields).parameters

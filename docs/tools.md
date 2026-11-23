@@ -37,14 +37,23 @@ and other flags as `true` or `false` (not `"yes"`, `"true"` or `1`), and a
 mistyped argument is rejected with a validation error before anything is sent
 to OpenProject.
 
-Clearing a field: on `update_work_package` and `update_project`, pass the string
-`"none"` to unassign a nullable association instead of changing it —
-work-package `assignee`, `responsible`, `version`, `sprint`, `parent`,
-`category`, `project_phase`, and project `parent`. Omitting a field leaves it
+Clearing a field: on `update_work_package`, the items of `bulk_update_work_packages`
+and `update_project`, pass the string `"none"` to clear a nullable field instead of
+changing it — work-package `assignee`, `responsible`, `version`, `sprint`, `parent`,
+`category`, `project_phase`, `estimated_time`, `remaining_time`, `duration`,
+`start_date`, `due_date`, and project `parent`. Omitting a field leaves it
 unchanged; `"none"` clears it. Required fields (type, status, subject, project)
 cannot be cleared. `target_versions` is the one exception to the `"none"`
 convention: it's a list, so it already disambiguates unchanged (omit it) from
 cleared (pass `[]`) without needing a sentinel string.
+
+Clearing `start_date` and `due_date`: the create tools do not take `"none"` (a new work package has nothing to
+clear). On a manually scheduled work package both dates are cleared; clearing both leaves `duration`, clearing one
+date drops it. A work package that OpenProject schedules itself keeps its date and the update still succeeds: the
+preview of a parent with dated children carries no date, that of a work package that follows a predecessor shows the
+derived date, and only the stored result shows whether a date was cleared. On a milestone a single date cannot be
+cleared (OpenProject refuses it and the preview is not ready).
+`update_work_package` reports the successful `PATCH`, not that a date was cleared.
 
 `version`/`target_versions`: `target_versions` is the canonical field — a list
 of version names/ids, supporting OpenProject's multi-version assignment

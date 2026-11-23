@@ -456,6 +456,8 @@ def _validate_optional_date(value: str | None, field_name: str) -> str | None:
     """Validate ISO 8601 date (YYYY-MM-DD)."""
     if value is None:
         return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be YYYY-MM-DD format")
     normalized = value.strip()
     try:
         datetime.date.fromisoformat(normalized)
