@@ -239,6 +239,9 @@ tool is about belongs to that record's entity.
 - **The reference of a batch read item** (`get_work_packages`, `id`) goes when the work package `id` or `display_id`
   is hidden, also when it is the reference the caller typed. The item keeps `index`, the position of the first
   occurrence of the reference in `ids`, so the caller can still tell the items apart.
+- **A hidden field named in `select`** is absent from the result, not `null`, in every select tool. The batch and
+  bulk work package tools return their item fields (`id`, `index`, `success` for `get_work_packages`; `index` and
+  `success` for the bulk tools) whatever `select` names, unless hidden (see the batch read item above).
 - **Echoes of the record a tool is about** go with its owner: `work_package_id` of the costs by type (a display id
   resolves to an id) with the work package `id` or `display_id`, `attachment_id` of an attachment's content and the
   `download_url` of an attachment with the attachment `id`, `project_id`, `project_name` and `project_identifier` of a

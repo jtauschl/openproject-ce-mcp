@@ -51,9 +51,11 @@ Not every context-shaping property is a saving. A caller needs to be able to
 tell "this field is unset (`null`)" apart from "this field was never returned" —
 otherwise a missing key is ambiguous. `elide_none`, derived per-tool from
 whether the tool's own signature accepts `select`, controls whether
-`None`-valued fields are dropped; a field requested via `select` is always kept
-even when its value is `null`; and `next_offset` is never dropped, since a
-caller pages until it comes back `null`, not until it's absent. This makes some
+`None`-valued fields are dropped; a field requested via `select` is kept even
+when its value is `null`, except a hidden field (absent) and the own fields of
+a batch or bulk item (`error` is left out while it is `null`); and `next_offset`
+is never dropped, since a caller pages until it comes back `null`, not until
+it's absent. This makes some
 responses slightly *larger* than a maximal-elision policy would — a deliberate,
 measured trade-off, not a regression.
 

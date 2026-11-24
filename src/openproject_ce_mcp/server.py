@@ -90,13 +90,12 @@ also need board read; `render_text`, work package read.
 Lists omit the `count`/`truncated` fields; a confirmed write omits the echoed
 request `payload` (its `result` carries the same). A tool with a `select` parameter returns
 only the fields you list (a list of names; an invalid name returns the allowed set).
-Without `select`, such tools omit fields whose value is `null` (empty lists and objects
+Without `select`, such tools omit fields whose value is `null` (empty lists/objects
 stay); request a field in `select` to keep it even when `null`.
 Tools without `select` keep `null` fields as explicit `null`. A paginated tool (its result
 has a `next_offset` field) always returns `next_offset`, an integer or `null`: page until
-it is `null`. With `select`, a failed batch-read or
-bulk-write item keeps its nested `work_package` / `result` as `null`; read the sibling
-`error`.
+it is `null`. With `select`, a batch or bulk item omits a null `error` and shows a missing
+`work_package`/`result` as `null`; a rejected write keeps its `result`.
 """
 
 

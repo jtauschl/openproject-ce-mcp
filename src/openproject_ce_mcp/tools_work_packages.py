@@ -37,7 +37,9 @@ from .models import (
     ActivityListResult,
     ActivitySummary,
     ActivityWriteResult,
+    BatchWorkPackageReadItemResult,
     BatchWorkPackageReadResult,
+    BulkWorkPackageItemResult,
     BulkWorkPackageWriteResult,
     EmojiReactionListResult,
     EmojiReactionSummary,
@@ -63,8 +65,6 @@ from .tool_params import (
 from .tool_types import IdOrName
 from .tools_runtime import _client_from_context, _run_tool, register_tool
 from .tools_validation import (
-    BATCH_READ_ITEM_WRAPPER_FIELDS,
-    BULK_ITEM_WRAPPER_FIELDS,
     _clearable,
     _clearable_duration,
     _clearable_ref,
@@ -486,7 +486,7 @@ async def get_work_packages(
     ids: list[int | str],
     text_limit: int | None = None,
     select: Annotated[
-        list[str] | None, select_field(WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS)
+        list[str] | None, select_field(WorkPackageDetail, wrapper_row=BatchWorkPackageReadItemResult)
     ] = None,
 ) -> BatchWorkPackageReadResult:
     """Get several work packages by id in one batch call.
@@ -504,7 +504,7 @@ async def get_work_packages(
     of select, so you can still tell which items succeeded (a null error is
     left out; id is left out while the work package id or display_id is
     hidden). index is the position of the first occurrence of the reference in
-    ids and stays then. Listing success or error in select is accepted and
+    ids and stays then. Listing index, success or error in select is accepted and
     changes nothing, while id doubles as a selectable work_package field.
 
     For batches with many full-detail items, set text_limit and/or select
@@ -540,7 +540,7 @@ async def get_work_packages(
         raise ValueError(f"Maximum {BATCH_READ_MAX_IDS} unique work packages per batch (got {len(unique_ids)})")
 
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    _validate_select(select, row_type=WorkPackageDetail, wrapper_fields=BATCH_READ_ITEM_WRAPPER_FIELDS)
+    _validate_select(select, row_type=WorkPackageDetail, wrapper_row=BatchWorkPackageReadItemResult)
 
     return await _run_tool(
         client.work_package.get_batch(ids=unique_ids, text_limit=safe_text_limit, positions=positions)
@@ -901,7 +901,7 @@ async def bulk_create_work_packages(
     items: list[BulkCreateWorkPackageItem],
     select: Annotated[
         list[str] | None,
-        select_field(WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS, unfilled=_BULK_CREATE_UNFILLED),
+        select_field(WorkPackageWriteResult, wrapper_row=BulkWorkPackageItemResult, unfilled=_BULK_CREATE_UNFILLED),
     ] = None,
     confirm: BulkConfirm = False,
 ) -> BulkWorkPackageWriteResult:
@@ -933,12 +933,15 @@ async def bulk_create_work_packages(
     ["ready", "work_package_id"]); an invalid name returns the allowed set.
     These are write-result fields (work_package_id, ready, state, ...), not work
     package fields: `display_id` and the rest come with `result`, the full
-    written work package. The index/success/error fields on each item are always
-    included regardless of select, so you can still tell which items succeeded;
-    listing them in select is accepted and changes nothing. For batches with many
-    items or long descriptions, set select proactively; an unconfirmed preview
-    echoes each item's full proposed payload, and an unbounded batch can exceed
-    the tool-result size limit and get redirected to a file.
+    written work package. Per item, index and success are always included; error
+    only on a failed item; a rejected item keeps its result with its
+    validation_errors; with select, an item whose write raised shows result: null
+    (without select it has no result). That tells you which items succeeded;
+    listing index, success or error in select is accepted and changes nothing.
+    For batches with many items or long descriptions, set select proactively; an
+    unconfirmed preview echoes each item's full proposed payload, and an
+    unbounded batch can exceed the tool-result size limit and get redirected to
+    a file.
 
     A per-item timeout is reported as that item's failure and does not stop
     the loop. If this call is cancelled outright (e.g. the host cancels the
@@ -957,7 +960,7 @@ async def bulk_create_work_packages(
     if not items:
         raise ValueError("items must not be empty.")
     _validate_select(
-        select, row_type=WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS, unfilled=_BULK_CREATE_UNFILLED
+        select, row_type=WorkPackageWriteResult, wrapper_row=BulkWorkPackageItemResult, unfilled=_BULK_CREATE_UNFILLED
     )
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):
@@ -1028,7 +1031,7 @@ async def bulk_update_work_packages(
     items: list[BulkUpdateWorkPackageItem],
     select: Annotated[
         list[str] | None,
-        select_field(WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS),
+        select_field(WorkPackageWriteResult, wrapper_row=BulkWorkPackageItemResult),
     ] = None,
     confirm: BulkConfirm = False,
 ) -> BulkWorkPackageWriteResult:
@@ -1073,7 +1076,7 @@ async def bulk_update_work_packages(
     client = _client_from_context(ctx)
     if not items:
         raise ValueError("items must not be empty.")
-    _validate_select(select, row_type=WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS)
+    _validate_select(select, row_type=WorkPackageWriteResult, wrapper_row=BulkWorkPackageItemResult)
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):
         if not isinstance(item, dict):

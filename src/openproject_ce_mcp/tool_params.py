@@ -11,12 +11,13 @@ tool bodies validate the values and report a rejection as ``[validation_error]``
 from __future__ import annotations
 
 from dataclasses import fields as dataclass_fields
-from typing import Annotated, Any
+from typing import Annotated, Any, get_args, get_type_hints
 
 from pydantic import ConfigDict, Field, with_config
 from pydantic.fields import FieldInfo
 from typing_extensions import Required, TypedDict
 
+from .presentation import nested_entity_field, wrapper_field_names
 from .tool_types import IdOrName
 
 Confirm = Annotated[
@@ -137,8 +138,31 @@ def allowed_select_fields(
 
 
 def select_field(
-    row_type: type, *, wrapper_fields: frozenset[str] = frozenset(), unfilled: frozenset[str] = frozenset()
+    row_type: type, *, wrapper_row: type | None = None, unfilled: frozenset[str] = frozenset()
 ) -> FieldInfo:
-    """Schema description for a ``select`` parameter, naming every field it accepts."""
-    allowed = ", ".join(sorted(allowed_select_fields(row_type, wrapper_fields=wrapper_fields, unfilled=unfilled)))
-    return Field(description=f"Fields to return; a requested unset field comes back as null. Allowed: {allowed}.")
+    """Schema description for a ``select`` parameter, naming every field it accepts.
+
+    ``wrapper_row`` is the item row of a batch or bulk tool that wraps ``row_type`` as its entity: the
+    item's own fields (and the key of the entity) come from the serializer's table, so the text cannot
+    name a field the serializer treats differently.
+    """
+    if wrapper_row is None:
+        allowed = ", ".join(sorted(allowed_select_fields(row_type, unfilled=unfilled)))
+        return Field(description=f"Fields to return; a requested unset field comes back as null. Allowed: {allowed}.")
+    entity_key = nested_entity_field(wrapper_row)
+    wrapper = wrapper_field_names(wrapper_row)
+    entity_fields = {field.name for field in dataclass_fields(row_type)}
+    hints = get_type_hints(wrapper_row)
+    optional = [name for name in wrapper if type(None) in get_args(hints[name])]
+    always = ", ".join(name for name in wrapper if name not in optional)
+    no_ops = ", ".join(name for name in wrapper if name not in entity_fields)
+    allowed = ", ".join(sorted(allowed_select_fields(row_type, wrapper_fields=frozenset(wrapper), unfilled=unfilled)))
+    optional_names = ", ".join(f"`{name}`" for name in optional)
+    return Field(
+        description=(
+            f"Fields of each item's `{entity_key}` to return; a requested unset field comes back as null. "
+            f"The item fields {always} come back whatever is selected; naming {no_ops} changes nothing; "
+            f"with select, an item that has no {entity_key} shows `{entity_key}: null`, read {optional_names}; "
+            f"{optional_names} is there only when the item failed. Allowed: {allowed}."
+        )
+    )

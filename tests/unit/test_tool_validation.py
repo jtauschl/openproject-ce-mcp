@@ -902,24 +902,39 @@ def test_board_query_json_strings_keep_a_fixed_cap() -> None:
         _validate_optional_filter_list([{"status": at_cap + "x"}])
 
 
-def test_select_wrapper_field_constants_match_the_item_models() -> None:
-    from dataclasses import fields
-
+def test_the_wrapper_fields_of_an_item_row_are_its_fields_without_the_entity_key() -> None:
     from openproject_ce_mcp.models import BatchWorkPackageReadItemResult, BulkWorkPackageItemResult
-    from openproject_ce_mcp.tools_validation import BATCH_READ_ITEM_WRAPPER_FIELDS, BULK_ITEM_WRAPPER_FIELDS
+    from openproject_ce_mcp.presentation import wrapper_field_names
 
-    assert BULK_ITEM_WRAPPER_FIELDS == {f.name for f in fields(BulkWorkPackageItemResult)} - {"result"}
-    assert BATCH_READ_ITEM_WRAPPER_FIELDS == {f.name for f in fields(BatchWorkPackageReadItemResult)} - {"work_package"}
+    assert wrapper_field_names(BulkWorkPackageItemResult) == ("index", "success", "error")
+    assert wrapper_field_names(BatchWorkPackageReadItemResult) == ("id", "index", "success", "error")
 
 
-def test_validate_select_accepts_wrapper_fields_without_returning_them() -> None:
+def test_a_row_that_wraps_no_entity_has_no_wrapper_fields() -> None:
     from openproject_ce_mcp.models import WorkPackageWriteResult
-    from openproject_ce_mcp.tools_validation import BULK_ITEM_WRAPPER_FIELDS, _validate_select
+    from openproject_ce_mcp.presentation import wrapper_field_names
+
+    with pytest.raises(ValueError, match="WorkPackageWriteResult wraps no entity"):
+        wrapper_field_names(WorkPackageWriteResult)
+
+
+def test_validate_select_accepts_wrapper_fields_and_returns_only_entity_fields() -> None:
+    from openproject_ce_mcp.models import (
+        BatchWorkPackageReadItemResult,
+        BulkWorkPackageItemResult,
+        WorkPackageDetail,
+        WorkPackageWriteResult,
+    )
+    from openproject_ce_mcp.tools_validation import _validate_select
 
     assert _validate_select(
-        ["index", "ready", "success"], row_type=WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS
+        ["index", "id", "subject"], row_type=WorkPackageDetail, wrapper_row=BatchWorkPackageReadItemResult
+    ) == ["id", "subject"]
+
+    assert _validate_select(
+        ["index", "ready", "success"], row_type=WorkPackageWriteResult, wrapper_row=BulkWorkPackageItemResult
     ) == ["ready"]
-    assert _validate_select(["index"], row_type=WorkPackageWriteResult, wrapper_fields=BULK_ITEM_WRAPPER_FIELDS) == []
+    assert _validate_select(["index"], row_type=WorkPackageWriteResult, wrapper_row=BulkWorkPackageItemResult) == []
     with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
         _validate_select(["index"], row_type=WorkPackageWriteResult)
 

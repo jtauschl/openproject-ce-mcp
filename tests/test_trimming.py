@@ -363,8 +363,8 @@ def test_batch_read_select_trims_nested_work_package_fields() -> None:
     out = _to_payload(_batch_read(), select=frozenset({"id", "subject"}))
     row = out["results"][0]
     assert sorted(row["work_package"]) == ["id", "subject"]
-    # wrapper fields always survive regardless of select, but None-valued ones
-    # (error=None on this successful item) are still elided (Phase 1).
+    # wrapper fields survive whatever select says when they have a value and are
+    # not hidden; error=None on this successful item is elided.
     assert sorted(row) == ["id", "index", "success", "work_package"]
 
 

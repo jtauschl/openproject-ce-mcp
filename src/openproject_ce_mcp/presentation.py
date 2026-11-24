@@ -89,20 +89,17 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
     - **selected fields**: requesting a field via ``select`` guarantees its
       presence in the response, even when its value is ``None`` — see
       ``_select_fields``. This is how a caller distinguishes "unset" from
-      "not requested" for select-capable tools. The one deliberate exception
-      in the other direction: a failed batch/bulk item's nested entity is
-      still emitted as an explicit ``null`` (see ``_select_fields``'s
-      ``_SELECT_NESTED_FIELD`` branch) regardless of ``select`` contents —
-      there, ``null`` means "this item failed", not "no value", and eliding
-      it would make failed items indistinguishable from a missing key.
+      "not requested" for select-capable tools. Two exceptions: a hidden
+      field is absent, and the own fields of a batch/bulk item follow the
+      rule in ``_select_fields``.
 
     ``select`` is applied to the top-level row list — ``results`` for list reads,
     or ``items`` for bulk write results — keeping just the requested fields per
     row. For a row type registered in ``_SELECT_NESTED_FIELD`` (e.g. a batch-read
     item that wraps a single work package, or a bulk item that wraps a single
     write result, rather than being the entity itself), ``select`` instead trims
-    that nested entity — the row's own wrapper fields (id/index/success/error, or
-    index/success/error) are kept regardless of ``select``. When the top-level
+    that nested entity and keeps the row's own wrapper fields (see
+    ``_select_fields``). When the top-level
     value itself has neither ``results``/``items`` NOR ``payload``/``next_offset``
     (a genuinely bare single-entity result, e.g. ``WorkPackageDetail`` —
     excluding ``payload``/``next_offset`` deliberately keeps a bare
@@ -180,15 +177,25 @@ def _has_field(value: Any, name: str) -> bool:
 
 
 # Rows that wrap a single nested entity instead of being the entity itself.
-# `select` trims the nested entity; the row's own non-None wrapper fields
-# (id/index/success/error, or index/success/error) survive regardless of `select`,
-# since a batch caller needs them to correlate results regardless of which
-# entity fields it asked for — a None-valued wrapper field is still elided,
-# same as everywhere else (the wrapper fields are never select-targetable).
+# A batch caller needs the row's own fields to correlate results, so `select`
+# trims only the entity (the rule is in `_select_fields`).
 _SELECT_NESTED_FIELD: dict[type, str] = {
     BatchWorkPackageReadItemResult: "work_package",
     BulkWorkPackageItemResult: "result",
 }
+
+
+def nested_entity_field(row_type: type) -> str | None:
+    """The key under which a batch/bulk item row holds its entity, or None for a row that is the entity."""
+    return _SELECT_NESTED_FIELD.get(row_type)
+
+
+def wrapper_field_names(row_type: type) -> tuple[str, ...]:
+    """The item's own fields, in declaration order: every field of a nested-entity row except the entity key."""
+    entity_key = nested_entity_field(row_type)
+    if entity_key is None:
+        raise ValueError(f"{row_type.__name__} wraps no entity, so it has no wrapper fields.")
+    return tuple(f.name for f in dataclass_fields(row_type) if f.name != entity_key)
 
 
 def _select_fields(row: Any, select: frozenset[str], *, elide_none: bool) -> Any:
@@ -196,12 +203,15 @@ def _select_fields(row: Any, select: frozenset[str], *, elide_none: bool) -> Any
 
     Most rows ARE the selectable entity. A row type in ``_SELECT_NESTED_FIELD``
     instead wraps a single nested entity — for those, ``select`` trims the
-    nested entity and the row's own non-None fields are kept in full (a
-    None-valued wrapper field is elided, same as elsewhere). The nested
-    entity's own key is a deliberate exception: when the entity itself is
-    missing (a failed batch/bulk item), that key is still emitted as an
-    explicit ``null`` rather than being dropped — it signals failure, not
-    absence of a value.
+    nested entity and the row's own non-None, non-hidden fields are kept in
+    full (a None-valued wrapper field is elided, same as elsewhere). The
+    nested entity's own key is a deliberate exception: when the item has no
+    entity at all (a read that failed, a write that raised), that key is
+    still emitted as an explicit ``null`` rather than being dropped, so that
+    a caller who selected entity fields sees the item has none instead of a
+    missing key it could read as trimmed away. A bulk write that was rejected
+    has an entity and keeps it. Naming a wrapper field changes nothing unless
+    the name is also an entity field, which then selects that entity field.
 
     For the plain (non-nested) case below, a field named in ``select`` is
     always emitted, even when its value is ``None`` — this is what lets a
@@ -226,9 +236,6 @@ def _select_fields(row: Any, select: frozenset[str], *, elide_none: bool) -> Any
             for f in dataclass_fields(row)
             if f.name != nested_field and f.name not in hidden and getattr(row, f.name) is not None
         }
-        # nested_field itself is deliberately exempt from None-elision: a
-        # failed batch/bulk item signals that via an explicit null here, not
-        # via a missing key (see _to_payload's docstring).
         nested = getattr(row, nested_field)
         if nested is None:
             out[nested_field] = None

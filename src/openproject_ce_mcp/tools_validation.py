@@ -17,6 +17,7 @@ from typing import Any
 from . import project_columns
 from .config import TEXT_LIMIT_MAX
 from .models import SortCriterion
+from .presentation import wrapper_field_names
 from .sort_criteria import parse_sort_by
 from .tool_params import allowed_select_fields
 from .work_package_columns import GROUPABLE_FIELDS, SORTABLE_FIELDS
@@ -847,13 +848,6 @@ def _clearable_duration(value: str | None, *, field_name: str, sentinel: object)
     return _clearable(value, lambda v: _validate_optional_duration(v, field_name=field_name), sentinel=sentinel)
 
 
-# Per-item wrapper fields of the batch/bulk tools. The presentation layer emits
-# them on every item regardless of ``select`` (a caller needs them to correlate
-# results), so naming them in ``select`` is accepted as a no-op rather than
-# rejected as an unknown entity field.
-BULK_ITEM_WRAPPER_FIELDS = frozenset({"index", "success", "error"})
-BATCH_READ_ITEM_WRAPPER_FIELDS = frozenset({"id", "index", "success", "error"})
-
 _SELECT_NOTHING_SENT = "No request was sent."
 
 
@@ -861,20 +855,24 @@ def _validate_select(
     select: list[str] | None,
     *,
     row_type: type,
-    wrapper_fields: frozenset[str] = frozenset(),
+    wrapper_row: type | None = None,
     unfilled: frozenset[str] = frozenset(),
 ) -> list[str] | None:
     """Validate a field-selection list against a result-row dataclass.
 
     Call it in the tool body before any request: the error says no request was
     sent, so a rejected confirmed write is known to have written nothing.
-    Returns the cleaned list of entity fields (or None); names in
-    ``wrapper_fields`` are accepted but not returned. The trimming wrapper
+    Returns the cleaned list of entity fields (or None). ``wrapper_row`` is the
+    item row of a batch or bulk tool: the item's own fields come back whatever
+    ``select`` says, so naming one is accepted rather than rejected as an
+    unknown entity field; a name that is no entity field changes nothing, one
+    that is also an entity field selects that entity field. The trimming wrapper
     (tools_runtime._normalize_select) reads the same ``select`` kwarg and
     applies it after the result resolves.
     """
     if select is None:
         return None
+    wrapper_fields = frozenset(wrapper_field_names(wrapper_row)) if wrapper_row is not None else frozenset()
     valid = allowed_select_fields(row_type, unfilled=unfilled)
     chosen: list[str] = []
     wrapper_only = False
