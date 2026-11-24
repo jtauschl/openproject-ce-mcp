@@ -62,6 +62,8 @@ LOOPS_OVER_LINKS: dict[str, str] = {
     "httpx_time_entry_api.py:normalize_time_entry_activity_raw": _REDUCED + " (activity projects, in the service)",
     "httpx_time_entry_api.py:project_link_title_and_id": "one project link of a time entry, checked per record",
     "httpx_board_api.py:_normalize_query_link_label": _INSTANCE_WIDE + " (the column, group and sort names of a query)",
+    "httpx_board_api.py:_filter_value_label": _INSTANCE_WIDE
+    + " (a filter value is read only for a link into an instance-wide collection)",
 }
 
 
@@ -121,7 +123,6 @@ _REDUCED_BY_SERVICE = "the service leaves it out for a project the read scope do
 OTHER_TITLE_READS: dict[str, str] = {
     "httpx_backlog_bucket_api.py:_defining_workspace_link": "the defining project, checked per record by the policy",
     "httpx_sprint_api.py:_defining_workspace_link": "the defining project, checked per record by the policy",
-    "httpx_board_api.py:_normalize_filter_values": "reduced to the href unless the filter is on a resource everyone sees alike",
     "httpx_document_api.py:normalize_document": _OWN,
     "httpx_emoji_reaction_api.py:normalize_emoji_reaction": _INSTANCE + " (a user)",
     "httpx_github_gitlab_link_api.py:normalize_github_pull_request_raw": _OWN,

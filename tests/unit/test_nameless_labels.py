@@ -160,19 +160,46 @@ INLINE: dict[tuple[str, str, NamelessKind], str] = {
         "get_project_work_package_context",
         "project",
     ): "test_the_project_context_of_a_nameless_project_is_labelled_without_its_id",
+    **{
+        (
+            "app/adapters/httpx_board_api.py",
+            "<module>",
+            kind,
+        ): "test_a_board_filter_value_link_without_a_title_reads_its_label"
+        for kind in (
+            "status",
+            "type",
+            "priority",
+            "role",
+            "user",
+            "principal",
+            "project phase definition",
+        )
+    },
 }
 
 
 def _label_sites() -> set[tuple[str, str, str]]:
+    """Every `unnamed(<literal>)` call: inside a function under its name, anywhere else as `<module>`."""
     found: set[tuple[str, str, str]] = set()
     for path in sorted([*(SRC / "app").rglob("*.py"), *SRC.glob("*.py")]):
         tree = ast.parse(path.read_text())
+        in_function: set[int] = set()
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             for node in ast.walk(function):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "unnamed":
+                    in_function.add(id(node))
                     found.add((str(path.relative_to(SRC)), function.name, ast.literal_eval(node.args[0])))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "unnamed"
+                and id(node) not in in_function
+            ):
+                found.add((str(path.relative_to(SRC)), "<module>", ast.literal_eval(node.args[0])))
     return found
 
 
@@ -252,3 +279,11 @@ def test_the_raw_name_of_a_resolver_is_never_a_label_or_the_text_none(payload: d
     from openproject_ce_mcp.app.adapters._text import lookup_name
 
     assert lookup_name(payload) == expected
+
+
+def test_a_board_filter_value_link_without_a_title_reads_its_label() -> None:
+    from openproject_ce_mcp.app.adapters import httpx_board_api
+
+    for collection, label in httpx_board_api._UNNAMED_KEPT_LINK.items():
+        assert httpx_board_api._normalize_filter_values([{"href": f"/api/v3/{collection}/{ID}"}]) == [label]
+        assert str(ID) not in label

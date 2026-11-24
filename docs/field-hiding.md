@@ -265,8 +265,13 @@ tool is about belongs to that record's entity.
   too, and a `search` filter matches the text shown (while the field it matches is visible).
   The allowlist now reads the trimmed name in every path (a pattern written against irregular whitespace or a name
   over 255 characters matches as it does for a project the server returned in a list).
-- **Not covered:** the filter values of a saved board that the server names by no title or name are shown as the
-  reference it sent, which can hold the id of a hidden record.
+- **The filter values of a saved board** are named by the title of their link only where every user sees the record
+  alike (a status, type, priority, role, user, group, principal or project phase definition; such a link without a
+  title reads `Unnamed <kind>`); a value in any other
+  collection reads `<kind> (name withheld)` (`version`, `project`, `work package`, `category`, `custom option`,
+  `budget`; any other collection, `placeholder_users` included, reads `record`), and a value that is no link reads
+  `record (name withheld)`. The reference the server sent is never shown, in scope or not. A write preview of the
+  board still echoes the stored references of its filters (a known limit of every write preview, tracked on its own).
 
 ## Help text `attribute_caption` and `caption`
 

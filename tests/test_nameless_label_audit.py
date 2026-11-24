@@ -44,12 +44,9 @@ EXEMPT: dict[tuple[str, str, str], str] = {
     ): _NOT_AN_ID,
     (
         "app/adapters/httpx_board_api.py",
-        "_normalize_filter_values",
-        "_trim_text(item.get('href'), limit=SUBJECT_LIMIT)",
-    ): (
-        "the href the server sent as the value of a board filter that names it by no title or name: a copy of "
-        "another record's reference, not a label built from this record's id (a stated limit of the ticket)"
-    ),
+        "_filter_value_label",
+        "_UNNAMED_KEPT_LINK[collection]",
+    ): "a lookup in a module-level table of `unnamed(<literal>)` labels, one per instance-wide collection: no id",
     ("app/adapters/httpx_group_api.py", "normalize_group_detail", "_link_title(item.get('_links', {}).get('self'))"): (
         "the title of the group's own link, text the server sent"
     ),
