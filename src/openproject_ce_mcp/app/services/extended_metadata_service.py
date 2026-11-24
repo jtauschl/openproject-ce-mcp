@@ -32,7 +32,7 @@ from ...models import (
     RenderedText,
     WorkingDayListResult,
 )
-from ..policies import access, hidden_fields, rendered_text_policy
+from ..policies import access, filter_policy, hidden_fields, rendered_text_policy
 from ..ports.extended_metadata_api import ExtendedMetadataApi
 
 
@@ -72,6 +72,7 @@ class ExtendedMetadataService:
 
     async def list_non_working_days(self, *, year: int | None = None) -> NonWorkingDayListResult:
         access.ensure_read_enabled("extended", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_non_working_days", settings=self._settings, year=year)
         records = await self._api.list_non_working_days(year=year)
         results = [
             hidden_fields.apply_hidden_fields("non_working_day", record.summary, settings=self._settings)

@@ -48,7 +48,7 @@ from ...config import Settings
 from ...models import UserNonWorkingTimeListResult, UserNonWorkingTimeSummary, UserNonWorkingTimeWriteResult
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..ports.user_non_working_time_api import UserNonWorkingTimeApi, UserNonWorkingTimeRecord
 from ..version_gate import call_version_gated
 from ._error_masking import redacted_server_errors
@@ -69,6 +69,7 @@ class UserNonWorkingTimeService:
         self, user_ref: str, *, year: int | None = None, offset: int = 1, limit: int | None = None
     ) -> UserNonWorkingTimeListResult:
         access.ensure_read_enabled("user_schedule", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_user_non_working_times", settings=self._settings, year=year)
         effective_limit = _effective_limit(limit, settings=self._settings)
         # NB: the server ignores offset/pageSize here and always returns the
         # full (year-filtered) collection -- fetch everything once (bounded

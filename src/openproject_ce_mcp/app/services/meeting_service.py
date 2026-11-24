@@ -28,7 +28,7 @@ from ...models import MeetingListResult, MeetingSummary, MeetingWriteResult
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError
 from ..pagination import clamp_limit, paginate_server, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.meeting_api import MeetingApi
 from ..ports.principal_ref import PrincipalRefResolver
@@ -79,6 +79,7 @@ class MeetingService:
         limit: int | None = None,
     ) -> MeetingListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_meetings", settings=self._settings, project=project)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

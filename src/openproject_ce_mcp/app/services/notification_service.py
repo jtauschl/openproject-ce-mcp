@@ -68,7 +68,7 @@ from ...config import Settings
 from ...models import NotificationListResult, NotificationMarkResult, NotificationSummary
 from ..errors import PermissionDeniedError
 from ..pagination import effective_limit
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.notification_api import NotificationApi, NotificationRecord
 from ..ports.readable_projects import ReadableProjects
@@ -105,6 +105,7 @@ class NotificationService:
         self, *, unread_only: bool = False, limit: int | None = None, offset: int = 1
     ) -> NotificationListResult:
         access.ensure_read_enabled("personal", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_notifications", settings=self._settings, unread_only=unread_only)
         resolved_limit = effective_limit(limit, settings=self._settings)
         if scope_policy.scope_allows_all(self._settings.read_projects):
             page = await self._api.list_all(unread_only=unread_only, offset=offset, limit=resolved_limit)

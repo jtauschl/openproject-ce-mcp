@@ -32,6 +32,43 @@ orders or labels by a hidden field (`version` and `target_versions` close togeth
 `estimated_time`, `remaining_time`, `percentage_done` and of a hidden custom field. Without
 this, the values would show up one query at a time.
 
+Every other list parameter in the table below is closed the same way: a parameter that selects the rows of a list by
+the value of a field is refused, before any request, while that field is hidden (`OpenProject <entity> field '<field>' is hidden by
+OPENPROJECT_HIDE_<ENTITY>_FIELDS and cannot be used to filter ('<parameter>').`). A search over a user's `email` is
+the sharpest case: with the address hidden from every result, the rows that match `@rival.com` would still show it.
+
+| Tool | Parameter | Refused while this is hidden |
+| --- | --- | --- |
+| `list_users` | `search` | user `name`, `login` or `email` |
+| `list_principals` | `search` | principal `name` (the formatted user name; the mail is not matched) |
+| `list_groups` | `search` | group `name` |
+| `list_boards` | `project`, `search` | board `project_id`/`project`, `name` |
+| `list_documents` | `project`, `search` | document `project_id`/`project`, `title` |
+| `list_news` | `project`, `search` | news `project_id`/`project`, `title` or `summary` |
+| `list_views` | `project`, `type`, `search` | view `project_id`/`project`, `type`, `name` |
+| `list_versions` | `project`, `search` | version `defining_project` or `sharing`, `name` |
+| `list_sprints`, `list_backlog_buckets` | `project`, `search` | `defining_workspace_id`/`defining_workspace`, `name` |
+| `get_category` | `project` | category `project_id`/`project` |
+| `list_grids` | `scope` | grid `scope` |
+| `list_project_storages` | `project` | project storage `project_id`/`project` |
+| `list_time_entries` | `project`, `work_package_id`, `user`, `spent_on_from`, `spent_on_to` | time entry `project`, `entity_type`/`entity_id`, `user`/`user_id`, `spent_on` |
+| `list_meetings`, `list_recurring_meetings` | `project` | `project_id`/`project` |
+| `list_recurring_meeting_occurrences` | `filter` (always) | recurring meeting `start_time` or `state`, meeting `start_time` |
+| `list_notifications` | `unread_only` | notification `read` |
+| `list_relations` | `relation_type` | relation `type` |
+| `list_capabilities` | `project` | capability `context` (only `capability_id` still works) |
+| `list_non_working_days` | `year` (always) | non-working day `date` |
+| `list_user_non_working_times` | `year` (always) | `start_date` or `end_date` |
+
+A parameter whose default selects (marked "always": the current year, `upcoming`) is refused whether or not the
+caller passes it. A parameter the caller must give names a container and is not refused: the `project` of
+`list_categories` and `list_project_memberships`, the user of the schedule tools; a row that the caller recognises
+elsewhere by its id is tied to that container. `user` and `principal` have separate hide settings, so hiding `email`
+of users does not hide it in `list_principals`. A user who hides `email` can no longer search users by name either:
+leave the field visible, or list without the filter. Not covered: the saved filters of a query or view, the order of a
+list the caller does not choose, the filters that depend on a field of another entity (`open_only`, `version_status`),
+which attachments `include_images` inlines, and a name or login that the caller types as a reference.
+
 A hidden custom field column is closed the same way: with `custom_fields` named in the entity's
 hide setting, or the field matched by `OPENPROJECT_HIDE_CUSTOM_FIELDS`, a `cf_<N>` entry in
 `sort_by`, `group_by` or `custom_field_filters` is refused on work packages and projects. Naming
@@ -222,7 +259,7 @@ tool is about belongs to that record's entity.
 - **A record the server sent without a name** is shown as `Unnamed <kind>` (`Unnamed status`, `Unnamed file link`), never
   under a text built from its id, so hiding `id` leaves nothing of the id behind. The label is display only: roles,
   time entry activities and projects are resolved by the name the server sent, a project allowlist reads that name
-  too, and a `search` filter matches the text shown.
+  too, and a `search` filter matches the text shown (while the field it matches is visible).
   The allowlist now reads the trimmed name in every path (a pattern written against irregular whitespace or a name
   over 255 characters matches as it does for a project the server returned in a list).
 - **Not covered:** the filter values of a saved board that the server names by no title or name are shown as the

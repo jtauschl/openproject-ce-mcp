@@ -38,6 +38,22 @@ UNEXERCISED: dict[str, tuple[str, str]] = {
         "is hidden by",
     ),
     "search_work_packages": ("filters by the subject field, which is hidden: refused before any read", "is hidden by"),
+    "list_capabilities": (
+        "filters by the context field, which is hidden: refused before any read",
+        "cannot be used to filter",
+    ),
+    "list_non_working_days": (
+        "selects by the date field through its default year, which is hidden: refused before any read",
+        "cannot be used to filter",
+    ),
+    "list_recurring_meeting_occurrences": (
+        "selects by the start time and state through its default filter, which are hidden: refused before any read",
+        "cannot be used to filter",
+    ),
+    "list_user_non_working_times": (
+        "selects by the dates through its default year, which are hidden: refused before any read",
+        "cannot be used to filter",
+    ),
     "render_text": (
         "is switched off while fields it would render are hidden, so nothing is rendered",
         "render_text is disabled",

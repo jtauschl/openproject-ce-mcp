@@ -41,7 +41,7 @@ from ...models import (
 )
 from ..api_href import api_href as _api_href
 from ..pagination import clamp_limit, paginate_server, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.recurring_meeting_api import RecurringMeetingApi
@@ -78,6 +78,7 @@ class RecurringMeetingService:
         self, *, project: str | None = None, offset: int = 1, limit: int | None = None
     ) -> RecurringMeetingListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_recurring_meetings", settings=self._settings, project=project)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,
@@ -389,6 +390,9 @@ class RecurringMeetingService:
         self, recurring_meeting_id: int, *, filter: str = "upcoming", limit: int | None = None
     ) -> RecurringMeetingOccurrenceListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
+        filter_policy.ensure_filter_allowed(
+            "list_recurring_meeting_occurrences", settings=self._settings, filter=filter
+        )
         current = await call_version_gated(
             lambda: self._api.get(recurring_meeting_id), feature="Recurring meeting occurrences", floor="17.4"
         )

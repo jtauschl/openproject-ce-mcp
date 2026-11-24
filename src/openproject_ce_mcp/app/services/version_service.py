@@ -16,7 +16,7 @@ from ...config import Settings
 from ...models import VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
 from ..api_href import api_href as _api_href
 from ..pagination import clamp_limit
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
@@ -68,6 +68,24 @@ class VersionService:
         context: ProjectResolutionContext | None = None,
     ) -> VersionListResult:
         access.ensure_read_enabled("version", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_versions", settings=self._settings, project=project, search=search)
+        return await self._list(project=project, search=search, offset=offset, limit=limit, context=context)
+
+    async def list_for_project_context(self, project: str, *, limit: int | None = None) -> VersionListResult:
+        """The versions of a project read with the project as a required container, not as a filter of a list: no
+        filter check applies."""
+        access.ensure_read_enabled("version", settings=self._settings)
+        return await self._list(project=project, search=None, offset=1, limit=limit, context=None)
+
+    async def _list(
+        self,
+        *,
+        project: str | None,
+        search: str | None,
+        offset: int,
+        limit: int | None,
+        context: ProjectResolutionContext | None,
+    ) -> VersionListResult:
         # limit must be clamped HERE, matching the original _resolve_limit contract
         # (min(requested, max_page_size, max_results)) -- fetch_version_page clamps
         # its own internal copy for the actual pagination math, but that clamped

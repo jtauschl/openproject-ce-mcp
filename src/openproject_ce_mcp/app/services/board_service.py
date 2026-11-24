@@ -59,7 +59,7 @@ from ..api_href import sort_by_path
 from ..errors import InvalidInputError, PermissionDeniedError
 from ..origin import origin_from_url as _origin_from_url
 from ..pagination import clamp_limit, paginate_client
-from ..policies import access, board_policy, hidden_fields
+from ..policies import access, board_policy, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.board_api import BoardApi
 from ..ports.project_ref import ProjectRefResolver
@@ -137,6 +137,7 @@ class BoardService:
         limit: int | None = None,
     ) -> BoardListResult:
         access.ensure_read_enabled("board", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_boards", settings=self._settings, project=project, search=search)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

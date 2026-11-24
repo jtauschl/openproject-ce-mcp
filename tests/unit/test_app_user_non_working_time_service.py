@@ -114,15 +114,24 @@ async def test_list_for_user_paginates_client_side() -> None:
 
 @pytest.mark.asyncio
 async def test_list_for_user_applies_hidden_field_masking() -> None:
-    settings = dataclasses.replace(_schedule_settings(), hidden_fields={"user_non_working_time": ("start_date",)})
+    settings = dataclasses.replace(_schedule_settings(), hidden_fields={"user_non_working_time": ("user_name",)})
     service = _service(settings=settings)
 
     result = await service.list_for_user("me")
     record = result.results[0]
 
-    assert record._hidden_keys == frozenset({"start_date"})
+    assert record._hidden_keys == frozenset({"user_name"})
     serialized = _to_payload(record)
-    assert "start_date" not in serialized
+    assert "user_name" not in serialized
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["start_date", "end_date"])
+async def test_list_for_user_is_refused_while_a_date_it_selects_by_is_hidden(field: str) -> None:
+    settings = dataclasses.replace(_schedule_settings(), hidden_fields={"user_non_working_time": (field,)})
+
+    with pytest.raises(InvalidInputError, match=f"field '{field}' is hidden by"):
+        await _service(settings=settings).list_for_user("me")
 
 
 # ── create ────────────────────────────────────────────────────────────────

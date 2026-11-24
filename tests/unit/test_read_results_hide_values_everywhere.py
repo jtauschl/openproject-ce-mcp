@@ -41,6 +41,7 @@ from _tools_test_helpers import FakeContext
 
 from openproject_ce_mcp import tools, tools_runtime
 from openproject_ce_mcp.app.adapters._text import NamelessKind
+from openproject_ce_mcp.app.policies import filter_policy
 from openproject_ce_mcp.app.policies.identity_fields import READ_IDENTITY_FIELDS
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import HIDE_FIELD_ENV_BY_ENTITY, TOOL_GROUPS
@@ -293,7 +294,10 @@ def _resolving_server(request: httpx.Request) -> httpx.Response:
 
 
 async def _run_probe(
-    tool: str, arguments_: dict[str, Any], hidden: dict[str, tuple[str, ...]] | None
+    tool: str,
+    arguments_: dict[str, Any],
+    hidden: dict[str, tuple[str, ...]] | None,
+    refusals: list[Exception] | None = None,
 ) -> tuple[Any, Any] | None:
     function = tools_runtime._TOOL_FUNCTIONS[tool]
     client = OpenProjectClient(
@@ -305,7 +309,9 @@ async def _run_probe(
     await client.initialize()
     try:
         result = await function(FakeContext(client), **{**arguments(function), **OVERRIDES.get(tool, {}), **arguments_})
-    except Exception:  # noqa: BLE001 -- a hidden owner can stop a read; the run has no output to scan
+    except Exception as error:  # noqa: BLE001 -- a hidden owner can stop a read; the run has no output to scan
+        if refusals is not None:
+            refusals.append(error)
         return None
     finally:
         await client.aclose()
@@ -347,6 +353,13 @@ def _has_member(node: Any, member: str) -> bool:
     return isinstance(node, list) and any(_has_member(child, member) for child in node)
 
 
+def _selects_by(tool: str, entity: str, field: str) -> bool:
+    return any(
+        row_tool == tool and row.always and (entity, field) in row.owners
+        for (row_tool, _), row in filter_policy.FILTER_FIELDS.items()
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("cls", "member", "entity", "field"), _member_rows())
 async def test_a_member_leaves_with_each_of_its_owners(cls: str, member: str, entity: str, field: str) -> None:
@@ -355,7 +368,15 @@ async def test_a_member_leaves_with_each_of_its_owners(cls: str, member: str, en
     assert plain is not None, "the probe call is refused"
     values = [getattr(item, member) for item in _instances(plain[0], cls) if getattr(item, member) is not None]
     assert values, f"{cls}.{member} has no value to hide under this probe"
-    hidden = await _run_probe(tool, arguments_, {entity: (field,)})
+    refusals: list[Exception] = []
+    hidden = await _run_probe(tool, arguments_, {entity: (field,)}, refusals)
+    if _selects_by(tool, entity, field):
+        # The tool selects its rows by this owner and is refused while it is hidden: nothing is shown at all.
+        assert hidden is None
+        assert len(refusals) == 1, refusals
+        assert "cannot be used to filter" in str(refusals[0])
+        assert f"field '{field}' is hidden by {HIDE_FIELD_ENV_BY_ENTITY[entity]}" in str(refusals[0])
+        return
     assert hidden is not None
     if all(isinstance(value, int) and value < SENTINEL_BASE for value in values) or (cls, member) in SAME_FACT:
         # A small number (the project ids stay 1 and 97 to 99 in the fake) is not searchable, and a value that stays in

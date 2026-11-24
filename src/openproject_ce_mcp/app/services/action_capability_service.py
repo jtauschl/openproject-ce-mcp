@@ -58,7 +58,7 @@ from ..errors import InvalidInputError
 from ..origin import api_prefix_from_url
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.action_capability_api import ActionCapabilityApi
 from ..ports.project_ref import ProjectRefResolver
@@ -127,6 +127,7 @@ class ActionCapabilityService:
         limit: int | None = None,
     ) -> CapabilityListResult:
         access.ensure_read_enabled("membership", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_capabilities", settings=self._settings, project=project)
         if project is None and capability_id is None:
             raise InvalidInputError("At least one of project or capability_id is required for capabilities.")
         effective_limit = _effective_limit(limit, settings=self._settings)

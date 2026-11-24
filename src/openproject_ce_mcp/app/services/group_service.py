@@ -47,7 +47,7 @@ from ...models import GroupDetail, GroupListResult, GroupSummary, GroupWriteResu
 from ..api_href import api_href as _api_href
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..ports.group_api import GroupApi
 from ._error_masking import redacted_server_errors
 from ._payload_masking import stamped_results
@@ -68,6 +68,7 @@ class GroupService:
         self, *, search: str | None = None, offset: int = 1, limit: int | None = None
     ) -> GroupListResult:
         access.ensure_read_enabled("admin", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_groups", settings=self._settings, search=search)
         effective_limit = _effective_limit(limit, settings=self._settings)
 
         if search is not None:

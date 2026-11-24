@@ -27,7 +27,7 @@ from collections.abc import Mapping
 from ...config import Settings
 from ...models import CategoryListResult, CategorySummary
 from ..errors import NotFoundError
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.category_api import CategoryApi
 from ..ports.project_ref import ProjectRefResolver
@@ -65,6 +65,7 @@ class CategoryService:
 
     async def get(self, *, category_id: int, project_ref: str | None = None) -> CategorySummary:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("get_category", settings=self._settings, project=project_ref)
         record = await self._api.get(category_id)
         scope_policy.ensure_project_link_allowed(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
