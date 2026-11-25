@@ -193,3 +193,11 @@ OTHER_ENTITY_OWNERS_OF_FILTER: dict[str, tuple[tuple[str, str], ...]] = {
     "overdue_only": (("status", "is_closed"),),
     "version_status": (("version", "status"),),
 }
+
+# The project fields that show where a project sits in the hierarchy. A selection that expands a project to its
+# subprojects shows the hierarchy through the rows it returns, so these fields close it.
+PROJECT_HIERARCHY_OWNERS: tuple[tuple[str, str], ...] = (
+    ("project", "parent_id"),
+    ("project", "parent_name"),
+    ("project", "ancestors"),
+)

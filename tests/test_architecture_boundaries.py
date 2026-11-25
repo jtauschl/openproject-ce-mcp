@@ -57,6 +57,7 @@ _SHARED_KERNEL = {
     "api_href",
     "form_result",
     "link_titles",
+    "stored_query",
 }  # module names directly under app/, not layer dirs
 
 

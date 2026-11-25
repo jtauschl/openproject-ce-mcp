@@ -16,6 +16,7 @@ from ...work_package_columns import (
     FILTER_RESULT_FIELDS,
     OTHER_ENTITY_OWNERS_OF_COLUMN,
     OTHER_ENTITY_OWNERS_OF_FILTER,
+    PROJECT_HIERARCHY_OWNERS,
 )
 from ..errors import InvalidInputError
 from . import hidden_fields
@@ -32,6 +33,12 @@ def _hidden(owners: Owners, *, settings: Settings) -> tuple[str, str] | None:
         ((entity, field) for entity, field in owners if hidden_fields.field_hidden(entity, field, settings=settings)),
         None,
     )
+
+
+def project_hierarchy_hidden(*, settings: Settings) -> bool:
+    """True when a project field that shows where a project sits in the hierarchy is hidden: a selection that
+    expands a project to its subprojects would then show the hierarchy through the rows it returns."""
+    return _hidden(PROJECT_HIERARCHY_OWNERS, settings=settings) is not None
 
 
 def ensure_query_allowed(

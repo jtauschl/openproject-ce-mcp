@@ -16,6 +16,8 @@ and 0.2.0 the first one published to PyPI.
 
 - **Breaking:** a filter on a hidden field is refused on every list in `docs/field-hiding.md`: hidden `email` closes the `search` of `list_users`, hidden `project` the project filter of time entries.
 - **Breaking:** the status, type, priority, sprint, bucket and user sorts, `open_only`, `overdue_only`, `version_status`, `lft` and `include_images` follow the hiding of the entity that shows the value.
+- **Breaking:** `execute_query` refuses a saved query whose filter, sort or group-by uses a hidden field ([details](docs/field-hiding.md)).
+- **Breaking:** the `project` filter of `list_work_packages` and `search_work_packages` leaves out subprojects while the project hierarchy is hidden.
 - **Breaking:** help text `attribute_caption` is now the attribute label (null on 16.x before) and the stored caption is the new `caption`; add `caption` to hide lists naming `attribute_caption`.
 
 ### Removed

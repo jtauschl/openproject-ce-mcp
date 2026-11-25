@@ -94,7 +94,12 @@ OWN_POLICY: dict[str, tuple[str, ...]] = {
 # A parameter that selects or orders by a hidden field and has a ticket of its own.
 DEFERRED: dict[tuple[str, str], str] = {
     ("get_user", "user"): "OPM-913",
-    ("execute_query", "query_id"): "OPM-910",
+}
+
+# A parameter that names a stored selection: the filters, sort and group of the saved query run server-side, and
+# `stored_query_policy` judges the definition of every page (`test_stored_query_service.py`).
+STORED_SELECTION: dict[tuple[str, str], str] = {
+    ("execute_query", "query_id"): "the saved query's own filters, sort and group, judged on every page",
 }
 
 # The record a tool reads, the parent a list is read from, or text it renders: no selection by a field.
@@ -208,6 +213,8 @@ def test_every_parameter_of_every_read_tool_is_classified_exactly_once() -> None
             add((tool, name), "own policy")
     for key in DEFERRED:
         add(key, "deferred")
+    for key in STORED_SELECTION:
+        add(key, "stored selection")
     for tool, names in NOT_A_FILTER.items():
         for name in names:
             add((tool, name), "record or parent")

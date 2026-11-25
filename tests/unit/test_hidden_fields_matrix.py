@@ -19,7 +19,7 @@ import json
 import httpx
 import pytest
 from _client_test_helpers import _base_settings, serving_projects
-from _read_tool_harness import CANARY, FOREIGN, OVERRIDES, READABLE, arguments, serve
+from _read_tool_harness import CANARY, FOREIGN, OVERRIDES, READABLE, arguments, item, serve
 from _tools_test_helpers import FakeContext
 
 from openproject_ce_mcp import tools, tools_runtime
@@ -61,8 +61,23 @@ UNEXERCISED: dict[str, tuple[str, str]] = {
 }
 
 
+def _saved_query_run(request: httpx.Request) -> httpx.Response:
+    """The page a saved query answers with: its stored definition (nothing selected, ordered or grouped) and the work
+    packages of the readable project, so the stored selection passes and the rows reach the masking."""
+    package = item("WorkPackage", 5, READABLE, "readable")
+    body = {
+        **item("Query", 5, READABLE, "readable"),
+        "filters": [],
+        "includeSubprojects": False,
+        "_links": {"sortBy": [], "groupBy": {"href": None}, "project": {"href": None}},
+        "_embedded": {"results": {"total": 1, "_embedded": {"elements": [package]}}},
+    }
+    return httpx.Response(200, json=body, request=request)
+
+
 def _server(request: httpx.Request) -> httpx.Response:
-    response = serve(request)
+    is_run = request.url.path.removeprefix("/api/v3/").strip("/") == "queries/5" and "pageSize" in request.url.params
+    response = _saved_query_run(request) if is_run else serve(request)
     text = response.content.decode().replace('"readable"', f'"{CANARY}"').replace('"global"', f'"{CANARY}"')
     return httpx.Response(200, content=text, headers={"content-type": "application/json"}, request=request)
 

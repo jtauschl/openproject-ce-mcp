@@ -82,8 +82,28 @@ that does:
 
 A column whose value the row shows under its own field (project, category, version, the names of the users and the
 sprint, the phase, which the row leaves out while it is inactive) is decided by the work package setting. Not
-covered: the saved filters of a query or view, the order of a list the caller does not choose (the sort by the work
-package `id` and the default order), and a name, login or display id that the caller types as a reference.
+covered: the order of a list the caller does not choose (the sort by the work package `id` and the default
+order), and a name, login or display id that the caller types as a reference.
+
+`execute_query` runs the filters, the sort and the group-by that the saved query stores, so the same rule is applied
+to that stored definition on every page, before any row of the page is read and before a result is returned: a
+filter, a sort or a group by a field that a hide setting hides, or whose value another entity's hidden field shows
+(the closed flag of a status behind the operators `o` and `c`, the status of a version behind `o`, `c` and `l`, the
+milestone flag of a type), is refused with the name of the part. A filter is judged by everything it can select by,
+whatever value it stores: a filter that reaches the hierarchy or the relations for one of its values is refused when
+either is hidden, also for a value that does not. A text search is refused while any custom field is hidden, one
+pattern of `OPENPROJECT_HIDE_CUSTOM_FIELDS` included, because it matches their values. A query bound to a project
+selects by the project of the rows and is refused while the work package `project` is hidden, whatever the flag
+says. The flag `includeSubprojects` selects without a filter and follows the same rule: with the flag on, a project
+filter always expands to the subprojects, and the bound project does so unless a `subprojectId` filter of its own
+takes its place, so the project `parent_id`, `parent_name` and `ancestors` close both; with the flag off, or for a
+global query without a project filter, only this expansion check falls away. A part the server may add and this server
+does not know, and a definition that cannot be read, are refused while any hide setting is active. A saved query that
+is refused here cannot be run in part: almost every saved query filters by `status`, so with the work package `status`
+or the status `is_closed` hidden `execute_query` refuses nearly every query, and with the project `parent_id` hidden
+every project-bound one that includes subprojects. The typed `project` filter of `list_work_packages` and
+`search_work_packages` names the project alone, without its subprojects, while one of those project fields is hidden.
+A board write does not apply this rule, and `get_board` shows the filter key, not rows.
 
 A hidden custom field column is closed the same way: with `custom_fields` named in the entity's
 hide setting, or the field matched by `OPENPROJECT_HIDE_CUSTOM_FIELDS`, a `cf_<N>` entry in

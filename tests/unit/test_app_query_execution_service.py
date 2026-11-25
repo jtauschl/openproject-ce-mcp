@@ -9,9 +9,11 @@ from openproject_ce_mcp.app.errors import PermissionDeniedError
 from openproject_ce_mcp.app.ports.query_execution_api import QueryResultPage
 from openproject_ce_mcp.app.ports.work_package_api import WorkPackageRecord
 from openproject_ce_mcp.app.services.query_execution_service import QueryExecutionService
+from openproject_ce_mcp.app.stored_query import StoredQuery
 from openproject_ce_mcp.models import WorkPackageSummary
 
 PROJECT_ID_TO_IDENTIFIER = {1: "demo", 2: "secret"}
+PLAIN_DEFINITION = StoredQuery(filters=(), sort_by=(), group_by=None, include_subprojects=False, project_scoped=False)
 
 
 def _raw_wp(wp_id: int, *, project_href: str = "/api/v3/projects/1", project_title: str = "Demo") -> dict:
@@ -91,7 +93,9 @@ class _FakeQueryExecutionApi:
         self.execute_calls.append((query_id, offset, page_size))
         index = offset - 1
         elements = self._pages[index] if index < len(self._pages) else []
-        return QueryResultPage(raw_elements=elements, server_total=sum(len(page) for page in self._pages))
+        return QueryResultPage(
+            raw_elements=elements, server_total=sum(len(page) for page in self._pages), definition=PLAIN_DEFINITION
+        )
 
 
 class _FakeWorkPackageApi:

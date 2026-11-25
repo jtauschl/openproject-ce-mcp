@@ -185,6 +185,7 @@ def test_every_message_template_that_quotes_a_value_has_a_reason() -> None:
     [
         ("status_id", "status"),
         ("custom_field_5", "customField5"),
+        ("cf_5", "customField5"),
         ("start_date", "startDate"),
         ("done_ratio", "percentageDone"),
         ("estimated_hours", "estimatedTime"),
