@@ -68,13 +68,18 @@ licenses() {
 
 # The rules are the handbook's Python packs at a pinned commit of semgrep-rules (tools/install-semgrep-rules.sh); `--config auto`
 # would fetch whatever the registry serves today and refuses `--metrics off`.
+# Semgrep bounds every rule on every file by wall-clock time (`--timeout`, 5 s by default) and `--strict` makes such a
+# timeout fatal: a scan that left a rule unrun on a file is refused (a broken rule file fails without `--strict`). On a
+# loaded machine 5 s is too little: with 56 busy processes on 14 cores the default failed with rc=2, and with the bound
+# raised the slowest rule and file took 9.5 s (0.2 s on a quiet machine). 60 s is six times that worst case; the
+# explicit flag also overrides a developer's SEMGREP_TIMEOUT.
 semgrep() {
     local status=0
     semgrep_rules_dir="$(mktemp -d)"
     trap 'rm -rf "${semgrep_rules_dir:-}"' EXIT
     {
         tools/install-semgrep-rules.sh "$semgrep_rules_dir" &&
-            lint_tool semgrep scan --config "$semgrep_rules_dir" --error --strict --metrics off --disable-version-check src/openproject_ce_mcp
+            lint_tool semgrep scan --config "$semgrep_rules_dir" --error --strict --timeout 60 --metrics off --disable-version-check src/openproject_ce_mcp
     } || status=$?
     rm -rf "$semgrep_rules_dir"
     return "$status"
