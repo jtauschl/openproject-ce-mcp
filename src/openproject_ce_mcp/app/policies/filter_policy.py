@@ -59,6 +59,7 @@ FILTER_FIELDS: Mapping[tuple[str, str], FilterRow] = {
     ("list_backlog_buckets", "search"): FilterRow("backlog_bucket", ("name",)),
     ("get_category", "project"): FilterRow("category", _PROJECT_OF),
     ("list_grids", "scope"): FilterRow("grid", ("scope",)),
+    ("list_work_package_attachments", "include_images"): FilterRow("attachment", ("content_type", "file_size_bytes")),
     ("list_project_storages", "project"): FilterRow("project_storage", _PROJECT_OF),
     ("list_time_entries", "project"): FilterRow("time_entry", ("project",)),
     ("list_time_entries", "work_package_id"): FilterRow("time_entry", ("entity_type", "entity_id")),

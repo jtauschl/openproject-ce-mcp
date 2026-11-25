@@ -115,7 +115,8 @@ def group_by_description() -> str:
 
 # The result fields that show what a sort or group column orders or labels by. Ordering or grouping
 # by a field shows its values just as the field does, so a hidden field closes the column too. A
-# column without an entry names a value no result field carries and nothing can hide.
+# column without an entry names a value no work package field carries; another entity may show it
+# (`OTHER_ENTITY_OWNERS_OF_COLUMN`), and a value no entity shows cannot be hidden.
 COLUMN_RESULT_FIELDS: dict[str, tuple[str, ...]] = {
     "project": ("project",),
     "subject": ("subject",),
@@ -143,6 +144,24 @@ COLUMN_RESULT_FIELDS: dict[str, tuple[str, ...]] = {
     "project_phase": ("project_phase",),
     "sprint": ("sprint",),
 }
+# The same rule for a value of another entity: a column that orders or labels by a value the work package field
+# does not show, and some other entity does, is closed by that entity's setting too. A name or other value that
+# the work package field shows (project, category, version, the users) is decided by the work package setting.
+OTHER_ENTITY_OWNERS_OF_COLUMN: dict[str, tuple[tuple[str, str], ...]] = {
+    "status": (("status", "position"),),
+    "type": (("type", "position"),),
+    "priority": (("priority", "position"),),
+    "observed_in_versions": (("version", "name"),),
+    # The users sort by lastname, firstname, then id: the work package row shows the names, not the id that breaks a
+    # tie between equal names; an assignee or responsible can be a group. The sprint sorts by its name (shown by the
+    # work package) and then by its dates; a bucket by its name, which the row does not show.
+    "author": (("user", "id"), ("principal", "id")),
+    "assigned_to": (("user", "id"), ("group", "id"), ("principal", "id")),
+    "assignee": (("user", "id"), ("group", "id"), ("principal", "id")),
+    "responsible": (("user", "id"), ("group", "id"), ("principal", "id")),
+    "sprint": (("sprint", "start_date"), ("sprint", "finish_date")),
+    "backlog_bucket": (("backlog_bucket", "name"),),
+}
 COLUMNS_WITHOUT_RESULT_FIELD = frozenset({"id", "observed_in_versions", "story_points", "position", "backlog_bucket"})
 
 # The same for the filter parameters of the list and search tools.
@@ -166,4 +185,11 @@ FILTER_RESULT_FIELDS: dict[str, tuple[str, ...]] = {
     "due_between": ("due_date",),
     "overdue_only": ("due_date", "status"),
     "due_within_days": ("due_date",),
+}
+
+# The filters that select by a value of another entity that the work package field does not show.
+OTHER_ENTITY_OWNERS_OF_FILTER: dict[str, tuple[tuple[str, str], ...]] = {
+    "open_only": (("status", "is_closed"),),
+    "overdue_only": (("status", "is_closed"),),
+    "version_status": (("version", "status"),),
 }

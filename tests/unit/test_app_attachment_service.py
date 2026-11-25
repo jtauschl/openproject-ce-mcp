@@ -873,16 +873,34 @@ async def test_get_content_truncated_text_size_bytes_is_none_when_file_size_hidd
 
 
 @pytest.mark.asyncio
-async def test_list_with_images_size_bytes_is_none_when_file_size_hidden() -> None:
-    """The include_images entries go through the same metadata funnel."""
-    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("file_size_bytes",)})
+@pytest.mark.parametrize("field", ["content_type", "file_size_bytes"])
+async def test_include_images_is_refused_before_any_request_while_a_field_that_selects_the_images_is_hidden(
+    field: str,
+) -> None:
+    """The images are chosen by the stored content type and the size budget: a hidden field would still decide."""
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": (field,)})
     api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
-    result = await _service(api=api, settings=settings).list_for_work_package_with_images(9)
 
-    assert result.list_result.images is not None
-    assert [entry.outcome for entry in result.list_result.images] == ["image"]
-    assert result.list_result.images[0].size_bytes is None
-    assert [outcome.image_bytes for outcome in result.included] == [b"PNG"]
+    with pytest.raises(InvalidInputError) as refusal:
+        await _service(api=api, settings=settings).list_for_work_package_with_images(9, include_images=True)
+
+    assert str(refusal.value) == (
+        f"OpenProject attachment field '{field}' is hidden by OPENPROJECT_HIDE_ATTACHMENT_FIELDS "
+        "and cannot be used to filter ('include_images')."
+    )
+    assert api.list_for_work_package_calls == [] and api.get_content_calls == []
+
+
+@pytest.mark.asyncio
+async def test_without_include_images_the_plain_listing_comes_back_whatever_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("content_type", "file_size_bytes")})
+    api = _FakeAttachmentApi([_png_record()], contents={5: AttachmentContent(b"PNG", "image/png", False)})
+
+    result = await _service(api=api, settings=settings).list_for_work_package_with_images(9, include_images=False)
+
+    assert result.included == () and result.list_result.images is None
+    assert [item.id for item in result.list_result.results] == [5]
+    assert api.get_content_calls == []
 
 
 # --- list_for_work_package_with_images ------------------------------------------

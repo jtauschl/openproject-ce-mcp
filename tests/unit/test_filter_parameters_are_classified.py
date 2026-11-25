@@ -93,7 +93,6 @@ OWN_POLICY: dict[str, tuple[str, ...]] = {
 
 # A parameter that selects or orders by a hidden field and has a ticket of its own.
 DEFERRED: dict[tuple[str, str], str] = {
-    ("list_work_package_attachments", "include_images"): "OPM-914",
     ("get_user", "user"): "OPM-913",
     ("execute_query", "query_id"): "OPM-910",
 }
@@ -550,16 +549,11 @@ CLIENT_SITES: dict[tuple[str, str], dict[str, str]] = {
         "search_key in (record.summary.name or '').casefold()": "search",
     },
     ("list_work_package_attachments", "AttachmentService.list_for_work_package_with_images"): {
-        "content_type in _INLINE_IMAGE_TYPES": "deferred",
+        "content_type in _INLINE_IMAGE_TYPES": "include_images",
         "record.summary.container_id == resolved_id": "parent",
         "record.summary.container_id == work_package_id": "parent",
         "record.summary.container_type == 'WorkPackage'": "parent",
-        "remaining <= 0": "deferred",
-    },
-    ("list_work_package_attachments", "AttachmentService.list_for_work_package"): {
-        "record.summary.container_id == resolved_id": "parent",
-        "record.summary.container_id == work_package_id": "parent",
-        "record.summary.container_type == 'WorkPackage'": "parent",
+        "remaining <= 0": "include_images",
     },
     ("list_work_packages", "WorkPackageService.list"): {
         "skipped < skip_count": "paging",

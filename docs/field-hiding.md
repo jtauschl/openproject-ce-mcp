@@ -65,9 +65,25 @@ caller passes it. A parameter the caller must give names a container and is not 
 `list_categories` and `list_project_memberships`, the user of the schedule tools; a row that the caller recognises
 elsewhere by its id is tied to that container. `user` and `principal` have separate hide settings, so hiding `email`
 of users does not hide it in `list_principals`. A user who hides `email` can no longer search users by name either:
-leave the field visible, or list without the filter. Not covered: the saved filters of a query or view, the order of a
-list the caller does not choose, the filters that depend on a field of another entity (`open_only`, `version_status`),
-which attachments `include_images` inlines, and a name or login that the caller types as a reference.
+leave the field visible, or list without the filter. `include_images` of `list_work_package_attachments` is refused
+while the attachment `content_type` or `file_size_bytes` is hidden: those two choose the images that are inlined.
+
+A work package filter or order whose value the work package row does not show is closed by the setting of the entity
+that does:
+
+- `open_only` and `overdue_only` by the status `is_closed`, `version_status` by the version `status`;
+- the sort and group columns `status`, `type` and `priority` by the `position` of that entity;
+- `sprint` by the sprint `start_date` and `finish_date` (the sort orders by the name, which the row shows, and then by
+  the dates), `backlog_bucket` and `observed_in_versions` by the `name` of the bucket or version;
+- `author`, `assignee`, `assigned_to` and `responsible` by the `id` of the user and of the principal (and of the
+  group for the last three): the sort orders by the names, which the row shows, and then by the id, so a hidden id
+  closes these sorts;
+- the project column `lft` by `parent_id` and `parent_name`.
+
+A column whose value the row shows under its own field (project, category, version, the names of the users and the
+sprint, the phase, which the row leaves out while it is inactive) is decided by the work package setting. Not
+covered: the saved filters of a query or view, the order of a list the caller does not choose (the sort by the work
+package `id` and the default order), and a name, login or display id that the caller types as a reference.
 
 A hidden custom field column is closed the same way: with `custom_fields` named in the entity's
 hide setting, or the field matched by `OPENPROJECT_HIDE_CUSTOM_FIELDS`, a `cf_<N>` entry in

@@ -65,6 +65,8 @@ COLUMN_RESULT_FIELDS: dict[str, tuple[str, ...]] = {
     "created_at": ("created_at",),
     "updated_at": ("updated_at",),
     "project_status": ("status",),
+    # `lft` is the position in the project tree, which the parent of the project shows.
+    "lft": ("parent_id", "parent_name"),
 }
 
 # The result field of each filter parameter of the list tool.

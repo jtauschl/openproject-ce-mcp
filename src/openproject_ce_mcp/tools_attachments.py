@@ -150,17 +150,17 @@ async def list_work_package_attachments(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=AttachmentSummary)
-    if not include_images:
-        return await _run_tool(
-            client.attachment.list_for_work_package(
-                safe_id, offset=safe_offset, limit=safe_limit, include_total_size=include_total_size
-            )
-        )
     listing = await _run_tool(
         client.attachment.list_for_work_package_with_images(
-            safe_id, offset=safe_offset, limit=safe_limit, include_total_size=include_total_size
+            safe_id,
+            offset=safe_offset,
+            limit=safe_limit,
+            include_total_size=include_total_size,
+            include_images=include_images,
         )
     )
+    if not include_images:
+        return listing.list_result
     blocks = tuple(block for outcome in listing.included for block in _content_blocks(outcome))
     return ContentBundle(body=listing.list_result, blocks=blocks)
 

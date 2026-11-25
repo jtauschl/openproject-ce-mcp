@@ -70,7 +70,7 @@ from ...models import (
 )
 from ..errors import InvalidInputError, OpenProjectServerError, PermissionDeniedError
 from ..pagination import clamp_limit, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.scope import id_from_href
 from ..ports.attachment_api import AttachmentApi, AttachmentContent
@@ -307,8 +307,9 @@ class AttachmentService:
         offset: int = 1,
         limit: int | None = None,
         include_total_size: bool = False,
+        include_images: bool = True,
     ) -> AttachmentListWithImages:
-        """`list_for_work_package` plus the inlineable images of the attachments
+        """`list_for_work_package` plus, with `include_images`, the inlineable images of the attachments
         it returned.
 
         One aggregate byte budget for the whole call (the configured
@@ -319,9 +320,14 @@ class AttachmentService:
         is left over is reported as a skip with its reason, never silently
         dropped.
         """
+        filter_policy.ensure_filter_allowed(
+            "list_work_package_attachments", settings=self._settings, include_images=include_images
+        )
         listing = await self.list_for_work_package(
             work_package_id, offset=offset, limit=limit, include_total_size=include_total_size
         )
+        if not include_images:
+            return AttachmentListWithImages(list_result=listing, included=())
         remaining = self._settings.attachment_content_max_bytes
         entries: list[AttachmentContentResult] = []
         included: list[AttachmentContentOutcome] = []
