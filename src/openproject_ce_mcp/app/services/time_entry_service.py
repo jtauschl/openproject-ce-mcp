@@ -61,7 +61,7 @@ from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError, NotFoundError, OpenProjectServerError, PermissionDeniedError
 from ..offered_values import candidates_clause, offered_clause
 from ..pagination import collection_exhausted, effective_limit, fetch_bounded_and_paginate
-from ..policies import access, hidden_fields, work_package_target_policy
+from ..policies import access, filter_policy, hidden_fields, work_package_target_policy
 from ..policies import scope as scope_policy
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_api import ProjectApi
@@ -246,6 +246,15 @@ class TimeEntryService:
         include_total_hours: bool = False,
     ) -> TimeEntryListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
+        filter_policy.ensure_filter_allowed(
+            "list_time_entries",
+            settings=self._settings,
+            project=project,
+            work_package_id=work_package_id,
+            user=user,
+            spent_on_from=spent_on_from,
+            spent_on_to=spent_on_to,
+        )
         resolved_work_package_id: int | None = None
         time_entries_href: str | None = None
         if work_package_id is not None:

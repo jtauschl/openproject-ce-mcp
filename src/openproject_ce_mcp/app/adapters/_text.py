@@ -69,6 +69,40 @@ NamelessKind = Literal[
 ]
 
 
+WithheldKind = Literal[
+    "budget",
+    "category",
+    "custom option",
+    "project",
+    "record",
+    "version",
+    "work package",
+]
+
+WITHHELD_KIND_BY_COLLECTION: dict[str, WithheldKind] = {
+    "budgets": "budget",
+    "categories": "category",
+    "custom_options": "custom option",
+    "projects": "project",
+    "versions": "version",
+    "work_packages": "work package",
+}
+
+
+def withheld(kind: WithheldKind) -> str:
+    """The label of a record whose name the scope withholds: the server sent a name, the client does not show it.
+
+    Distinct from `unnamed`, which says the server sent none. A constant, never built from the record's id, so
+    the hide stamp cannot leave a copy of a hidden id."""
+    return f"{kind} (name withheld)"
+
+
+def withheld_label_for(collection: str | None) -> str:
+    """The label of a link into `collection`; a collection without a kind of its own, and a link that names no
+    collection, read as a record."""
+    return withheld(WITHHELD_KIND_BY_COLLECTION.get(collection or "", "record"))
+
+
 def lookup_name(payload: dict[str, Any]) -> str:
     """The raw name a payload carries, `""` when it has none: never the display label, and never the text `None` of
     a JSON null. A resolver matches a caller's text against it."""

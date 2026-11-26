@@ -32,6 +32,80 @@ orders or labels by a hidden field (`version` and `target_versions` close togeth
 `estimated_time`, `remaining_time`, `percentage_done` and of a hidden custom field. Without
 this, the values would show up one query at a time.
 
+Every other list parameter in the table below is closed the same way: a parameter that selects the rows of a list by
+the value of a field is refused, before any request, while that field is hidden (`OpenProject <entity> field '<field>' is hidden by
+OPENPROJECT_HIDE_<ENTITY>_FIELDS and cannot be used to filter ('<parameter>').`). A search over a user's `email` is
+the sharpest case: with the address hidden from every result, the rows that match `@rival.com` would still show it.
+
+| Tool | Parameter | Refused while this is hidden |
+| --- | --- | --- |
+| `list_users` | `search` | user `name`, `login` or `email` |
+| `list_principals` | `search` | principal `name` (the formatted user name; the mail is not matched) |
+| `list_groups` | `search` | group `name` |
+| `list_boards` | `project`, `search` | board `project_id`/`project`, `name` |
+| `list_documents` | `project`, `search` | document `project_id`/`project`, `title` |
+| `list_news` | `project`, `search` | news `project_id`/`project`, `title` or `summary` |
+| `list_views` | `project`, `type`, `search` | view `project_id`/`project`, `type`, `name` |
+| `list_versions` | `project`, `search` | version `defining_project` or `sharing`, `name` |
+| `list_sprints`, `list_backlog_buckets` | `project`, `search` | `defining_workspace_id`/`defining_workspace`, `name` |
+| `get_category` | `project` | category `project_id`/`project` |
+| `list_grids` | `scope` | grid `scope` |
+| `list_project_storages` | `project` | project storage `project_id`/`project` |
+| `list_time_entries` | `project`, `work_package_id`, `user`, `spent_on_from`, `spent_on_to` | time entry `project`, `entity_type`/`entity_id`, `user`/`user_id`, `spent_on` |
+| `list_meetings`, `list_recurring_meetings` | `project` | `project_id`/`project` |
+| `list_recurring_meeting_occurrences` | `filter` (always) | recurring meeting `start_time` or `state`, meeting `start_time` |
+| `list_notifications` | `unread_only` | notification `read` |
+| `list_relations` | `relation_type` | relation `type` |
+| `list_capabilities` | `project` | capability `context` (only `capability_id` still works) |
+| `list_non_working_days` | `year` (always) | non-working day `date` |
+| `list_user_non_working_times` | `year` (always) | `start_date` or `end_date` |
+
+A parameter whose default selects (marked "always": the current year, `upcoming`) is refused whether or not the
+caller passes it. A parameter the caller must give names a container and is not refused: the `project` of
+`list_categories` and `list_project_memberships`, the user of the schedule tools; a row that the caller recognises
+elsewhere by its id is tied to that container. `user` and `principal` have separate hide settings, so hiding `email`
+of users does not hide it in `list_principals`. A user who hides `email` can no longer search users by name either:
+leave the field visible, or list without the filter. `include_images` of `list_work_package_attachments` is refused
+while the attachment `content_type` or `file_size_bytes` is hidden: those two choose the images that are inlined.
+
+A work package filter or order whose value the work package row does not show is closed by the setting of the entity
+that does:
+
+- `open_only` and `overdue_only` by the status `is_closed`, `version_status` by the version `status`;
+- the sort and group columns `status`, `type` and `priority` by the `position` of that entity;
+- `sprint` by the sprint `start_date` and `finish_date` (the sort orders by the name, which the row shows, and then by
+  the dates), `backlog_bucket` by the `name` of the bucket;
+- `author`, `assignee`, `assigned_to` and `responsible` by the `id` of the user and of the principal (and of the
+  group for the last three): the sort orders by the names, which the row shows, and then by the id, so a hidden id
+  closes these sorts;
+- the project column `lft` by `parent_id` and `parent_name`.
+
+A column whose value the row shows under its own field (project, category, version, the names of the users and the
+sprint, the phase, which the row leaves out while it is inactive) is decided by the work package setting. Not
+covered: the order of a list the caller does not choose (the sort by the work package `id` and the default
+order), a name, login or display id that the caller types as a reference, the `title` of `list_meetings` and the
+`query` and `relation_type` of `list_work_package_available_relation_candidates`.
+
+`execute_query` runs the filters, the sort and the group-by that the saved query stores, so the same rule is applied
+to that stored definition on every page, before any row of the page is read and before a result is returned: a
+filter, a sort or a group by a field that a hide setting hides, or whose value another entity's hidden field shows
+(the closed flag of a status behind the operators `o` and `c`, the status of a version behind `o`, `c` and `l`, the
+milestone flag of a type), is refused with the name of the part. A filter is judged by everything it can select by,
+whatever value it stores: a filter that reaches the hierarchy or the relations for one of its values is refused when
+either is hidden, also for a value that does not. A text search is refused while any custom field is hidden, one
+pattern of `OPENPROJECT_HIDE_CUSTOM_FIELDS` included, because it matches their values. A query bound to a project
+selects by the project of the rows and is refused while the work package `project` is hidden, whatever the flag
+says. The flag `includeSubprojects` selects without a filter and follows the same rule: with the flag on, a project
+filter always expands to the subprojects, and the bound project does so unless a `subprojectId` filter of its own
+takes its place, so the project `parent_id`, `parent_name` and `ancestors` close both; with the flag off, or for a
+global query without a project filter, only this expansion check falls away. A part the server may add and this server
+does not know, and a definition that cannot be read, are refused while any hide setting is active. A saved query that
+is refused here cannot be run in part: almost every saved query filters by `status`, so with the work package `status`
+or the status `is_closed` hidden `execute_query` refuses nearly every query, and with the project `parent_id` hidden
+every project-bound one that includes subprojects. The typed `project` filter of `list_work_packages` and
+`search_work_packages` names the project alone, without its subprojects, while one of those project fields is hidden.
+A board write does not apply this rule, and `get_board` shows the filter key, not rows.
+
 A hidden custom field column is closed the same way: with `custom_fields` named in the entity's
 hide setting, or the field matched by `OPENPROJECT_HIDE_CUSTOM_FIELDS`, a `cf_<N>` entry in
 `sort_by`, `group_by` or `custom_field_filters` is refused on work packages and projects. Naming
@@ -223,6 +297,9 @@ tool is about belongs to that record's entity.
 - **The reference of a batch read item** (`get_work_packages`, `id`) goes when the work package `id` or `display_id`
   is hidden, also when it is the reference the caller typed. The item keeps `index`, the position of the first
   occurrence of the reference in `ids`, so the caller can still tell the items apart.
+- **A hidden field named in `select`** is absent from the result, not `null`, in every select tool. The batch and
+  bulk work package tools return their item fields (`id`, `index`, `success` for `get_work_packages`; `index` and
+  `success` for the bulk tools) whatever `select` names, unless hidden (see the batch read item above).
 - **Echoes of the record a tool is about** go with its owner: `work_package_id` of the costs by type (a display id
   resolves to an id) with the work package `id` or `display_id`, `attachment_id` of an attachment's content and the
   `download_url` of an attachment with the attachment `id`, `project_id`, `project_name` and `project_identifier` of a
@@ -243,11 +320,16 @@ tool is about belongs to that record's entity.
 - **A record the server sent without a name** is shown as `Unnamed <kind>` (`Unnamed status`, `Unnamed file link`), never
   under a text built from its id, so hiding `id` leaves nothing of the id behind. The label is display only: roles,
   time entry activities and projects are resolved by the name the server sent, a project allowlist reads that name
-  too, and a `search` filter matches the text shown.
+  too, and a `search` filter matches the text shown (while the field it matches is visible).
   The allowlist now reads the trimmed name in every path (a pattern written against irregular whitespace or a name
   over 255 characters matches as it does for a project the server returned in a list).
-- **Not covered:** the filter values of a saved board that the server names by no title or name are shown as the
-  reference it sent, which can hold the id of a hidden record.
+- **The filter values of a saved board** are named by the title of their link only where every user sees the record
+  alike (a status, type, priority, role, user, group, principal or project phase definition; such a link without a
+  title reads `Unnamed <kind>`); a value in any other
+  collection reads `<kind> (name withheld)` (`version`, `project`, `work package`, `category`, `custom option`,
+  `budget`; any other collection, `placeholder_users` included, reads `record`), and a value that is no link reads
+  `record (name withheld)`. The reference the server sent is never shown, in scope or not. A write preview of the
+  board still echoes the stored references of its filters (a known limit of every write preview, tracked on its own).
 
 ## Help text `attribute_caption` and `caption`
 

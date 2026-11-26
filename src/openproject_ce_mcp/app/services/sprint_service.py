@@ -45,7 +45,7 @@ from ...config import Settings
 from ...models import SprintDetail, SprintListResult
 from ..errors import NotFoundError
 from ..pagination import clamp_limit, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies.sprint_policy import ensure_sprint_workspace_allowed, sprint_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
@@ -109,6 +109,7 @@ class SprintService:
         limit: int | None = None,
     ) -> SprintListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_sprints", settings=self._settings, search=search)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,
@@ -143,6 +144,7 @@ class SprintService:
         context: ProjectResolutionContext | None = None,
     ) -> SprintListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_sprints", settings=self._settings, project=project, search=search)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

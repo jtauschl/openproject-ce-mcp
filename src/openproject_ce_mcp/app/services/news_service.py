@@ -26,7 +26,7 @@ from typing import Any
 from ...config import Settings
 from ...models import NewsDetail, NewsListResult, NewsWriteResult
 from ..pagination import clamp_limit, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.news_policy import news_payload_allowed
 from ..ports.news_api import NewsApi
@@ -68,6 +68,7 @@ class NewsService:
         text_limit: int | None = None,
     ) -> NewsListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_news", settings=self._settings, project=project, search=search)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

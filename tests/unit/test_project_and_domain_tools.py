@@ -592,8 +592,8 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
         def attachment(self):
             return self
 
-        async def list_for_work_package(self, work_package_id, **kwargs):
-            return {"work_package_id": work_package_id, **kwargs}
+        async def list_for_work_package_with_images(self, work_package_id, **kwargs):
+            return SimpleNamespace(list_result={"work_package_id": work_package_id, **kwargs})
 
         async def get(self, attachment_id):
             return {"attachment_id": attachment_id}

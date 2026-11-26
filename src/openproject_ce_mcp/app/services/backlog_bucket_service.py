@@ -43,7 +43,7 @@ from ...config import Settings
 from ...models import BacklogBucketDetail, BacklogBucketListResult
 from ..errors import NotFoundError
 from ..pagination import clamp_limit, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies.backlog_bucket_policy import backlog_bucket_payload_allowed, ensure_backlog_bucket_workspace_allowed
 from ..ports.backlog_bucket_api import BacklogBucketApi, BacklogBucketRecord
 from ..ports.project_ref import ProjectRefResolver
@@ -107,6 +107,7 @@ class BacklogBucketService:
         limit: int | None = None,
     ) -> BacklogBucketListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_backlog_buckets", settings=self._settings, search=search)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,
@@ -142,6 +143,9 @@ class BacklogBucketService:
         context: ProjectResolutionContext | None = None,
     ) -> BacklogBucketListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed(
+            "list_backlog_buckets", settings=self._settings, project=project, search=search
+        )
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

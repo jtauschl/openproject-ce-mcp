@@ -76,7 +76,7 @@ from ...models import (
 from ..api_href import api_href as _api_href
 from ..errors import OpenProjectServerError
 from ..pagination import effective_limit, fetch_bounded_and_paginate
-from ..policies import access, hidden_fields, work_package_target_policy
+from ..policies import access, filter_policy, hidden_fields, work_package_target_policy
 from ..policies import scope as scope_policy
 from ..ports.relation_api import RelationApi, RelationRecord
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
@@ -270,6 +270,7 @@ class RelationService:
     async def list_all(
         self, *, relation_type: str | None = None, offset: int = 1, limit: int | None = None
     ) -> RelationListResult:
+        filter_policy.ensure_filter_allowed("list_relations", settings=self._settings, relation_type=relation_type)
         resolved_limit = effective_limit(limit, settings=self._settings)
         filters = None
         if relation_type is not None:

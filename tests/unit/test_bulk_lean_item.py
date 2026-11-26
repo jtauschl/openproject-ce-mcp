@@ -16,7 +16,7 @@ from openproject_ce_mcp import models as m
 from openproject_ce_mcp.app.form_result import ValidationFailure
 from openproject_ce_mcp.presentation import _to_payload
 from openproject_ce_mcp.tool_errors import ToolInputError
-from openproject_ce_mcp.tools_validation import BULK_ITEM_WRAPPER_FIELDS, _validate_select
+from openproject_ce_mcp.tools_validation import _validate_select
 
 
 def _detail(**overrides) -> m.WorkPackageDetail:
@@ -229,7 +229,7 @@ def test_the_id_guess_is_rejected_naming_the_work_package_reference_field() -> N
         _validate_select(
             ["id", "status"],
             row_type=m.WorkPackageWriteResult,
-            wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
+            wrapper_row=m.BulkWorkPackageItemResult,
             nested={"result": m.WorkPackageDetail},
         )
 
@@ -243,7 +243,7 @@ def test_another_unknown_name_keeps_its_message() -> None:
         _validate_select(
             ["nonsense"],
             row_type=m.WorkPackageWriteResult,
-            wrapper_fields=BULK_ITEM_WRAPPER_FIELDS,
+            wrapper_row=m.BulkWorkPackageItemResult,
             nested={"result": m.WorkPackageDetail},
         )
 

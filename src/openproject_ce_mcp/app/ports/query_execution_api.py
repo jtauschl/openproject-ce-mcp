@@ -27,11 +27,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from ..stored_query import StoredQuery
+
 
 @dataclass(frozen=True)
 class QueryResultPage:
     raw_elements: list[dict[str, Any]]  # UNFILTERED, UNNORMALIZED raw HAL work-package elements
     server_total: int | None
+    # None: the response carries no definition this adapter can read (missing member, unknown shape).
+    definition: StoredQuery | None
 
 
 class QueryExecutionApi(Protocol):

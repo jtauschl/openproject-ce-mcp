@@ -48,7 +48,7 @@ from ...config import Settings
 from ...models import ProjectStorageDetail, ProjectStorageListResult
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.project_storage_policy import project_storage_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
@@ -79,6 +79,7 @@ class ProjectStorageService:
         self, *, project: str | None = None, offset: int = 1, limit: int | None = None
     ) -> ProjectStorageListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_project_storages", settings=self._settings, project=project)
         effective_limit = _effective_limit(limit, settings=self._settings)
         filter_project_id = await resolve_project_filter_id(project, resolve_project_ref=self._resolve_project_ref)
 

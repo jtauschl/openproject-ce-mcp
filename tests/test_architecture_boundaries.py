@@ -68,6 +68,7 @@ _SHARED_KERNEL = {
     "form_result",
     "link_titles",
     "offered_values",
+    "stored_query",
 }  # module names directly under app/, not layer dirs
 
 

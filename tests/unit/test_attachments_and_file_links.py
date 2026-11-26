@@ -419,25 +419,43 @@ def _summary(attachment_id: int, content_type: str):
 async def test_list_work_package_attachments_without_include_images_is_unchanged() -> None:
     import json
 
-    async def list_for_work_package(work_package_id, *, offset, limit, include_total_size):
-        return _listing(_summary(1, "image/png"))
+    from openproject_ce_mcp.models import AttachmentListWithImages
 
-    async def list_for_work_package_with_images(*args, **kwargs):
-        raise AssertionError("include_images=False must not take the images path")
+    seen: list[bool] = []
+
+    async def list_for_work_package_with_images(work_package_id, *, offset, limit, include_total_size, include_images):
+        seen.append(include_images)
+        return AttachmentListWithImages(list_result=_listing(_summary(1, "image/png")), included=())
 
     result = await _registered_tool("list_work_package_attachments")(
-        _fake_ctx(
-            list_for_work_package=list_for_work_package,
-            list_for_work_package_with_images=list_for_work_package_with_images,
-        ),
+        _fake_ctx(list_for_work_package_with_images=list_for_work_package_with_images),
         work_package_id=9,
     )
+
+    assert seen == [False]
 
     assert isinstance(result, str)  # the registered wrapper emits the compact JSON text
     result = json.loads(result)
     assert [row["id"] for row in result["results"]] == [1]
     assert "count" not in result and "truncated" not in result
     assert "images" not in result  # None -> elided, exactly as before
+
+
+async def test_list_work_package_attachments_without_include_images_still_applies_select() -> None:
+    import json
+
+    from openproject_ce_mcp.models import AttachmentListWithImages
+
+    async def list_for_work_package_with_images(work_package_id, *, offset, limit, include_total_size, include_images):
+        return AttachmentListWithImages(list_result=_listing(_summary(1, "image/png")), included=())
+
+    result = await _registered_tool("list_work_package_attachments")(
+        _fake_ctx(list_for_work_package_with_images=list_for_work_package_with_images),
+        work_package_id=9,
+        select=["id"],
+    )
+
+    assert [sorted(row) for row in json.loads(result)["results"]] == [["id"]]
 
 
 async def test_list_work_package_attachments_include_images_returns_bundle_and_trims_body() -> None:
@@ -460,7 +478,7 @@ async def test_list_work_package_attachments_include_images_returns_bundle_and_t
         ),
     ]
 
-    async def list_for_work_package_with_images(work_package_id, *, offset, limit, include_total_size):
+    async def list_for_work_package_with_images(work_package_id, *, offset, limit, include_total_size, include_images):
         return AttachmentListWithImages(
             list_result=listing,
             included=(AttachmentContentOutcome(metadata=listing.images[0], image_bytes=b"PNG"),),

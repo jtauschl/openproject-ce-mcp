@@ -67,10 +67,12 @@ SPARSE_PATHS=(
     "/config/locales/en.yml"                   # the error message templates (which ones quote a value)
     "modules/*/lib/api/v3"                     # every module's API subtree (Backlogs, Meetings, etc.)
     "modules/*/lib/open_project/*/patches/api" # module patches to core representers (e.g. Backlogs' sprint link on work packages)
-    "modules/*/lib/**/engine.rb"               # extend_api_response blocks that add fields to core representers (Costs, Meetings, ...)
-    "modules/*/app/models"                     # module-specific models (e.g. Meetings' MeetingSection, Storages)
-    "modules/*/app/contracts"                  # module-specific validation contracts
-    "modules/*/app/validator"                  # module-specific validators (e.g. Storages' NextcloudCompatibleHostValidator --
+    "modules/*/lib/**/engine.rb"               # extend_api_response blocks that add fields to core representers (Costs, Meetings, ...), the registrations of query filters and the runtime additions to the ARToAPIConversions table
+    # the backlogs filter class of 16.0 to 17.3 (later ones live in app/models)
+    "/modules/backlogs/lib/open_project/backlogs/work_package_filter.rb"
+    "modules/*/app/models"    # module-specific models (e.g. Meetings' MeetingSection, Storages)
+    "modules/*/app/contracts" # module-specific validation contracts
+    "modules/*/app/validator" # module-specific validators (e.g. Storages' NextcloudCompatibleHostValidator --
     # singular "validator", unlike core's plural "validators")
     "modules/*/app/representers" # module-specific API v3 HAL representers (e.g. Boards/Grids widgets)
     "modules/*/app/queries"      # module-specific query/filter objects (mirrors core's app/models/queries)

@@ -56,7 +56,7 @@ from ...context_gather import gather_in_current_context
 from ...models import GridListResult, GridSummary, GridWriteResult
 from ..errors import InvalidInputError, NotFoundError, PermissionDeniedError
 from ..pagination import clamp_limit, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies.grid_policy import (
     MyPageScope,
     ProjectScope,
@@ -168,6 +168,7 @@ class GridService:
 
     async def list(self, *, scope: str | None = None, offset: int = 1, limit: int | None = None) -> GridListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_grids", settings=self._settings, scope=scope)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

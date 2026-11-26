@@ -26,7 +26,7 @@ from ...config import Settings
 from ...models import PrincipalListResult
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server as _paginate_server
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..ports.principal_api import PrincipalApi
 from ._error_masking import redacted_server_errors
 
@@ -41,6 +41,7 @@ class PrincipalService:
         self, *, search: str | None = None, offset: int = 1, limit: int | None = None
     ) -> PrincipalListResult:
         access.ensure_read_enabled("admin", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_principals", settings=self._settings, search=search)
         limit = _effective_limit(limit, settings=self._settings)
         records, total = await self._api.list_principals(search=search, offset=offset, page_size=limit)
         results = [

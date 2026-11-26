@@ -26,48 +26,54 @@ from __future__ import annotations
 from typing import Any
 
 from ...models import BoardDetail, BoardFilter, BoardSummary
-from ..link_titles import KEPT_FILTER_KEYS, without_titles
+from ..link_titles import KEPT_TITLE_COLLECTIONS, collection_of
 from ..ports.board_api import BoardFormResult, BoardRecord
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT, unnamed
+from ._text import SUBJECT_LIMIT, unnamed, withheld_label_for
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_validation_errors
 from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
 
+# A finished label per collection: a non-literal `unnamed(...)` argument inside a function breaks the label census.
+_UNNAMED_KEPT_LINK = {
+    "statuses": unnamed("status"),
+    "types": unnamed("type"),
+    "priorities": unnamed("priority"),
+    "roles": unnamed("role"),
+    "users": unnamed("user"),
+    "groups": unnamed("principal"),
+    "principals": unnamed("principal"),
+    "project_phase_definitions": unnamed("project phase definition"),
+}
+
+
+def _filter_value_label(item: Any) -> str:
+    """The name of a value comes from the title of a link into an instance-wide collection and from nowhere else:
+    another collection may hold a record of a project outside the read scope, and neither its title nor the
+    reference the server sent may stand in for the withheld name."""
+    href = item.get("href") if isinstance(item, dict) else None
+    collection = collection_of(href) if isinstance(href, str) else None
+    if collection in KEPT_TITLE_COLLECTIONS:
+        return _link_title(item) or _UNNAMED_KEPT_LINK[collection]
+    return withheld_label_for(collection)
+
 
 def _normalize_filter_values(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
-    normalized: list[str] = []
-    for item in values:
-        if isinstance(item, dict):
-            text = (
-                _link_title(item.get("_links", {}).get("self"))
-                or _trim_text(item.get("name"), limit=SUBJECT_LIMIT)
-                or _trim_text(item.get("title"), limit=SUBJECT_LIMIT)
-                or _trim_text(item.get("href"), limit=SUBJECT_LIMIT)
-            )
-        else:
-            text = _trim_text(item, limit=SUBJECT_LIMIT)
-        if text:
-            normalized.append(text)
-    return normalized
+    return [_filter_value_label(item) for item in values]
 
 
 def _normalize_board_filter(payload: dict[str, Any]) -> BoardFilter:
     links = payload.get("_links", {})
     key = _slug_from_href(links.get("filter", {}).get("href"))
-    values = links.get("values")
-    # A value is named by its link title; only some filters take values every user sees alike.
-    if key not in KEPT_FILTER_KEYS:
-        values = without_titles(values)
     return BoardFilter(
         key=key,
         name=_link_title(links.get("filter")),
         operator=_link_title(links.get("operator")) or _slug_from_href(links.get("operator", {}).get("href")),
-        values=_normalize_filter_values(values),
+        values=_normalize_filter_values(links.get("values")),
     )
 
 

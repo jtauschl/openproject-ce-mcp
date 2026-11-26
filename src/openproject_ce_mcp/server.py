@@ -88,12 +88,12 @@ list. Without `select` it omits `null` fields;
 select a field to keep it even when `null`. Tools without `select` keep `null`. A paginated
 tool (its result has `next_offset`) always returns it, an integer or `null`: page until `null`.
 
-On batch and bulk tools, `select` names fields of each item's entity inside the item's
-`id`/`index`/`success`/`error` wrapper: the work package itself for the batch read
-(`["id", "status"]`), the item's write result for a bulk write (`["work_package_id", "result.status"]`). Without `select`, a succeeded confirmed bulk item is lean:
+On batch and bulk tools, `select` trims each item's entity (a batch read's work package,
+`["id", "status"]`; a bulk write's write result, `["work_package_id", "result.status"]`); the item's
+`id`/`index`/`success`/`error` stay. Without `select`, a succeeded confirmed bulk item is lean:
 `work_package_id`, `state`, `target`, `parent_target`, `display_id`, `status`;
-`["work_package_id", "state", "result"]` selects all of it. A failed item has a `null`
-`work_package` / `result`: read `error`.
+`["work_package_id", "state", "result"]` selects all of it. With `select`, an item omits a null `error`
+and shows a missing entity as `null`; a rejected write keeps `result`.
 """
 
 

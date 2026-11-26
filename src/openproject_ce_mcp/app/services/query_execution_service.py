@@ -30,6 +30,8 @@ therefore:
      _list_collection_scanned).
   3. Applies `work_package_policy.work_package_payload_allowed` to each raw
      element BEFORE normalization, mirroring Work Packages' own list() order.
+  4. Refuses a stored definition that selects or orders by a hidden field
+     (`stored_query_policy`), on every page and before any row of the page is read.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ from collections.abc import Mapping
 from ...config import Settings
 from ...models import WorkPackageListResult
 from ..pagination import effective_limit, fetch_bounded_and_paginate
-from ..policies import access
+from ..policies import access, stored_query_policy
 from ..policies.work_package_policy import work_package_payload_allowed
 from ..ports.query_execution_api import QueryExecutionApi
 from ..ports.scoped_reference import ScopedReferencesAllowedBulkCheck
@@ -83,6 +85,9 @@ class QueryExecutionService:
 
         async def _fetch_page(server_offset: int, page_size: int) -> dict:
             page = await self._api.execute(query_id, offset=server_offset, page_size=page_size)
+            # Judged on every page, before any row of it is normalised: the server has run the stored selection by
+            # now, and the definition can change between two pages.
+            stored_query_policy.ensure_stored_query_allowed(page.definition, settings=self._settings)
             return {"total": page.server_total, "_embedded": {"elements": page.raw_elements}}
 
         async def _item_allowed(raw: dict) -> bool:

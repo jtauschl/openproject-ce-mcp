@@ -28,11 +28,17 @@ from test_app_work_package_service import _api_with_statuses, _FakeWorkPackageAp
 from test_app_work_package_service import _service as _work_package_service
 
 from openproject_ce_mcp.client import OpenProjectClient
-from openproject_ce_mcp.models import RelationSummary, WorkPackageDetail, WorkPackageWriteResult
+from openproject_ce_mcp.models import (
+    BulkWorkPackageItemResult,
+    RelationSummary,
+    WorkPackageDetail,
+    WorkPackageWriteResult,
+)
+from openproject_ce_mcp.presentation import wrapper_field_names
 from openproject_ce_mcp.tool_params import allowed_select_fields, select_field
 from openproject_ce_mcp.tools_projects import list_projects
 from openproject_ce_mcp.tools_relations import list_relations, list_work_package_relations
-from openproject_ce_mcp.tools_validation import BULK_ITEM_WRAPPER_FIELDS, _validate_select
+from openproject_ce_mcp.tools_validation import _validate_select
 from openproject_ce_mcp.tools_versions import list_version_projects
 from openproject_ce_mcp.tools_work_package_pickers import list_work_package_available_projects
 from openproject_ce_mcp.tools_work_packages import (
@@ -158,7 +164,7 @@ async def test_bulk_write_tools_offer_only_fields_their_producer_fills(
     results = await _write_results(tool_name)
     assert results, tool_name
     filled: set[str] = set().union(*(_fields_set(result) for result in results))
-    offered = _offered(tool) - BULK_ITEM_WRAPPER_FIELDS
+    offered = _offered(tool) - set(wrapper_field_names(BulkWorkPackageItemResult))
 
     assert offered - _WRITE_RESULT_STATE_DEPENDENT <= filled, (tool_name, sorted(offered - filled))
 

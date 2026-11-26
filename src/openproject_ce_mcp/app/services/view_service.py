@@ -29,7 +29,7 @@ from typing import Any
 from ...config import Settings
 from ...models import ViewDetail, ViewListResult
 from ..pagination import clamp_limit, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.view_api import ViewApi
@@ -72,6 +72,9 @@ class ViewService:
         limit: int | None = None,
     ) -> ViewListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed(
+            "list_views", settings=self._settings, project=project, type=view_type, search=search
+        )
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

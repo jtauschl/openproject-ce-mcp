@@ -248,7 +248,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full", "core"),
     },
     "bulk_create_work_packages": {
-        "description_hash": "21e147a8c1ab990482239956277d4409a7f77328efcf2dd6cf06dfed2a7fa00d",
+        "description_hash": "24a0e40102f5a9f1b7cb6da407f3154c09ac68ee0d729eb6d683aa49e009a050",
         "input_schema": {
             "$defs": {
                 "BulkCreateWorkPackageItem": {
@@ -418,39 +418,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset "
-                    "field comes back as null. Allowed: "
-                    "action, error, index, message, "
-                    "payload, project, "
-                    "ready, result, state, success, target, "
-                    "validation_errors, work_package_id; "
-                    "result.<field> for "
-                    "ancestors, ancestors_truncated, "
-                    "assignee, author, category, children, "
-                    "children_truncated, created_at, "
-                    "custom_comments, "
-                    "custom_comments_truncated, "
-                    "custom_fields, "
-                    "custom_fields_truncated, "
-                    "derived_due_date, "
-                    "derived_estimated_time, "
-                    "derived_percentage_done, "
-                    "derived_remaining_time, "
-                    "derived_start_date, description, "
-                    "description_length, "
-                    "description_truncated, display_id, "
-                    "due_date, duration, estimated_time, "
-                    "has_project_attributes, id, "
-                    "ignore_non_working_days, lock_version, "
-                    "observed_in_versions, "
-                    "parent_display_id, parent_id, "
-                    "percentage_done, priority, project, "
-                    "project_phase, "
-                    "remaining_time, responsible, "
-                    "schedule_manually, spent_time, sprint, "
-                    "start_date, status, subject, "
-                    "target_versions, type, updated_at, "
-                    "version.",
+                    "description": "Fields of each item's `result` to return; a requested unset field comes back as null. The item fields index, success come back whatever is selected; naming index, success, error changes nothing; with select, an item that has no result shows `result: null`, read `error`; `error` is there only when the item failed. Allowed: action, error, index, message, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
                 "confirm": {
@@ -696,39 +664,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset "
-                    "field comes back as null. Allowed: "
-                    "action, error, index, message, "
-                    "parent_target, payload, project, "
-                    "ready, result, state, success, target, "
-                    "validation_errors, work_package_id; "
-                    "result.<field> for "
-                    "ancestors, ancestors_truncated, "
-                    "assignee, author, category, children, "
-                    "children_truncated, created_at, "
-                    "custom_comments, "
-                    "custom_comments_truncated, "
-                    "custom_fields, "
-                    "custom_fields_truncated, "
-                    "derived_due_date, "
-                    "derived_estimated_time, "
-                    "derived_percentage_done, "
-                    "derived_remaining_time, "
-                    "derived_start_date, description, "
-                    "description_length, "
-                    "description_truncated, display_id, "
-                    "due_date, duration, estimated_time, "
-                    "has_project_attributes, id, "
-                    "ignore_non_working_days, lock_version, "
-                    "observed_in_versions, "
-                    "parent_display_id, parent_id, "
-                    "percentage_done, priority, project, "
-                    "project_phase, "
-                    "remaining_time, responsible, "
-                    "schedule_manually, spent_time, sprint, "
-                    "start_date, status, subject, "
-                    "target_versions, type, updated_at, "
-                    "version.",
+                    "description": "Fields of each item's `result` to return; a requested unset field comes back as null. The item fields index, success come back whatever is selected; naming index, success, error changes nothing; with select, an item that has no result shows `result: null`, read `error`; `error` is there only when the item failed. Allowed: action, error, index, message, parent_target, payload, project, ready, result, state, success, target, validation_errors, work_package_id; result.<field> for ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, estimated_time, has_project_attributes, id, ignore_non_working_days, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
                 "confirm": {
@@ -3031,7 +2967,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "execute_query": {
-        "description_hash": "1ef92a34c9fa59f1ebefe99b112e32f2a2ee0fccac67d771995c227140b17425",
+        "description_hash": "711495c47f1a36d2f9830b327f7e636a7c294c8bf0c1a8d160d6e1049e0e86db",
         "input_schema": {
             "properties": {
                 "query_id": {"title": "Query Id", "type": "integer"},
@@ -3990,7 +3926,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
         "profiles": ("full",),
     },
     "get_work_packages": {
-        "description_hash": "f5189f76de29cff3cbc7cfde3d4b2925e8431a5d9add2700438428049665377f",
+        "description_hash": "43fd9c9772817af901b6fb43811c9f984121fcb3565bbc5d3aa6d7559099c3c7",
         "input_schema": {
             "properties": {
                 "work_package_ids": {
@@ -4007,7 +3943,7 @@ TOOL_CONTRACT_SNAPSHOT: dict[str, dict[str, Any]] = {
                 "select": {
                     "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
                     "default": None,
-                    "description": "Fields to return; a requested unset field comes back as null. Allowed: ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, index, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
+                    "description": "Fields of each item's `work_package` to return; a requested unset field comes back as null. The item fields id, index, success come back whatever is selected; naming index, success, error changes nothing; with select, an item that has no work_package shows `work_package: null`, read `error`; `error` is there only when the item failed. Allowed: ancestors, ancestors_truncated, assignee, author, category, children, children_truncated, created_at, custom_comments, custom_comments_truncated, custom_fields, custom_fields_truncated, derived_due_date, derived_estimated_time, derived_percentage_done, derived_remaining_time, derived_start_date, description, description_length, description_truncated, display_id, due_date, duration, error, estimated_time, has_project_attributes, id, ignore_non_working_days, index, lock_version, observed_in_versions, parent_display_id, parent_id, percentage_done, priority, project, project_phase, remaining_time, responsible, schedule_manually, spent_time, sprint, start_date, status, subject, success, target_versions, type, updated_at, version.",
                     "title": "Select",
                 },
             },

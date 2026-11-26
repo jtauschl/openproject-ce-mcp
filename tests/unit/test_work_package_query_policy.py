@@ -73,7 +73,7 @@ def test_a_filter_on_a_hidden_field_is_refused(parameter: str, fields: tuple[str
 
 
 @pytest.mark.parametrize("column", sorted(COLUMNS_WITHOUT_RESULT_FIELD))
-def test_a_column_no_result_field_carries_is_never_refused(column: str) -> None:
+def test_a_column_no_work_package_field_carries_is_not_refused_by_the_work_package_setting(column: str) -> None:
     settings = _hiding("*")
 
     ensure_query_allowed(settings=settings, filters=[], sort_fields=[column], group_by=None)

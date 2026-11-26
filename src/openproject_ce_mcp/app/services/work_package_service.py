@@ -626,6 +626,7 @@ class WorkPackageService:
                 limit=limit,
                 sort_by=sort_by,
                 group_by=group_by,
+                include_subprojects=include_subprojects,
             )
 
         # One hint per newer column, oldest release innermost, so a rejection names
@@ -738,6 +739,7 @@ class WorkPackageService:
         limit: int,
         sort_by: list[SortCriterion] | None,
         group_by: str | None,
+        include_subprojects: bool | None,
     ) -> WorkPackageListResult:
         """Multi-server-page scan for a restricted read scope.
 
@@ -782,6 +784,7 @@ class WorkPackageService:
                 sort_by=sort_by,
                 group_by=group_by,
                 include_sums=False,
+                include_subprojects=include_subprojects,
             )
             if not page.raw_elements:
                 break
@@ -949,7 +952,7 @@ class WorkPackageService:
         project_id: int | None = None
         read_everywhere = scope_allows_all(self._settings.read_projects)
         total_is_scope_safe = read_everywhere
-        include_subprojects: bool | None = None if read_everywhere else False
+        include_subprojects: bool | None = self._include_subprojects(read_everywhere=read_everywhere)
         if project is not None:
             project_payload = await self._resolve_project_ref(project)
             project_id = int(project_payload["id"])
@@ -993,14 +996,16 @@ class WorkPackageService:
                 include_sums=include_sums,
                 include_subprojects=include_subprojects,
             ),
-            self._resolve_search_exact_match(search, other_filters=other_filters),
+            self._resolve_search_exact_match(
+                search, other_filters=other_filters, include_subprojects=include_subprojects
+            ),
         )
         if exact_match is not None and any(item.id == exact_match.id for item in result.results):
             exact_match = None
         return dataclasses.replace(result, exact_match=exact_match)
 
     async def _resolve_search_exact_match(
-        self, search: str, *, other_filters: list[dict[str, Any]]
+        self, search: str, *, other_filters: list[dict[str, Any]], include_subprojects: bool | None
     ) -> WorkPackageSummary | None:
         """Resolve search()'s query directly (numeric id or display id, via
         the same server-side lookup get() uses) and check it against every
@@ -1031,6 +1036,7 @@ class WorkPackageService:
             sort_by=None,
             group_by=None,
             total_is_scope_safe=False,
+            include_subprojects=include_subprojects,
         )
         for item in candidates.results:
             if item.id == resolved_id:
@@ -1109,7 +1115,7 @@ class WorkPackageService:
         resolution_context = ProjectResolutionContext(self._resolve_project_ref)
         read_everywhere = scope_allows_all(self._settings.read_projects)
         total_is_scope_safe = read_everywhere
-        include_subprojects: bool | None = None if read_everywhere else False
+        include_subprojects: bool | None = self._include_subprojects(read_everywhere=read_everywhere)
         if project is not None:
             project_payload = await self._resolve_project_ref(project, context=resolution_context)
             project_id = int(project_payload["id"])
@@ -1216,12 +1222,22 @@ class WorkPackageService:
             total_is_scope_safe=total_is_scope_safe,
         )
 
+    def _include_subprojects(self, *, read_everywhere: bool) -> bool | None:
+        """What the project filter sends for `includeSubprojects`: the server default (which adds every descendant)
+        only where the scope reads everything and the hierarchy is not hidden, otherwise off."""
+        if read_everywhere and not work_package_query_policy.project_hierarchy_hidden(settings=self._settings):
+            return None
+        return False
+
     async def _covered_project_ids(self, project_id: int) -> builtins.list[int]:
         """The project ids a work-package project filter names for `project_id`. OpenProject adds
         every descendant of a named project unless told otherwise, readable or not, and counts
         and sums them; under a restricted scope the filter therefore names the readable
-        descendants itself and the request turns the expansion off."""
-        if scope_allows_all(self._settings.read_projects):
+        descendants itself and the request turns the expansion off. While the project hierarchy is hidden the filter names
+        the project alone: the descendants a selection adds would show it."""
+        if scope_allows_all(self._settings.read_projects) or work_package_query_policy.project_hierarchy_hidden(
+            settings=self._settings
+        ):
             return [project_id]
         return [project_id, *sorted(await self._readable_projects.readable_descendant_ids(project_id))]
 

@@ -58,7 +58,8 @@ async def execute_query(
     definition); no client-side filter translation happens here. Results are
     still filtered against this MCP's own OPENPROJECT_READ_PROJECTS allowlist
     before being returned, since the query itself executes with the API
-    token's full server-side permissions.
+    token's full server-side permissions. A query whose stored filter, sort or
+    group-by uses a hidden field is refused, naming the part, and returns no row.
     """
     client = _client_from_context(ctx)
     safe_query_id = _validate_positive_int(query_id, field_name="query_id")

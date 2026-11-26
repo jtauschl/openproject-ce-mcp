@@ -31,7 +31,7 @@ from typing import Any
 from ...config import Settings
 from ...models import DocumentDetail, DocumentListResult, DocumentWriteResult
 from ..pagination import clamp_limit, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.document_policy import document_payload_allowed
 from ..ports.document_api import DocumentApi
@@ -71,6 +71,7 @@ class DocumentService:
         text_limit: int | None = None,
     ) -> DocumentListResult:
         access.ensure_read_enabled("project", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_documents", settings=self._settings, project=project, search=search)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

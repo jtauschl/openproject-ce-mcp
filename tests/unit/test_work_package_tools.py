@@ -1441,9 +1441,8 @@ async def test_bulk_create_work_packages_rejects_invalid_select_field() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("select", [["index", "success", "error", "ready"], ["index", "success"]])
 async def test_bulk_create_work_packages_accepts_item_wrapper_fields_in_select(select) -> None:
-    # The wrapper fields are emitted on every item regardless of select, so a
-    # caller that lists them explicitly must not be rejected -- even when it
-    # lists nothing else.
+    # Naming a wrapper field in select is accepted and changes nothing, so a
+    # caller that lists only them must not be rejected.
     class StubClient:
         @property
         def work_package(self):

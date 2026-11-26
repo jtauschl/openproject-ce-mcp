@@ -46,7 +46,7 @@ from ...models import UserDetail, UserListResult, UserWriteResult, WriteResultSt
 from ..form_result import ValidationFailure
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..ports.user_api import UserApi
 from ._error_masking import redacted_server_errors, redacted_validation_errors
 from ._payload_masking import shown_payload, stamped_results
@@ -76,6 +76,7 @@ class UserService:
         self, *, search: str | None = None, offset: int = 1, limit: int | None = None
     ) -> UserListResult:
         access.ensure_read_enabled("admin", settings=self._settings)
+        filter_policy.ensure_filter_allowed("list_users", settings=self._settings, search=search)
         effective_limit = _effective_limit(limit, settings=self._settings)
 
         if search is not None:

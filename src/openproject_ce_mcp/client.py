@@ -1239,7 +1239,7 @@ class OpenProjectClient:
             for item in (await self._get(f"projects/{project_id}/categories")).get("_embedded", {}).get("elements", [])
         ]
         available_project_phases: list[OptionValue] = []
-        versions = await self.version.list(project=str(project_id), offset=1, limit=self.settings.max_results)
+        versions = await self.version.list_for_project_context(str(project_id), limit=self.settings.max_results)
 
         if type is not None:
             selected_type_id = int(await self._type_resolver.resolve_id(type, project=str(project_id)))

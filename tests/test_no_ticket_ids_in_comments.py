@@ -74,6 +74,7 @@ _MAY_NAME_THE_MIRROR = {
     "test_fetch_sources.py",
     "test_check_coverage.py",
     "test_error_keys_oracle.py",
+    "test_query_filter_keys_oracle.py",
 }
 
 

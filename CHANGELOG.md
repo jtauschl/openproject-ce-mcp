@@ -122,6 +122,10 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 
 ### Changed
 
+- **Breaking:** a filter on a hidden field is refused on every list in `docs/field-hiding.md`: hidden `email` closes the `search` of `list_users`, hidden `project` the project filter of time entries.
+- **Breaking:** the status, type, priority, sprint, bucket and user sorts, `open_only`, `overdue_only`, `version_status`, `lft` and `include_images` follow the hiding of the entity that shows the value.
+- **Breaking:** `execute_query` refuses a saved query whose filter, sort or group-by uses a hidden field ([details](docs/field-hiding.md)).
+- **Breaking:** the `project` filter of `list_work_packages` and `search_work_packages` leaves out subprojects while the project hierarchy is hidden.
 - **Breaking:** help text `attribute_caption` is now the attribute label (null on 16.x before) and the stored caption is the new `caption`; add `caption` to hide lists naming `attribute_caption`.
 
 ### Removed
@@ -148,6 +152,8 @@ Thanks to our contributor: [@feci](https://github.com/feci) ([#35](https://githu
 - A redirect, absolute URL or link that leaves the instance's origin or `/api/v3` is refused; a redirect no longer replays a write body elsewhere.
 - `OPENPROJECT_BASE_URL` with credentials in the URL is refused at startup.
 - The `list_projects` description no longer says `select` drops the project attributes: `select` keeps `custom_fields` when it names it.
+- The `select` texts of `get_work_packages` and the bulk work package tools no longer promise a null `error` or a null `result` for a rejected write.
+- Board filter values of records outside the instance-wide collections read `<kind> (name withheld)` instead of the href; user and role values show their name.
 - `get_project_work_package_context` honours the hidden-field settings through `OPENPROJECT_HIDE_PROJECT_WORK_PACKAGE_CONTEXT_FIELDS`; it returned names and option titles unmasked.
 - `list_project_phase_definitions` and the parent picklist of `get_project_admin_context` read every page; they stopped after the first page of the server before.
 - `select` of `list_relations` no longer offers `queried_perspective`, and `select` of `bulk_create_work_packages` no longer offers `parent_target`; both were never filled.

@@ -13,12 +13,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import fields as dataclass_fields
-from typing import Annotated, Any, Required
+from typing import Annotated, Any, Required, get_args, get_type_hints
 
 from pydantic import ConfigDict, Field, with_config
 from pydantic.fields import FieldInfo
 from typing_extensions import TypedDict
 
+from .presentation import nested_entity_field, wrapper_field_names
 from .tool_types import IdOrName
 
 Confirm = Annotated[
@@ -201,12 +202,36 @@ def allowed_select_fields(
 def select_field(
     row_type: type,
     *,
-    wrapper_fields: frozenset[str] = frozenset(),
+    wrapper_row: type | None = None,
     nested: Mapping[str, type] | None = None,
     unfilled: frozenset[str] = frozenset(),
 ) -> FieldInfo:
-    """Schema description for a ``select`` parameter, naming every field it accepts."""
+    """Schema description for a ``select`` parameter, naming every field it accepts.
+
+    ``wrapper_row`` is the item row of a batch or bulk tool that wraps ``row_type`` as its entity: the
+    item's own fields (and the key of the entity) come from the serializer's table, so the text cannot
+    name a field the serializer treats differently. ``nested`` maps a field of ``row_type`` that holds
+    another entity to that entity's dataclass; its fields are listed as ``<field>.<name>``.
+    """
+    wrapper_fields = frozenset(wrapper_field_names(wrapper_row)) if wrapper_row is not None else frozenset()
     allowed = ", ".join(sorted(_top_level_select_fields(row_type, wrapper_fields, unfilled)))
     for prefix, names in sorted(_nested_select_fields(nested, unfilled).items()):
         allowed += f"; {prefix}.<field> for {', '.join(sorted(names))}"
-    return Field(description=f"Fields to return; a requested unset field comes back as null. Allowed: {allowed}.")
+    if wrapper_row is None:
+        return Field(description=f"Fields to return; a requested unset field comes back as null. Allowed: {allowed}.")
+    entity_key = nested_entity_field(wrapper_row)
+    wrapper = wrapper_field_names(wrapper_row)
+    entity_fields = {field.name for field in dataclass_fields(row_type)}
+    hints = get_type_hints(wrapper_row)
+    optional = [name for name in wrapper if type(None) in get_args(hints[name])]
+    always = ", ".join(name for name in wrapper if name not in optional)
+    no_ops = ", ".join(name for name in wrapper if name not in entity_fields)
+    optional_names = ", ".join(f"`{name}`" for name in optional)
+    return Field(
+        description=(
+            f"Fields of each item's `{entity_key}` to return; a requested unset field comes back as null. "
+            f"The item fields {always} come back whatever is selected; naming {no_ops} changes nothing; "
+            f"with select, an item that has no {entity_key} shows `{entity_key}: null`, read {optional_names}; "
+            f"{optional_names} is there only when the item failed. Allowed: {allowed}."
+        )
+    )

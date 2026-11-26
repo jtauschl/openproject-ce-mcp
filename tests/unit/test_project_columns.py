@@ -98,7 +98,7 @@ def test_the_description_names_every_column_the_family_keys_and_the_floor() -> N
 
 
 def test_every_sort_column_is_classified_as_a_result_field_or_without_one() -> None:
-    without_result_field = {"lft", "latest_activity_at", "required_disk_space"}
+    without_result_field = {"latest_activity_at", "required_disk_space"}
 
     assert set(COLUMN_RESULT_FIELDS) | without_result_field == SORTABLE_FIELDS
     assert not set(COLUMN_RESULT_FIELDS) & without_result_field
@@ -134,6 +134,8 @@ def _hiding(**kwargs):
         ("created_at", [], ["created_at"]),
         ("updated_at", [], ["updated_at"]),
         ("status", [], ["project_status"]),
+        ("parent_id", [], ["lft"]),
+        ("parent_name", [], ["lft"]),
         ("custom_fields", ["custom_field_filters"], []),
         ("custom_fields", [], ["cf_4"]),
     ],
@@ -149,7 +151,7 @@ def test_columns_without_a_result_field_stay_open_under_any_hide_setting() -> No
     ensure_query_allowed(
         settings=settings,
         filters=[],
-        sort_fields=["lft", "latest_activity_at", "required_disk_space", "project_phase_2"],
+        sort_fields=["latest_activity_at", "required_disk_space", "project_phase_2"],
     )
 
 
