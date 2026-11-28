@@ -47,6 +47,7 @@ EXPECTED: dict[tuple[str, str], tuple[str, tuple[str, ...], bool]] = {
     ("list_time_entries", "spent_on_from"): ("time_entry", ("spent_on",), False),
     ("list_time_entries", "spent_on_to"): ("time_entry", ("spent_on",), False),
     ("list_meetings", "project"): ("meeting", ("project_id", "project"), False),
+    ("list_meetings", "title"): ("meeting", ("title",), False),
     ("list_recurring_meetings", "project"): ("recurring_meeting", ("project_id", "project"), False),
     ("list_recurring_meeting_occurrences", "filter"): ("recurring_meeting", ("start_time", "state"), True),
     ("list_notifications", "unread_only"): ("notification", ("read",), False),
@@ -54,11 +55,30 @@ EXPECTED: dict[tuple[str, str], tuple[str, tuple[str, ...], bool]] = {
     ("list_capabilities", "project"): ("capability", ("context",), False),
     ("list_non_working_days", "year"): ("non_working_day", ("date",), True),
     ("list_user_non_working_times", "year"): ("user_non_working_time", ("start_date", "end_date"), True),
+    # The typeahead filter of the server; the same owners as the stored filter `typeahead`.
+    ("list_work_package_available_relation_candidates", "query"): (
+        "work_package",
+        ("subject", "id", "display_id", "project", "type", "status"),
+        False,
+    ),
+    # The server filters by `relatable` of type `relates` when no type is given.
+    ("list_work_package_available_relation_candidates", "relation_type"): (
+        "relation",
+        ("type", "from_id", "to_id"),
+        True,
+    ),
 }
 
 # The other owners of the same value in the result: the start time of an occurrence is also the meeting's.
 ALSO: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {
+    ("list_meetings", "title"): (("recurring_meeting", "title"),),
     ("list_recurring_meeting_occurrences", "filter"): (("meeting", "start_time"),),
+    ("list_work_package_available_relation_candidates", "query"): (("status", "is_closed"),),
+    ("list_work_package_available_relation_candidates", "relation_type"): (
+        ("work_package", "parent_id"),
+        ("work_package", "ancestors"),
+        ("work_package", "children"),
+    ),
 }
 
 # A value that makes the parameter carry a value for the tool, for the cases that call the policy directly.
@@ -76,6 +96,8 @@ VALUE = {
     "unread_only": True,
     "relation_type": "blocks",
     "year": 2030,
+    "title": "x",
+    "query": "x",
 }
 
 # The dataclass that carries the fields of each entity here; the occurrences are rows of their own.
@@ -103,6 +125,9 @@ RECORD_OF = {
     ("capability", "list_capabilities"): "CapabilitySummary",
     ("non_working_day", "list_non_working_days"): "NonWorkingDay",
     ("user_non_working_time", "list_user_non_working_times"): "UserNonWorkingTimeSummary",
+    # The entity record, not the narrow candidate row: the hide setting is the one of the work package.
+    ("work_package", "list_work_package_available_relation_candidates"): "WorkPackageSummary",
+    ("relation", "list_work_package_available_relation_candidates"): "RelationSummary",
 }
 
 

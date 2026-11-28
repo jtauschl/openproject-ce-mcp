@@ -15,6 +15,7 @@ from _tools_test_helpers import FakeContext
 
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError, ProjectScopeDeniedError
 from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.presentation import _to_payload, dump_payload
 from openproject_ce_mcp.tools_work_package_pickers import list_work_package_available_relation_candidates
 
 _PRINCIPALS = {
@@ -138,6 +139,49 @@ async def test_relation_candidates_pass_query_type_and_limit_and_drop_foreign_pr
     assert [(c.id, c.display_id, c.subject, c.type, c.status, c.project) for c in result.results] == [
         (43, "DEMO-43", "Login fails", "Bug", "New", "Demo")
     ]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_relation_candidates_carry_the_hidden_keys_of_the_work_package_setting() -> None:
+    """The matrix of every hidden entity cannot call this tool (the default relation type selects by the relation
+    fields), so the masking of its rows is proved here with a setting that leaves the filter open."""
+    seen: list[httpx.Request] = []
+    candidates = {
+        "_embedded": {
+            "elements": [
+                {
+                    "id": 43,
+                    "subject": "Login fails",
+                    "_links": {
+                        "type": {"title": "Bug"},
+                        "status": {"title": "New"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                    },
+                }
+            ]
+        }
+    }
+    client = await _client(
+        {"/api/v3/work_packages/42": _wp(), "/api/v3/work_packages/42/available_relation_candidates": candidates},
+        seen,
+        hidden_fields={"work_package": ("subject", "status")},
+    )
+    result = await client.work_package_picker.relation_candidates(42)
+    text = dump_payload(_to_payload(result, select=None, elide_none=False))
+    assert "Login fails" not in text and '"New"' not in text
+    assert "Bug" in text
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_relation_candidates_are_refused_before_any_request_while_a_relation_field_is_hidden() -> None:
+    seen: list[httpx.Request] = []
+    client = await _client({}, seen, hidden_fields={"relation": ("type",)})
+    seen.clear()
+    with pytest.raises(InvalidInputError, match="relation field 'type' is hidden"):
+        await client.work_package_picker.relation_candidates(42)
+    assert seen == []
     await client.aclose()
 
 

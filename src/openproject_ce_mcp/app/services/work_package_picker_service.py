@@ -29,7 +29,7 @@ from ...models import (
 )
 from ..errors import InvalidInputError
 from ..pagination import effective_limit, paginate_server
-from ..policies import access, hidden_fields
+from ..policies import access, filter_policy, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_api import ProjectApi
 from ..ports.project_ref import ProjectRefResolver
@@ -84,6 +84,12 @@ class WorkPackagePickerService:
         limit: int | None = None,
     ) -> RelationCandidateListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
+        filter_policy.ensure_filter_allowed(
+            "list_work_package_available_relation_candidates",
+            settings=self._settings,
+            query=query,
+            relation_type=relation_type,
+        )
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
         pairs = await self._api.relation_candidates(
             resolved_id,

@@ -105,9 +105,6 @@ OWN_POLICY: dict[str, tuple[str, ...]] = {
 # A parameter that selects or orders by a hidden field and has a ticket of its own.
 DEFERRED: dict[tuple[str, str], str] = {
     ("get_user", "user"): "OPM-913",
-    ("list_meetings", "title"): "OPM-921",
-    ("list_work_package_available_relation_candidates", "query"): "OPM-921",
-    ("list_work_package_available_relation_candidates", "relation_type"): "OPM-921",
 }
 
 # A parameter that names a stored selection: the filters, sort and group of the saved query run server-side, and

@@ -22,8 +22,9 @@ from . import hidden_fields
 @dataclass(frozen=True)
 class FilterRow:
     """The result fields a filter parameter selects by. `always`: the call selects by them whether or not
-    the caller passed the parameter, because its default selects (the current year, `upcoming`). `also`: the
-    (entity, field) pairs of other owners of the same value in the result, hidden through their own setting."""
+    the caller passed the parameter, because its default selects (the current year, `upcoming`, the server's
+    default relation type). `also`: the (entity, field) pairs of other owners of the same value in the result,
+    hidden through their own setting."""
 
     entity: str
     fields: tuple[str, ...]
@@ -67,6 +68,7 @@ FILTER_FIELDS: Mapping[tuple[str, str], FilterRow] = {
     ("list_time_entries", "spent_on_from"): FilterRow("time_entry", ("spent_on",)),
     ("list_time_entries", "spent_on_to"): FilterRow("time_entry", ("spent_on",)),
     ("list_meetings", "project"): FilterRow("meeting", _PROJECT_OF),
+    ("list_meetings", "title"): FilterRow("meeting", ("title",), also=(("recurring_meeting", "title"),)),
     ("list_recurring_meetings", "project"): FilterRow("recurring_meeting", _PROJECT_OF),
     ("list_recurring_meeting_occurrences", "filter"): FilterRow(
         "recurring_meeting", ("start_time", "state"), always=True, also=(("meeting", "start_time"),)
@@ -79,6 +81,20 @@ FILTER_FIELDS: Mapping[tuple[str, str], FilterRow] = {
     ("list_non_working_days", "year"): FilterRow("non_working_day", ("date",), always=True),
     ("list_user_non_working_times", "year"): FilterRow(
         "user_non_working_time", ("start_date", "end_date"), always=True
+    ),
+    # The typeahead filter of the server: the owners of the stored filter of that name (`stored_query_policy`).
+    ("list_work_package_available_relation_candidates", "query"): FilterRow(
+        "work_package",
+        ("subject", "id", "display_id", "project", "type", "status"),
+        also=(("status", "is_closed"),),
+    ),
+    # Without a type the server filters by `relatable` of type `relates`: the candidates leave out the work packages
+    # that already have a relation or a hierarchy link to the anchor, so the list shows them.
+    ("list_work_package_available_relation_candidates", "relation_type"): FilterRow(
+        "relation",
+        ("type", "from_id", "to_id"),
+        always=True,
+        also=(("work_package", "parent_id"), ("work_package", "ancestors"), ("work_package", "children")),
     ),
 }
 

@@ -53,6 +53,11 @@ UNEXERCISED: dict[str, tuple[str, str]] = {
         "selects by the dates through its default year, which are hidden: refused before any read",
         "cannot be used to filter",
     ),
+    "list_work_package_available_relation_candidates": (
+        "selects by the relation and hierarchy fields through the default relation type, which are hidden: "
+        "refused before any read",
+        "cannot be used to filter",
+    ),
     "render_text": (
         "is switched off while fields it would render are hidden, so nothing is rendered",
         "render_text is disabled",

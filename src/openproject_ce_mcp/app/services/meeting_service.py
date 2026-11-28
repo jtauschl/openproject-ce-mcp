@@ -80,7 +80,7 @@ class MeetingService:
         limit: int | None = None,
     ) -> MeetingListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        filter_policy.ensure_filter_allowed("list_meetings", settings=self._settings, project=project)
+        filter_policy.ensure_filter_allowed("list_meetings", settings=self._settings, project=project, title=title)
         effective_limit = clamp_limit(
             limit,
             default_page_size=self._settings.default_page_size,

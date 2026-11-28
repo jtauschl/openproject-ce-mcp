@@ -53,16 +53,22 @@ the sharpest case: with the address hidden from every result, the rows that matc
 | `list_project_storages` | `project` | project storage `project_id`/`project` |
 | `list_time_entries` | `project`, `work_package_id`, `user`, `spent_on_from`, `spent_on_to` | time entry `project`, `entity_type`/`entity_id`, `user`/`user_id`, `spent_on` |
 | `list_meetings`, `list_recurring_meetings` | `project` | `project_id`/`project` |
+| `list_meetings` | `title` | meeting `title`, recurring meeting `title` (the title of the series is matched too) |
 | `list_recurring_meeting_occurrences` | `filter` (always) | recurring meeting `start_time` or `state`, meeting `start_time` |
+| `list_work_package_available_relation_candidates` | `query`, `relation_type` (always) | `query`: work package `subject`, `id`, `display_id`, `project`, `type` or `status`, status `is_closed`; `relation_type`: relation `type`, `from_id` or `to_id`, work package `parent_id`, `ancestors` or `children` |
 | `list_notifications` | `unread_only` | notification `read` |
 | `list_relations` | `relation_type` | relation `type` |
 | `list_capabilities` | `project` | capability `context` (only `capability_id` still works) |
 | `list_non_working_days` | `year` (always) | non-working day `date` |
 | `list_user_non_working_times` | `year` (always) | `start_date` or `end_date` |
 
-A parameter whose default selects (marked "always": the current year, `upcoming`) is refused whether or not the
-caller passes it. A parameter the caller must give names a container and is not refused: the `project` of
-`list_categories` and `list_project_memberships`, the user of the schedule tools; a row that the caller recognises
+A parameter whose default selects (marked "always": the current year, `upcoming`, the relation type `relates` that
+OpenProject applies when no type is given) is refused whether or not the caller passes it. The candidates of a new
+relation leave out the work packages that already have a relation or a hierarchy link to the anchor, so
+`list_work_package_available_relation_candidates` is refused as a whole while the relation `type`, `from_id` or `to_id`,
+or the `parent_id`, `ancestors` or `children` of the work package, is hidden. The `query` row names the fields of the
+newest pinned server; an older server matches fewer of them, so it refuses a little more than it must. A parameter the caller must give names a container and is not
+refused: the `project` of `list_categories` and `list_project_memberships`, the user of the schedule tools; a row that the caller recognises
 elsewhere by its id is tied to that container. `user` and `principal` have separate hide settings, so hiding `email`
 of users does not hide it in `list_principals`. A user who hides `email` can no longer search users by name either:
 leave the field visible, or list without the filter. `include_images` of `list_work_package_attachments` is refused
@@ -83,8 +89,7 @@ that does:
 A column whose value the row shows under its own field (project, category, version, the names of the users and the
 sprint, the phase, which the row leaves out while it is inactive) is decided by the work package setting. Not
 covered: the order of a list the caller does not choose (the sort by the work package `id` and the default
-order), a name, login or display id that the caller types as a reference, the `title` of `list_meetings` and the
-`query` and `relation_type` of `list_work_package_available_relation_candidates`.
+order) and a name, login or display id that the caller types as a reference.
 
 `execute_query` runs the filters, the sort and the group-by that the saved query stores, so the same rule is applied
 to that stored definition on every page, before any row of the page is read and before a result is returned: a
