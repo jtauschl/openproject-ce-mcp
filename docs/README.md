@@ -36,6 +36,8 @@ protection, reload, and verification for that specific client:
 
 - **[Tool reference](tools.md)** — every MCP tool this server exposes, grouped
   by area, plus the write preview/confirm pattern and error categories.
+- **[Features by version](features.md)** — the capabilities of the server and
+  the release that introduced each one.
 - **[Work package filters](filters.md)** — filter keys, operators, and type
   strategies accepted by `list_work_packages` / `search_work_packages`.
 - **[Field hiding](field-hiding.md)** — the full list of entities supported by
